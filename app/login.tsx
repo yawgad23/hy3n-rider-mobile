@@ -158,7 +158,7 @@ export default function LoginScreen() {
           />
         </View>
         <Text style={styles.title}>Akwaaba to HY3N</Text>
-        <Text style={styles.subtitle}>Ghana's premium ride-hailing app</Text>
+        <Text style={styles.subtitle}>Ghana&apos;s premium ride-hailing app</Text>
 
         {/* Tab Switcher */}
         <View style={styles.tabRow}>
@@ -250,7 +250,7 @@ export default function LoginScreen() {
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setVerificationId(null)} style={styles.resendRow}>
-                  <Text style={styles.resendText}>Didn't receive it? </Text>
+                  <Text style={styles.resendText}>Didn&apos;t receive it? </Text>
                   <Text style={[styles.resendText, { color: GOLD, fontWeight: '700' }]}>Resend</Text>
                 </TouchableOpacity>
               </>
@@ -347,7 +347,7 @@ export default function LoginScreen() {
 
         {/* Register link */}
         <View style={styles.registerRow}>
-          <Text style={styles.registerText}>Don't have an account? </Text>
+          <Text style={styles.registerText}>Don&apos;t have an account? </Text>
           <TouchableOpacity onPress={() => router.push('/register' as any)}>
             <Text style={styles.registerLink}>Create one</Text>
           </TouchableOpacity>
@@ -355,7 +355,7 @@ export default function LoginScreen() {
 
         {/* Terms */}
         <Text style={styles.terms}>
-          By continuing, you agree to HY3N's{' '}
+          By continuing, you agree to HY3N&apos;s{' '}
           <Text style={{ color: GOLD }}>Terms of Service</Text> and{' '}
           <Text style={{ color: GOLD }}>Privacy Policy</Text>
         </Text>

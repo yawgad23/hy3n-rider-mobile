@@ -161,7 +161,7 @@ export default function HomeScreen() {
     })();
   }, []);
   // ─── Nearby Drivers ─────────────────────────────────────────────────────────
-  const [nearbyDrivers, setNearbyDrivers] = useState<Array<{ id: string; current_lat?: number; current_lng?: number }>>([]);
+  const [nearbyDrivers, setNearbyDrivers] = useState<{ id: string; current_lat?: number; current_lng?: number }[]>([]);
 
   // Poll Firestore every 10 seconds for online, available drivers with a known location
   useEffect(() => {
@@ -224,7 +224,7 @@ export default function HomeScreen() {
   const [tipAdded, setTipAdded] = useState(false);
 
   // Multi-stop
-  const [stops, setStops] = useState<Array<Location | null>>([]);
+  const [stops, setStops] = useState<(Location | null)[]>([]);
   // Trip Receipt
   const [showReceipt, setShowReceipt] = useState(false);
   // Cancel with reason
@@ -267,7 +267,7 @@ export default function HomeScreen() {
       Alert.alert('Call Driver', 'Driver contact not available yet.');
     }
   };
-  const [chatMessages, setChatMessages] = useState<Array<{ id: string; text: string; fromRider: boolean; time: string }>>([]);
+  const [chatMessages, setChatMessages] = useState<{ id: string; text: string; fromRider: boolean; time: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const QUICK_MESSAGES = [
     "I'm at the gate",

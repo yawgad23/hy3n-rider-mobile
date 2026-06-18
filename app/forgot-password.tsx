@@ -46,7 +46,7 @@ export default function ForgotPasswordScreen() {
 
         <Text style={[styles.title, { color: colors.foreground }]}>Reset password</Text>
         <Text style={[styles.subtitle, { color: colors.muted }]}>
-          Enter your email and we'll send you a reset link
+          Enter your email and we&apos;ll send you a reset link
         </Text>
 
         {sent ? (
