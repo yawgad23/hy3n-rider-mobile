@@ -325,7 +325,7 @@ export default function WalletScreen() {
                 {/* Amount */}
                 <Text style={styles.label}>Amount (GH₵)</Text>
                 <View style={styles.inputRow}>
-                  <MaterialIcons name="attach-money" size={20} color={MUTED} style={{ marginRight: 8 }} />
+                  <Text style={{ fontSize: 16, color: MUTED, marginRight: 8, fontWeight: '600' }}>GH₵</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="Enter amount"

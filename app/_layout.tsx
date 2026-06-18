@@ -220,11 +220,7 @@ export default function RootLayout() {
               <Stack.Screen name="safety" options={{ presentation: "modal" }} />
               <Stack.Screen name="scheduled" options={{ presentation: "modal" }} />
               <Stack.Screen name="support" options={{ presentation: "modal" }} />
-              <Stack.Screen name="driver" />
-              <Stack.Screen name="driver/login" />
-              <Stack.Screen name="driver/register" />
-              <Stack.Screen name="driver/forgot-password" />
-              <Stack.Screen name="driver/(tabs)" />
+
             </Stack>
             <StatusBar style="light" />
             {!splashDone && <SplashScreen onComplete={() => setSplashDone(true)} />}
