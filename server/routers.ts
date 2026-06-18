@@ -12,6 +12,41 @@ import {
 } from "./hubtel";
 import { adminFirestore, ADMIN_COLLECTIONS } from "./firebaseAdmin";
 
+// ─── Wallet helpers ─────────────────────────────────────────────────────────
+
+async function getOrCreateWallet(userId: string, userType: 'rider' | 'driver' = 'rider') {
+  const existing = await adminFirestore.get(ADMIN_COLLECTIONS.WALLET, userId);
+  if (existing) return existing;
+  return adminFirestore.set(ADMIN_COLLECTIONS.WALLET, userId, {
+    user_id: userId,
+    user_type: userType,
+    balance: 0,
+    total_topped_up: 0,
+    total_spent: 0,
+    total_earned: 0,
+    created_date: new Date().toISOString(),
+  });
+}
+
+async function recordWalletTransaction(
+  userId: string,
+  type: 'credit' | 'debit' | 'refund',
+  amount: number,
+  description: string,
+  reference: string,
+  meta: Record<string, any> = {},
+) {
+  return adminFirestore.create(ADMIN_COLLECTIONS.WALLET_TRANSACTIONS, {
+    user_id: userId,
+    type,
+    amount,
+    description,
+    reference,
+    date: new Date().toISOString(),
+    ...meta,
+  });
+}
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -212,6 +247,152 @@ export const appRouter = router({
           },
         );
         return { success: true, commission: updated };
+      }),
+  }),
+
+  // ─── Rider / Driver Wallet ────────────────────────────────────────────────────────────────
+  wallet: router({
+    /**
+     * Initiate a MoMo top-up for a rider via Hubtel.
+     * Sends a USSD prompt to the rider’s phone.
+     * The webhook at POST /api/hubtel/wallet-callback credits the wallet on success.
+     */
+    topup: publicProcedure
+      .input(z.object({
+        riderId: z.string(),
+        riderName: z.string(),
+        momoNumber: z.string(),
+        momoNetwork: z.string().optional(),
+        amount: z.number().min(5).max(5000),
+      }))
+      .mutation(async ({ input }) => {
+        const channel = getMomoChannel(input.momoNetwork || 'mtn-gh');
+        const reference = `hy3n-topup-${input.riderId}-${Date.now()}`;
+        let phone = input.momoNumber.replace(/\s+/g, '').replace(/^0/, '233');
+        if (!phone.startsWith('233')) phone = '233' + phone;
+
+        // Create a pending wallet transaction record first (for idempotency)
+        const txRecord = await adminFirestore.create(ADMIN_COLLECTIONS.WALLET_TRANSACTIONS, {
+          user_id: input.riderId,
+          user_type: 'rider',
+          type: 'credit',
+          amount: input.amount,
+          description: `Wallet top-up via MoMo`,
+          reference,
+          status: 'processing',
+          date: new Date().toISOString(),
+        });
+
+        // Call Hubtel
+        const result = await chargeDriverCommission({
+          customerMsisdn: phone,
+          amount: input.amount,
+          customerName: input.riderName,
+          description: `HY3N wallet top-up GH₵${input.amount}`,
+          clientReference: reference,
+          channel,
+        });
+
+        if (!result.success) {
+          // Mark transaction as failed
+          await adminFirestore.update(ADMIN_COLLECTIONS.WALLET_TRANSACTIONS, txRecord.id, {
+            status: 'failed',
+            hubtel_message: result.message,
+          });
+          return { success: false, message: result.message || 'Top-up failed', reference, txId: txRecord.id };
+        }
+
+        return {
+          success: true,
+          status: 'processing',
+          message: 'USSD prompt sent. Please approve on your phone.',
+          reference,
+          txId: txRecord.id,
+          transactionId: result.transactionId,
+        };
+      }),
+
+    /**
+     * Get a user’s wallet balance.
+     */
+    getBalance: publicProcedure
+      .input(z.object({ userId: z.string() }))
+      .query(async ({ input }) => {
+        const wallet = await adminFirestore.get(ADMIN_COLLECTIONS.WALLET, input.userId);
+        return { balance: wallet?.balance ?? 0, currency: 'GHS' };
+      }),
+
+    /**
+     * Get wallet transaction history for a user.
+     */
+    getTransactions: publicProcedure
+      .input(z.object({
+        userId: z.string(),
+        limit: z.number().optional(),
+      }))
+      .query(async ({ input }) => {
+        const txns = await adminFirestore.list(
+          ADMIN_COLLECTIONS.WALLET_TRANSACTIONS,
+          { user_id: input.userId },
+          'date',
+          'desc',
+          input.limit ?? 30,
+        );
+        return { transactions: txns };
+      }),
+
+    /**
+     * Settle a completed ride: deduct fare from rider wallet, credit driver wallet.
+     * Called server-side when ride status changes to 'completed' with payment='wallet'.
+     */
+    settleRide: publicProcedure
+      .input(z.object({
+        rideId: z.string(),
+        riderId: z.string(),
+        driverId: z.string(),
+        driverName: z.string(),
+        riderName: z.string(),
+        fare: z.number(),
+        pickup: z.string(),
+        destination: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const riderWallet = (await getOrCreateWallet(input.riderId, 'rider')) as any;
+        const currentBalance = (riderWallet.balance as number) ?? 0;
+
+        if (currentBalance < input.fare) {
+          return { success: false, message: `Insufficient wallet balance. Balance: GH₵${currentBalance.toFixed(2)}, Fare: GH₵${input.fare.toFixed(2)}` };
+        }
+
+        const reference = `hy3n-ride-${input.rideId}`;
+        const now = new Date().toISOString();
+
+        // Deduct from rider wallet
+        await adminFirestore.set(ADMIN_COLLECTIONS.WALLET, input.riderId, {
+          balance: currentBalance - input.fare,
+          total_spent: ((riderWallet.total_spent as number) ?? 0) + input.fare,
+        });
+        await recordWalletTransaction(
+          input.riderId, 'debit', input.fare,
+          `Ride to ${input.destination}`,
+          reference,
+          { ride_id: input.rideId, driver_id: input.driverId, date: now },
+        );
+
+        // Credit driver wallet
+        const driverWallet = (await getOrCreateWallet(input.driverId, 'driver')) as any;
+        await adminFirestore.set(ADMIN_COLLECTIONS.WALLET, input.driverId, {
+          balance: ((driverWallet.balance as number) ?? 0) + input.fare,
+          total_earned: ((driverWallet.total_earned as number) ?? 0) + input.fare,
+        });
+        await recordWalletTransaction(
+          input.driverId, 'credit', input.fare,
+          `Ride fare from ${input.pickup}`,
+          reference,
+          { ride_id: input.rideId, rider_id: input.riderId, date: now },
+        );
+
+        return { success: true, newRiderBalance: currentBalance - input.fare };
       }),
   }),
 });

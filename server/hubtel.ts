@@ -9,8 +9,8 @@
  * Auth: Basic base64(API_ID:API_KEY)
  *
  * POS Sales Number: 5809 (from bo.hubtel.com/money)
- * API ID:  9glAYO8
- * API Key: 08910e8a08234a2aa98a756776f60a8f
+ * API ID:  08910e8a08234a2aa98a756776f60a8f
+ * API Key: 9glAYO8
  *
  * IMPORTANT: The "Receive Money" scope must be enabled on the API key by Hubtel.
  * Email retail@hubtel.com to request this scope. Also provide your server IP for whitelisting.
@@ -47,8 +47,8 @@ export interface HubtelChargeResponse {
 }
 
 const HUBTEL_POS_NUMBER = process.env.HUBTEL_POS_NUMBER || '5809';
-const HUBTEL_API_ID = process.env.HUBTEL_API_ID || '9glAYO8';
-const HUBTEL_API_KEY = process.env.HUBTEL_API_KEY || '08910e8a08234a2aa98a756776f60a8f';
+const HUBTEL_API_ID = process.env.HUBTEL_API_ID || '08910e8a08234a2aa98a756776f60a8f';
+const HUBTEL_API_KEY = process.env.HUBTEL_API_KEY || '9glAYO8';
 
 function getBasicAuth(): string {
   const credentials = `${HUBTEL_API_ID}:${HUBTEL_API_KEY}`;

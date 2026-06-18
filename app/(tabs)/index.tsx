@@ -692,7 +692,32 @@ export default function HomeScreen() {
     } catch (e) {}
   };
 
-  const handleFinishRide = () => {
+  const handleFinishRide = async () => {
+    // Settle wallet payment: deduct fare from rider, credit driver
+    if (activeRide?.status === 'completed' && activeRide.payment === 'wallet' && user) {
+      try {
+        const fare = activeRide.fare + (activeRide.waitingFee || 0);
+        const driverId = (activeRide as any).driverId || (activeRide as any).driver_id || '';
+        const apiBase = getApiBaseUrl();
+        await fetch(`${apiBase}/api/trpc/wallet.settleRide`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            rideId: activeRide.id,
+            riderId: user.uid,
+            driverId,
+            driverName: activeRide.driverName || 'Driver',
+            riderName: (riderProfile as any)?.full_name || user.displayName || 'Rider',
+            fare,
+            pickup: typeof activeRide.pickup === 'string' ? activeRide.pickup : 'Pickup',
+            destination: activeRide.destination?.name || 'Destination',
+          }),
+        });
+      } catch (err: any) {
+        console.warn('[Wallet] Settle ride error:', err?.message);
+      }
+    }
     // Increment total_rides on the rider's profile when they finish a completed trip
     if (activeRide?.status === 'completed' && user) {
       const newTotal = (riderProfile?.total_rides ?? 0) + 1;

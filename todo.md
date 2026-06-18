@@ -361,3 +361,15 @@
 - [ ] Rider app: payment method selector — choose wallet or MoMo on ride booking
 - [ ] Driver app: earnings screen shows live wallet balance from Firestore
 - [ ] Ride completion: auto-deduct fare from rider wallet and credit driver wallet
+
+## Rider Wallet Top-Up (Jun 18)
+
+- [x] Server: wallet.topup tRPC endpoint — calls Hubtel Receive Money for rider top-up
+- [x] Server: wallet.getBalance tRPC endpoint — fetch rider wallet balance
+- [x] Server: wallet.getTransactions tRPC endpoint — fetch wallet transaction history
+- [x] Hubtel webhook: handle wallet top-up callback and credit rider wallet in Firestore
+- [x] Rider wallet screen: replace "Coming Soon" with real Hubtel MoMo flow
+- [x] Rider wallet screen: USSD prompt → polling → success/failure feedback
+- [x] Rider wallet screen: live balance from Firestore (real-time listener)
+- [x] Ride completion: deduct fare from rider wallet, credit driver wallet
+- [x] Hubtel credentials: API ID and API Key set correctly in hubtel.ts

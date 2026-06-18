@@ -127,9 +127,91 @@ export async function handleHubtelWebhook(req: Request, res: Response) {
 }
 
 /**
+ * Handle Hubtel wallet top-up webhook callback.
+ * Credits the rider wallet when Hubtel confirms payment.
+ */
+export async function handleHubtelWalletWebhook(req: Request, res: Response) {
+  const payload = req.body as HubtelWebhookPayload;
+
+  console.log('[Hubtel Wallet Webhook] Received:', {
+    transactionId: payload.TransactionId,
+    status: payload.Status,
+    clientReference: payload.ClientReference,
+  });
+
+  if (!payload.ClientReference) {
+    res.status(400).json({ error: 'Missing ClientReference' });
+    return;
+  }
+
+  // Wallet top-up references: hy3n-topup-{riderId}-{timestamp}
+  const match = payload.ClientReference.match(/^hy3n-topup-(.+)-(\d+)$/);
+  if (!match) {
+    res.status(400).json({ error: 'Invalid ClientReference format for wallet top-up' });
+    return;
+  }
+
+  const riderId = match[1];
+
+  try {
+    // Find the pending transaction record
+    const records = await adminFirestore.list(COLLECTIONS.WALLET_TRANSACTIONS, {
+      user_id: riderId,
+      reference: payload.ClientReference,
+    });
+
+    if (!records || records.length === 0) {
+      res.status(404).json({ error: 'Wallet transaction record not found' });
+      return;
+    }
+
+    const txRecord = records[0];
+    const amount = txRecord.amount as number;
+
+    if (payload.Status === 'Success') {
+      // Credit the rider wallet
+      const walletSnap = await adminFirestore.get(COLLECTIONS.WALLET, riderId);
+      const currentBalance = (walletSnap?.balance as number) ?? 0;
+      const totalToppedUp = (walletSnap?.total_topped_up as number) ?? 0;
+
+      await adminFirestore.set(COLLECTIONS.WALLET, riderId, {
+        user_id: riderId,
+        user_type: 'rider',
+        balance: currentBalance + amount,
+        total_topped_up: totalToppedUp + amount,
+      });
+
+      // Mark transaction as completed
+      await adminFirestore.update(COLLECTIONS.WALLET_TRANSACTIONS, txRecord.id, {
+        status: 'completed',
+        hubtel_transaction_id: payload.TransactionId,
+        hubtel_status: payload.Status,
+        completed_at: new Date().toISOString(),
+      });
+
+      console.log('[Hubtel Wallet Webhook] Wallet credited:', { riderId, amount, newBalance: currentBalance + amount });
+      res.json({ success: true, message: 'Wallet credited', newBalance: currentBalance + amount });
+    } else if (payload.Status === 'Failed') {
+      await adminFirestore.update(COLLECTIONS.WALLET_TRANSACTIONS, txRecord.id, {
+        status: 'failed',
+        hubtel_status: payload.Status,
+        hubtel_message: payload.Message,
+      });
+      res.json({ success: false, message: 'Payment failed' });
+    } else {
+      res.json({ success: true, message: 'Pending — no action taken' });
+    }
+  } catch (err: any) {
+    console.error('[Hubtel Wallet Webhook] Error:', err?.message);
+    res.status(500).json({ error: 'Failed to process wallet top-up', message: err?.message });
+  }
+}
+
+/**
  * Register the Hubtel webhook endpoint.
  */
 export function registerHubtelWebhook(app: Express) {
   app.post('/api/hubtel/callback', handleHubtelWebhook);
-  console.log('[Hubtel] Webhook endpoint registered at POST /api/hubtel/callback');
+  app.post('/api/hubtel/wallet-callback', handleHubtelWalletWebhook);
+  console.log('[Hubtel] Webhook endpoints registered at POST /api/hubtel/callback and /api/hubtel/wallet-callback');
 }

@@ -122,4 +122,14 @@ export const adminFirestore = {
     await getDb().collection(collectionName).doc(id).delete();
     return { id };
   },
+
+  async set(collectionName: string, id: string, data: Record<string, any>) {
+    const payload = {
+      ...data,
+      created_date: data.created_date || new Date().toISOString(),
+      updated_date: new Date().toISOString(),
+    };
+    await getDb().collection(collectionName).doc(id).set(payload, { merge: true });
+    return { id, ...payload };
+  },
 };

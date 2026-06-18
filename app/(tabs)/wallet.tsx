@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -9,13 +9,13 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  StyleSheet,
 } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useAuth } from "@/lib/auth-context";
-import { firestoreDB } from "@/lib/firebase";
-import { notifyWalletTopUp } from "@/lib/notifications";
-import { dispatchService } from "@/lib/dispatch";
+import { firestoreDB, COLLECTIONS } from "@/lib/firebase";
+import { trpc } from "@/lib/trpc";
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -27,6 +27,14 @@ const BORDER = "#2A2A2A";
 const TEXT = "#FAFAFA";
 const MUTED = "#9CA3AF";
 
+const MOMO_NETWORKS = [
+  { id: "mtn-gh", label: "MTN MoMo", color: "#FFD700" },
+  { id: "vodafone-gh", label: "Telecel Cash", color: "#E60000" },
+  { id: "tigo-gh", label: "AirtelTigo Money", color: "#FF6600" },
+];
+
+const QUICK_AMOUNTS = [20, 50, 100, 200, 500];
+
 interface Transaction {
   id: string;
   type: "credit" | "debit" | "refund";
@@ -34,24 +42,8 @@ interface Transaction {
   description: string;
   date: string;
   reference: string;
+  status?: string;
 }
-
-const MOCK_TRANSACTIONS: Transaction[] = [
-  { id: "t1", type: "credit", amount: 100, description: "Wallet Top-Up via MoMo", date: new Date(Date.now() - 3600000).toISOString(), reference: "HY3N-TXN-001" },
-  { id: "t2", type: "debit", amount: 47.49, description: "Ride to Accra Mall", date: new Date(Date.now() - 86400000).toISOString(), reference: "HY3N-TXN-002" },
-  { id: "t3", type: "refund", amount: 12.50, description: "Refund – Cancelled Ride", date: new Date(Date.now() - 2 * 86400000).toISOString(), reference: "HY3N-TXN-003" },
-  { id: "t4", type: "debit", amount: 99.28, description: "Ride to Labadi Beach", date: new Date(Date.now() - 5 * 86400000).toISOString(), reference: "HY3N-TXN-004" },
-  { id: "t5", type: "credit", amount: 50, description: "Wallet Top-Up via Card", date: new Date(Date.now() - 7 * 86400000).toISOString(), reference: "HY3N-TXN-005" },
-  { id: "t6", type: "debit", amount: 42.84, description: "Ride to West Hills Mall", date: new Date(Date.now() - 8 * 86400000).toISOString(), reference: "HY3N-TXN-006" },
-  { id: "t7", type: "credit", amount: 200, description: "Wallet Top-Up via MoMo", date: new Date(Date.now() - 10 * 86400000).toISOString(), reference: "HY3N-TXN-007" },
-];
-
-const QUICK_AMOUNTS = [20, 50, 100, 200, 500];
-const TOP_UP_METHODS = [
-  { id: "momo", label: "Mobile Money", icon: "smartphone" as const, color: "#FFD700" },
-  { id: "card", label: "Debit/Credit Card", icon: "credit-card" as const, color: "#4A90E2" },
-  { id: "bank", label: "Bank Transfer", icon: "account-balance" as const, color: "#50C878" },
-];
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -63,62 +55,156 @@ function formatDate(iso: string) {
   return d.toLocaleDateString("en-GH", { month: "short", day: "numeric" });
 }
 
+type TopUpStage = "idle" | "processing" | "ussd_sent" | "success" | "failed";
+
 export default function WalletScreen() {
-  const { user } = useAuth();
+  const { user, riderProfile } = useAuth();
   const [balance, setBalance] = useState(0);
   const [balanceLoading, setBalanceLoading] = useState(true);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Load real balance from Firestore (starts at 0 for new users)
+  // Top-up modal state
+  const [showTopUp, setShowTopUp] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [momoNumber, setMomoNumber] = useState("");
+  const [momoNetwork, setMomoNetwork] = useState("mtn-gh");
+  const [topUpStage, setTopUpStage] = useState<TopUpStage>("idle");
+  const [topUpMessage, setTopUpMessage] = useState("");
+  const [pendingTxId, setPendingTxId] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Transaction detail modal
+  const [showTxDetail, setShowTxDetail] = useState(false);
+  const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
+
+  // tRPC mutation
+  const topupMutation = trpc.wallet.topup.useMutation();
+
+  // Load balance from Firestore (real-time)
   useEffect(() => {
     if (!user) return;
     setBalanceLoading(true);
-    dispatchService.getWalletBalance(user.uid)
-      .then(bal => setBalance(bal))
-      .catch(() => setBalance(0))
-      .finally(() => setBalanceLoading(false));
+    const unsub = firestoreDB.subscribeDoc(COLLECTIONS.WALLET, user.uid, (data) => {
+      setBalance(data?.balance ?? 0);
+      setBalanceLoading(false);
+    });
+    return () => unsub();
   }, [user]);
 
-  // Load real transactions from Firestore
-  useEffect(() => {
+  // Load transactions from Firestore
+  const loadTransactions = useCallback(async () => {
     if (!user) return;
-    firestoreDB.list('WalletTransactions', { user_id: user.uid }, 'date', 'desc', 30)
-      .then(txns => { if (txns && txns.length > 0) setTransactions(txns as Transaction[]); })
-      .catch(() => {});
+    try {
+      const txns = await firestoreDB.list(
+        COLLECTIONS.WALLET_TRANSACTIONS,
+        { user_id: user.uid },
+        "date",
+        "desc",
+        30,
+      );
+      setTransactions(txns as Transaction[]);
+    } catch {
+      // ignore
+    }
   }, [user]);
-  const [showTopUp, setShowTopUp] = useState(false);
-  const [showTxDetail, setShowTxDetail] = useState(false);
-  const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
-  const [topUpAmount, setTopUpAmount] = useState("");
-  const [selectedMethod, setSelectedMethod] = useState("momo");
-  const [topUpLoading, setTopUpLoading] = useState(false);
-  const [topUpSuccess, setTopUpSuccess] = useState(false);
 
-  const totalCredits = transactions.filter(t => t.type === "credit" || t.type === "refund").reduce((s, t) => s + t.amount, 0);
-  const totalDebits = transactions.filter(t => t.type === "debit").reduce((s, t) => s + t.amount, 0);
-  const totalRides = transactions.filter(t => t.type === "debit").length;
+  useEffect(() => { loadTransactions(); }, [loadTransactions]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await new Promise(r => setTimeout(r, 1200));
+    await loadTransactions();
     setRefreshing(false);
-  }, []);
+  }, [loadTransactions]);
+
+  // Poll Firestore for transaction status after USSD sent
+  const startPolling = useCallback((txId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    let attempts = 0;
+    pollRef.current = setInterval(async () => {
+      attempts++;
+      try {
+        const tx = await firestoreDB.get(COLLECTIONS.WALLET_TRANSACTIONS, txId);
+        if (tx?.status === "completed") {
+          clearInterval(pollRef.current!);
+          setTopUpStage("success");
+          setTopUpMessage(`GH₵${tx.amount} has been added to your wallet!`);
+          loadTransactions();
+        } else if (tx?.status === "failed") {
+          clearInterval(pollRef.current!);
+          setTopUpStage("failed");
+          setTopUpMessage("Payment was declined. Please try again.");
+        }
+      } catch { /* ignore */ }
+      // Stop polling after 3 minutes (36 × 5s)
+      if (attempts >= 36) {
+        clearInterval(pollRef.current!);
+        setTopUpStage("failed");
+        setTopUpMessage("Payment timed out. If you approved the prompt, please contact support.");
+      }
+    }, 5000);
+  }, [loadTransactions]);
+
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   const handleTopUp = async () => {
     const amount = parseFloat(topUpAmount);
     if (!amount || amount < 5) { Alert.alert("Invalid Amount", "Minimum top-up is GH₵5.00"); return; }
     if (amount > 5000) { Alert.alert("Invalid Amount", "Maximum top-up is GH₵5,000.00"); return; }
-    setTopUpLoading(true);
-    await new Promise(r => setTimeout(r, 2000));
-    setTopUpLoading(false);
-    setTopUpSuccess(true);
-    notifyWalletTopUp(amount);
+    if (!momoNumber.trim() || momoNumber.replace(/\D/g, "").length < 10) {
+      Alert.alert("Invalid Number", "Please enter a valid 10-digit MoMo number");
+      return;
+    }
+    if (!user) return;
+
+    setTopUpStage("processing");
+    setTopUpMessage("Contacting Hubtel...");
+
+    try {
+      const result = await topupMutation.mutateAsync({
+        riderId: user.uid,
+        riderName: riderProfile?.full_name || user.displayName || "Rider",
+        momoNumber: momoNumber.trim(),
+        momoNetwork,
+        amount,
+      });
+
+      if (result.success) {
+        setPendingTxId(result.txId);
+        setTopUpStage("ussd_sent");
+        setTopUpMessage("A USSD prompt has been sent to your phone. Enter your MoMo PIN to approve.");
+        startPolling(result.txId);
+      } else {
+        setTopUpStage("failed");
+        setTopUpMessage(result.message || "Top-up failed. Please try again.");
+      }
+    } catch (err: any) {
+      setTopUpStage("failed");
+      setTopUpMessage(err?.message || "Something went wrong. Please try again.");
+    }
   };
+
+  const resetTopUp = () => {
+    setTopUpStage("idle");
+    setTopUpMessage("");
+    setTopUpAmount("");
+    setPendingTxId(null);
+    if (pollRef.current) clearInterval(pollRef.current);
+  };
+
+  const closeTopUp = () => {
+    resetTopUp();
+    setShowTopUp(false);
+  };
+
+  const totalCredits = transactions.filter(t => t.type === "credit" || t.type === "refund").reduce((s, t) => s + t.amount, 0);
+  const totalDebits = transactions.filter(t => t.type === "debit").reduce((s, t) => s + t.amount, 0);
+  const totalRides = transactions.filter(t => t.type === "debit").length;
 
   const txColor = (t: Transaction) => t.type === "credit" ? GREEN : t.type === "refund" ? "#4A90E2" : RED;
   const txSign = (t: Transaction) => t.type === "debit" ? "-" : "+";
-  const txIconName = (t: Transaction): any => t.type === "credit" ? "add-circle" : t.type === "refund" ? "replay" : "remove-circle";
+  const txIconName = (t: Transaction): any =>
+    t.type === "credit" ? "add-circle" : t.type === "refund" ? "replay" : "remove-circle";
 
   return (
     <ScreenContainer containerClassName="bg-[#0A0A0A]" safeAreaClassName="bg-[#0A0A0A]">
@@ -151,12 +237,10 @@ export default function WalletScreen() {
             {balanceLoading ? (
               <ActivityIndicator color="#fff" size="large" style={{ marginVertical: 8 }} />
             ) : (
-              <Text style={{ color: "#fff", fontSize: 38, fontWeight: "bold", letterSpacing: -1 }}>GH₵{balance.toFixed(2)}</Text>
+              <Text style={{ color: "#fff", fontSize: 38, fontWeight: "bold", letterSpacing: -1 }}>
+                GH₵{balance.toFixed(2)}
+              </Text>
             )}
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: GOLD }} />
-              <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 11 }}>Last updated just now</Text>
-            </View>
           </View>
           {/* Stats Row */}
           <View style={{ flexDirection: "row", backgroundColor: CARD }}>
@@ -177,13 +261,10 @@ export default function WalletScreen() {
         {/* Top Up Button */}
         <TouchableOpacity
           onPress={() => setShowTopUp(true)}
-          style={{ marginHorizontal: 16, marginBottom: 20, backgroundColor: CARD, borderRadius: 16, paddingVertical: 15, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1, borderColor: BORDER }}
+          style={{ marginHorizontal: 16, marginBottom: 20, backgroundColor: GREEN, borderRadius: 16, paddingVertical: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}
         >
-          <MaterialIcons name="schedule" size={22} color={GOLD} />
-          <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 16 }}>Top Up Wallet</Text>
-          <View style={{ backgroundColor: `${GOLD}22`, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2, marginLeft: 4 }}>
-            <Text style={{ color: GOLD, fontSize: 11, fontWeight: "700" }}>SOON</Text>
-          </View>
+          <MaterialIcons name="add-circle" size={22} color="#fff" />
+          <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>Top Up Wallet</Text>
         </TouchableOpacity>
 
         {/* Transaction History */}
@@ -192,6 +273,13 @@ export default function WalletScreen() {
             <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 16 }}>Transactions</Text>
             <Text style={{ color: MUTED, fontSize: 12 }}>{transactions.length} total</Text>
           </View>
+          {transactions.length === 0 && (
+            <View style={{ alignItems: "center", paddingVertical: 32 }}>
+              <MaterialIcons name="receipt-long" size={40} color={MUTED} />
+              <Text style={{ color: MUTED, marginTop: 10, fontSize: 14 }}>No transactions yet</Text>
+              <Text style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>Top up your wallet to get started</Text>
+            </View>
+          )}
           {transactions.map((tx) => (
             <TouchableOpacity
               key={tx.id}
@@ -203,55 +291,182 @@ export default function WalletScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: TEXT, fontWeight: "600", fontSize: 13 }} numberOfLines={1}>{tx.description}</Text>
-                <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{formatDate(tx.date)} • {tx.reference}</Text>
+                <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{formatDate(tx.date)} • {tx.reference?.slice(-8)}</Text>
               </View>
-              <Text style={{ color: txColor(tx), fontWeight: "bold", fontSize: 15 }}>
-                {txSign(tx)}GH₵{tx.amount.toFixed(2)}
-              </Text>
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={{ color: txColor(tx), fontWeight: "bold", fontSize: 15 }}>
+                  {txSign(tx)}GH₵{tx.amount.toFixed(2)}
+                </Text>
+                {tx.status === "processing" && (
+                  <Text style={{ color: GOLD, fontSize: 10, marginTop: 2 }}>Pending</Text>
+                )}
+              </View>
             </TouchableOpacity>
           ))}
         </View>
       </ScrollView>
 
-      {/* Top Up Coming Soon Modal */}
+      {/* ── Top Up Modal ─────────────────────────────────────────────────────── */}
       <Modal visible={showTopUp} animationType="slide" presentationStyle="pageSheet">
         <View style={{ flex: 1, backgroundColor: BG }}>
+          {/* Header */}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderBottomWidth: 0.5, borderBottomColor: BORDER }}>
-            <TouchableOpacity onPress={() => setShowTopUp(false)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: CARD, alignItems: "center", justifyContent: "center" }}>
+            <TouchableOpacity onPress={closeTopUp} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: CARD, alignItems: "center", justifyContent: "center" }}>
               <MaterialIcons name="close" size={20} color={TEXT} />
             </TouchableOpacity>
             <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, flex: 1 }}>Top Up Wallet</Text>
           </View>
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
-            <View style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: `${GOLD}1A`, alignItems: "center", justifyContent: "center", marginBottom: 24, borderWidth: 1.5, borderColor: `${GOLD}44` }}>
-              <MaterialIcons name="account-balance-wallet" size={44} color={GOLD} />
-            </View>
-            <Text style={{ color: TEXT, fontWeight: "800", fontSize: 24, marginBottom: 10, textAlign: "center" }}>Coming Soon</Text>
-            <Text style={{ color: MUTED, fontSize: 15, textAlign: "center", lineHeight: 22, marginBottom: 28 }}>
-              Mobile Money (MoMo) wallet top-up is coming soon. You will be able to fund your HY3N wallet with MTN MoMo, Telecel Cash, and AirtelTigo Money.
-            </Text>
-            <View style={{ backgroundColor: CARD, borderRadius: 14, padding: 16, width: "100%", borderWidth: 1, borderColor: BORDER, gap: 12 }}>
-              {["MTN Mobile Money", "Telecel Cash", "AirtelTigo Money"].map((method) => (
-                <View key={method} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                  <MaterialIcons name="radio-button-unchecked" size={18} color={MUTED} />
-                  <Text style={{ color: MUTED, fontSize: 14 }}>{method}</Text>
-                  <View style={{ marginLeft: "auto", backgroundColor: `${GOLD}22`, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
-                    <Text style={{ color: GOLD, fontSize: 10, fontWeight: "700" }}>SOON</Text>
-                  </View>
+
+          <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+
+            {/* ── IDLE / FORM ── */}
+            {topUpStage === "idle" && (
+              <>
+                {/* Amount */}
+                <Text style={styles.label}>Amount (GH₵)</Text>
+                <View style={styles.inputRow}>
+                  <MaterialIcons name="attach-money" size={20} color={MUTED} style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter amount"
+                    placeholderTextColor={MUTED}
+                    value={topUpAmount}
+                    onChangeText={setTopUpAmount}
+                    keyboardType="decimal-pad"
+                  />
                 </View>
-              ))}
-            </View>
-            <TouchableOpacity
-              onPress={() => setShowTopUp(false)}
-              style={{ marginTop: 28, backgroundColor: CARD, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 48, borderWidth: 1, borderColor: BORDER }}
-            >
-              <Text style={{ color: TEXT, fontWeight: "700", fontSize: 15 }}>Got it</Text>
-            </TouchableOpacity>
-          </View>
+                {/* Quick amounts */}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+                  {QUICK_AMOUNTS.map(amt => (
+                    <TouchableOpacity
+                      key={amt}
+                      onPress={() => setTopUpAmount(String(amt))}
+                      style={[styles.chip, topUpAmount === String(amt) && { backgroundColor: GREEN, borderColor: GREEN }]}
+                    >
+                      <Text style={{ color: topUpAmount === String(amt) ? "#fff" : MUTED, fontSize: 13, fontWeight: "600" }}>
+                        GH₵{amt}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* MoMo Number */}
+                <Text style={styles.label}>MoMo Number</Text>
+                <View style={styles.inputRow}>
+                  <MaterialIcons name="smartphone" size={20} color={MUTED} style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. 0244123456"
+                    placeholderTextColor={MUTED}
+                    value={momoNumber}
+                    onChangeText={setMomoNumber}
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                  />
+                </View>
+
+                {/* Network selector */}
+                <Text style={styles.label}>Network</Text>
+                <View style={{ flexDirection: "row", gap: 10, marginBottom: 28 }}>
+                  {MOMO_NETWORKS.map(net => (
+                    <TouchableOpacity
+                      key={net.id}
+                      onPress={() => setMomoNetwork(net.id)}
+                      style={[styles.networkBtn, momoNetwork === net.id && { borderColor: net.color, backgroundColor: `${net.color}18` }]}
+                    >
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: net.color, marginBottom: 4 }} />
+                      <Text style={{ color: momoNetwork === net.id ? net.color : MUTED, fontSize: 11, fontWeight: "600", textAlign: "center" }}>
+                        {net.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Pay button */}
+                <TouchableOpacity
+                  onPress={handleTopUp}
+                  style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 16, alignItems: "center" }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>
+                    Pay GH₵{topUpAmount || "0"} via MoMo
+                  </Text>
+                </TouchableOpacity>
+                <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", marginTop: 10 }}>
+                  You will receive a USSD prompt on your phone to approve the payment.
+                </Text>
+              </>
+            )}
+
+            {/* ── PROCESSING ── */}
+            {topUpStage === "processing" && (
+              <View style={styles.centeredStage}>
+                <ActivityIndicator size="large" color={GOLD} style={{ marginBottom: 20 }} />
+                <Text style={styles.stageTitle}>Processing...</Text>
+                <Text style={styles.stageMsg}>{topUpMessage}</Text>
+              </View>
+            )}
+
+            {/* ── USSD SENT ── */}
+            {topUpStage === "ussd_sent" && (
+              <View style={styles.centeredStage}>
+                <View style={styles.iconCircle}>
+                  <MaterialIcons name="smartphone" size={44} color={GOLD} />
+                </View>
+                <Text style={styles.stageTitle}>Check Your Phone</Text>
+                <Text style={styles.stageMsg}>{topUpMessage}</Text>
+                <View style={{ backgroundColor: CARD, borderRadius: 14, padding: 16, width: "100%", marginTop: 20, borderWidth: 1, borderColor: BORDER }}>
+                  <Text style={{ color: MUTED, fontSize: 13, textAlign: "center", lineHeight: 20 }}>
+                    Waiting for your approval...{"\n"}This may take up to 2 minutes.
+                  </Text>
+                  <ActivityIndicator color={GOLD} style={{ marginTop: 12 }} />
+                </View>
+                <TouchableOpacity onPress={resetTopUp} style={{ marginTop: 20 }}>
+                  <Text style={{ color: MUTED, fontSize: 13 }}>Cancel and try again</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* ── SUCCESS ── */}
+            {topUpStage === "success" && (
+              <View style={styles.centeredStage}>
+                <View style={[styles.iconCircle, { backgroundColor: `${GREEN}22`, borderColor: `${GREEN}44` }]}>
+                  <MaterialIcons name="check-circle" size={52} color={GREEN} />
+                </View>
+                <Text style={[styles.stageTitle, { color: GREEN }]}>Top-Up Successful!</Text>
+                <Text style={styles.stageMsg}>{topUpMessage}</Text>
+                <TouchableOpacity
+                  onPress={closeTopUp}
+                  style={{ marginTop: 28, backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 48 }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* ── FAILED ── */}
+            {topUpStage === "failed" && (
+              <View style={styles.centeredStage}>
+                <View style={[styles.iconCircle, { backgroundColor: `${RED}22`, borderColor: `${RED}44` }]}>
+                  <MaterialIcons name="error" size={52} color={RED} />
+                </View>
+                <Text style={[styles.stageTitle, { color: RED }]}>Payment Failed</Text>
+                <Text style={styles.stageMsg}>{topUpMessage}</Text>
+                <TouchableOpacity
+                  onPress={resetTopUp}
+                  style={{ marginTop: 28, backgroundColor: CARD, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 48, borderWidth: 1, borderColor: BORDER }}
+                >
+                  <Text style={{ color: TEXT, fontWeight: "700", fontSize: 15 }}>Try Again</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={closeTopUp} style={{ marginTop: 12 }}>
+                  <Text style={{ color: MUTED, fontSize: 13 }}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScrollView>
         </View>
       </Modal>
 
-      {/* Transaction Detail Modal */}
+      {/* ── Transaction Detail Modal ──────────────────────────────────────────── */}
       <Modal visible={showTxDetail} animationType="slide" presentationStyle="pageSheet">
         <View style={{ flex: 1, backgroundColor: BG }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderBottomWidth: 0.5, borderBottomColor: BORDER }}>
@@ -261,29 +476,27 @@ export default function WalletScreen() {
             <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, flex: 1 }}>Transaction Details</Text>
           </View>
           {selectedTx && (
-            <ScrollView contentContainerStyle={{ padding: 16 }}>
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
               <View style={{ alignItems: "center", paddingVertical: 24 }}>
                 <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: `${txColor(selectedTx)}1A`, alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
-                  <MaterialIcons name={txIconName(selectedTx)} size={36} color={txColor(selectedTx)} />
+                  <MaterialIcons name={txIconName(selectedTx)} size={32} color={txColor(selectedTx)} />
                 </View>
-                <Text style={{ color: txColor(selectedTx), fontWeight: "bold", fontSize: 28 }}>
+                <Text style={{ color: txColor(selectedTx), fontSize: 28, fontWeight: "bold" }}>
                   {txSign(selectedTx)}GH₵{selectedTx.amount.toFixed(2)}
                 </Text>
-                <Text style={{ color: MUTED, fontSize: 13, marginTop: 4 }}>{selectedTx.description}</Text>
+                <Text style={{ color: TEXT, fontWeight: "600", fontSize: 16, marginTop: 8 }}>{selectedTx.description}</Text>
               </View>
-              <View style={{ backgroundColor: CARD, borderRadius: 16, padding: 16, gap: 14, borderWidth: 0.5, borderColor: BORDER }}>
-                {[
-                  { label: "Reference", value: selectedTx.reference },
-                  { label: "Date", value: new Date(selectedTx.date).toLocaleString("en-GH") },
-                  { label: "Type", value: selectedTx.type.charAt(0).toUpperCase() + selectedTx.type.slice(1) },
-                  { label: "Status", value: "Completed" },
-                ].map((row) => (
-                  <View key={row.label} style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ color: MUTED, fontSize: 13 }}>{row.label}</Text>
-                    <Text style={{ color: TEXT, fontSize: 13, fontWeight: "600" }}>{row.value}</Text>
-                  </View>
-                ))}
-              </View>
+              {[
+                { label: "Date", value: new Date(selectedTx.date).toLocaleString("en-GH") },
+                { label: "Reference", value: selectedTx.reference },
+                { label: "Type", value: selectedTx.type.charAt(0).toUpperCase() + selectedTx.type.slice(1) },
+                { label: "Status", value: selectedTx.status || "Completed" },
+              ].map(({ label, value }) => (
+                <View key={label} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: BORDER }}>
+                  <Text style={{ color: MUTED, fontSize: 14 }}>{label}</Text>
+                  <Text style={{ color: TEXT, fontSize: 14, fontWeight: "600", maxWidth: "60%", textAlign: "right" }}>{value}</Text>
+                </View>
+              ))}
             </ScrollView>
           )}
         </View>
@@ -291,3 +504,15 @@ export default function WalletScreen() {
     </ScreenContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  label: { color: MUTED, fontSize: 12, fontWeight: "600", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 },
+  inputRow: { flexDirection: "row", alignItems: "center", backgroundColor: CARD, borderRadius: 12, paddingHorizontal: 14, borderWidth: 1, borderColor: BORDER, marginBottom: 16, height: 52 },
+  input: { flex: 1, color: TEXT, fontSize: 15 },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: CARD },
+  networkBtn: { flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, borderColor: BORDER, backgroundColor: CARD },
+  centeredStage: { alignItems: "center", paddingTop: 40, paddingBottom: 20 },
+  iconCircle: { width: 96, height: 96, borderRadius: 48, backgroundColor: `${GOLD}1A`, alignItems: "center", justifyContent: "center", marginBottom: 24, borderWidth: 1.5, borderColor: `${GOLD}44` },
+  stageTitle: { color: TEXT, fontWeight: "800", fontSize: 22, marginBottom: 10, textAlign: "center" },
+  stageMsg: { color: MUTED, fontSize: 14, textAlign: "center", lineHeight: 22, maxWidth: 280 },
+});
