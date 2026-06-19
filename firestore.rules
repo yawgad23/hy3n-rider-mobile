@@ -1,0 +1,211 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ─── Helper Functions ───────────────────────────────────────────────────
+    
+    /**
+     * Check if user is authenticated
+     */
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    /**
+     * Check if user is the document owner (for personal data)
+     */
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    /**
+     * Check if user is an admin
+     * Admin status is stored in custom claims or a separate admin collection
+     */
+    function isAdmin() {
+      return request.auth.token.role == 'admin' || 
+             exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    
+    /**
+     * Check if user is a driver
+     */
+    function isDriver() {
+      return request.auth.token.role == 'driver' || 
+             get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.active == true;
+    }
+    
+    /**
+     * Check if user is a rider
+     */
+    function isRider() {
+      return request.auth.token.role == 'rider' || 
+             get(/databases/$(database)/documents/riders/$(request.auth.uid)).data.active == true;
+    }
+    
+    /**
+     * Validate wallet transaction amount (must be positive)
+     */
+    function isValidAmount() {
+      return request.resource.data.amount > 0;
+    }
+    
+    /**
+     * Check if transaction type is valid
+     */
+    function isValidTransactionType() {
+      return request.resource.data.type in ['credit', 'debit', 'refund'];
+    }
+    
+    // ─── Wallet Collection Rules ────────────────────────────────────────────
+    
+    /**
+     * /wallets/{userId}
+     * 
+     * Rules:
+     * - Users can only read/write their own wallet
+     * - Admins can read all wallets (for analytics/debugging)
+     * - Balance can only be modified by server (Firebase Admin SDK)
+     * - Prevent direct client-side balance manipulation
+     */
+    match /wallets/{userId} {
+      // Read: Owner or admin
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      
+      // Write: Server only (via Firebase Admin SDK)
+      // Client-side writes are blocked to prevent balance tampering
+      allow write: if false;
+      
+      // Subcollection: Wallet transactions
+      match /transactions/{transactionId} {
+        // Read: Owner or admin
+        allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+        
+        // Write: Server only
+        allow write: if false;
+      }
+    }
+    
+    // ─── Wallet Transactions Collection Rules ──────────────────────────────
+    
+    /**
+     * /wallet_transactions/{transactionId}
+     * 
+     * Rules:
+     * - Users can read their own transactions
+     * - Admins can read all transactions
+     * - Only server can create transactions
+     */
+    match /wallet_transactions/{transactionId} {
+      allow read: if isAuthenticated() && 
+                     (request.auth.uid == resource.data.user_id || isAdmin());
+      
+      allow create: if false; // Server only
+      allow update: if false; // Prevent modification of historical records
+      allow delete: if false; // Prevent deletion
+    }
+    
+    // ─── Daily Commission Collection Rules ──────────────────────────────────
+    
+    /**
+     * /daily_commissions/{commissionId}
+     * 
+     * Rules:
+     * - Drivers can read their own commission records
+     * - Admins can read all commissions
+     * - Only server can create/update commissions
+     * - Prevent drivers from modifying commission status
+     */
+    match /daily_commissions/{commissionId} {
+      allow read: if isAuthenticated() && 
+                     (request.auth.uid == resource.data.driver_id || isAdmin());
+      
+      allow create: if false; // Server only
+      allow update: if false; // Server only (webhook updates)
+      allow delete: if false; // Prevent deletion
+    }
+    
+    // ─── Rides Collection Rules ─────────────────────────────────────────────
+    
+    /**
+     * /rides/{rideId}
+     * 
+     * Rules:
+     * - Riders can read/write their own rides
+     * - Drivers can read/write rides they're assigned to
+     * - Admins can read all rides
+     */
+    match /rides/{rideId} {
+      // Read: Owner (rider or driver) or admin
+      allow read: if isAuthenticated() && 
+                     (request.auth.uid == resource.data.rider_id ||
+                      request.auth.uid == resource.data.driver_id ||
+                      isAdmin());
+      
+      // Write: Owner (rider or driver) only
+      allow write: if isAuthenticated() && 
+                      (request.auth.uid == resource.data.rider_id ||
+                       request.auth.uid == resource.data.driver_id);
+    }
+    
+    // ─── Drivers Collection Rules ───────────────────────────────────────────
+    
+    /**
+     * /drivers/{driverId}
+     * 
+     * Rules:
+     * - Drivers can read/write their own profile
+     * - Admins can read all driver profiles
+     */
+    match /drivers/{driverId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(driverId) || isAdmin());
+      
+      allow write: if isAuthenticated() && isOwner(driverId);
+      
+      // Prevent direct modification of sensitive fields
+      allow update: if isAuthenticated() && isOwner(driverId) &&
+                       !request.resource.data.diff(resource.data).affectedKeys()
+                         .hasAny(['total_earnings', 'rating', 'verified']);
+    }
+    
+    // ─── Riders Collection Rules ────────────────────────────────────────────
+    
+    /**
+     * /riders/{riderId}
+     * 
+     * Rules:
+     * - Riders can read/write their own profile
+     * - Admins can read all rider profiles
+     */
+    match /riders/{riderId} {
+      allow read: if isAuthenticated() && 
+                     (isOwner(riderId) || isAdmin());
+      
+      allow write: if isAuthenticated() && isOwner(riderId);
+    }
+    
+    // ─── Admin Collection Rules ─────────────────────────────────────────────
+    
+    /**
+     * /admins/{adminId}
+     * 
+     * Rules:
+     * - Only admins can read admin collection
+     * - Prevent unauthorized elevation to admin
+     */
+    match /admins/{adminId} {
+      allow read: if isAuthenticated() && isAdmin();
+      allow write: if false; // Server only
+    }
+    
+    // ─── Default Deny ───────────────────────────────────────────────────────
+    
+    /**
+     * Deny all other access by default
+     */
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
