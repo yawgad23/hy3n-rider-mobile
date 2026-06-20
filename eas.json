@@ -24,12 +24,11 @@
       }
     },
     "production": {
-      "autoIncrement": true,
       "ios": {
         "buildConfiguration": "Release"
       },
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "apk"
       }
     }
   },
