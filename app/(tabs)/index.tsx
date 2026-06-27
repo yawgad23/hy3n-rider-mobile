@@ -122,6 +122,52 @@ const STATUS_LABELS: Record<string, string> = {
 // Surge multiplier computed once per session
 const SURGE = getSurgeMultiplier();
 
+// Peak hours for surge pricing (Ghana time)
+const PEAK_HOURS = [
+  { start: 7, end: 9, label: "Morning Rush" },    // 7-9 AM
+  { start: 12, end: 13, label: "Lunch Time" },     // 12-1 PM
+  { start: 17, end: 20, label: "Evening Rush" },   // 5-8 PM
+];
+
+// Calculate current surge period and time until surge ends
+function getSurgePeriodInfo() {
+  const now = new Date();
+  const currentHour = now.getHours();
+  
+  for (const period of PEAK_HOURS) {
+    if (currentHour >= period.start && currentHour < period.end) {
+      // We're in a surge period
+      const endTime = new Date();
+      endTime.setHours(period.end, 0, 0, 0);
+      const minutesUntilEnd = Math.ceil((endTime.getTime() - now.getTime()) / 60000);
+      return {
+        isActive: true,
+        label: period.label,
+        minutesRemaining: minutesUntilEnd,
+        endTime: endTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+      };
+    }
+  }
+  
+  // Find next surge period
+  let nextPeriod = PEAK_HOURS.find(p => p.start > currentHour);
+  if (!nextPeriod) nextPeriod = PEAK_HOURS[0]; // Next day morning
+  
+  const nextStart = new Date();
+  if (nextPeriod.start <= currentHour) {
+    nextStart.setDate(nextStart.getDate() + 1); // Tomorrow
+  }
+  nextStart.setHours(nextPeriod.start, 0, 0, 0);
+  const minutesUntilNext = Math.ceil((nextStart.getTime() - now.getTime()) / 60000);
+  
+  return {
+    isActive: false,
+    label: nextPeriod.label,
+    minutesUntilNext,
+    startTime: nextStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+  };
+}
+
 export default function HomeScreen() {
   const { user, riderProfile, updateProfile } = useAuth();
   const insets = useSafeAreaInsets();
@@ -851,12 +897,22 @@ export default function HomeScreen() {
                 </View>
               )}
               {/* Surge badge if applicable */}
-              {activeRide.surgeMultiplier && activeRide.surgeMultiplier > 1 && (
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 6, backgroundColor: "#F59E0B18", borderTopWidth: 0.5, borderTopColor: "#F59E0B40" }}>
-                  <MaterialIcons name="bolt" size={14} color="#F59E0B" />
-                  <Text style={{ color: "#F59E0B", fontSize: 12, fontWeight: "600" }}>Fare includes high-demand pricing</Text>
-                </View>
-              )}
+              {activeRide.surgeMultiplier && activeRide.surgeMultiplier > 1 && (() => {
+                const surgeInfo = getSurgePeriodInfo();
+                return (
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: "#F59E0B18", borderTopWidth: 0.5, borderTopColor: "#F59E0B40" }}>
+                    <MaterialIcons name="bolt" size={14} color="#F59E0B" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: "#F59E0B", fontSize: 12, fontWeight: "600" }}>Fare includes high-demand pricing</Text>
+                      {surgeInfo.isActive && (
+                        <Text style={{ color: "#F59E0B", fontSize: 10, opacity: 0.8, marginTop: 2 }}>
+                          {surgeInfo.label} • Ends at {surgeInfo.endTime}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })()}
               {/* Divider */}
               <View style={{ height: 0.5, backgroundColor: BORDER, marginHorizontal: 14 }} />
               {/* Bottom: call + message buttons */}
@@ -1067,15 +1123,35 @@ export default function HomeScreen() {
       </View>
 
       {/* Surge banner — Uber/Bolt style: plain language, no multiplier */}
-      {SURGE > 1 && (
-        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "#F59E0B18", borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: "#F59E0B40" }}>
-          <MaterialIcons name="bolt" size={18} color="#F59E0B" style={{ marginTop: 1 }} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: "#F59E0B", fontWeight: "700", fontSize: 13, marginBottom: 2 }}>Prices are higher than normal</Text>
-            <Text style={{ color: "#F59E0B", fontSize: 12, lineHeight: 17, opacity: 0.85 }}>More people are requesting rides than there are available drivers. Fares will return to normal when demand drops.</Text>
+      {SURGE > 1 && (() => {
+        const surgeInfo = getSurgePeriodInfo();
+        return (
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "#F59E0B18", borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: "#F59E0B40" }}>
+            <MaterialIcons name="bolt" size={18} color="#F59E0B" style={{ marginTop: 1 }} />
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <Text style={{ color: "#F59E0B", fontWeight: "700", fontSize: 13 }}>High Demand</Text>
+                {surgeInfo.isActive && (
+                  <View style={{ backgroundColor: "#F59E0B33", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                    <Text style={{ color: "#F59E0B", fontSize: 10, fontWeight: "600" }}>
+                      {surgeInfo.label}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text style={{ color: "#F59E0B", fontSize: 12, lineHeight: 17, opacity: 0.85, marginBottom: 6 }}>More people are requesting rides than there are available drivers.</Text>
+              {surgeInfo.isActive && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <MaterialIcons name="schedule" size={14} color="#F59E0B" />
+                  <Text style={{ color: "#F59E0B", fontSize: 11, fontWeight: "600" }}>
+                    High demand until {surgeInfo.endTime}
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
-        </View>
-      )}
+        );
+      })()}
       {/* Ride Categories */}
       <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Choose Ride</Text>
       {RIDE_CATEGORIES.map((cat) => {

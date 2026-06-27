@@ -373,3 +373,12 @@
 - [x] Rider wallet screen: live balance from Firestore (real-time listener)
 - [x] Ride completion: deduct fare from rider wallet, credit driver wallet
 - [x] Hubtel credentials: API ID and API Key set correctly in hubtel.ts
+
+## Time-Sensitive Surge Pricing (Jun 20)
+
+- [x] Add time-sensitive surge indicator (peak hours: 7-9am, 12-1pm, 5-8pm)
+- [x] Show "High Demand" badge with countdown timer on booking sheet
+- [x] Display time window when surge will end (e.g., "High demand until 9:00 AM")
+- [x] Add surge timer component to active ride card
+- [ ] Implement surge schedule logic in backend (peak hours vary by day)
+- [ ] Show historical surge patterns in activity tab
