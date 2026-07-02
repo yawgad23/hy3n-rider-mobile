@@ -248,7 +248,12 @@ export default function HomeScreen() {
   // Split Fare
   const [splitData, setSplitData] = useState<{ totalPeople: number; perPersonFare: number } | null>(null);
   const [showSplitModal, setShowSplitModal] = useState(false);
+
   const [splitCount, setSplitCount] = useState("2");
+
+  // Tip (pre-ride) - declared after perPersonFare
+  const [selectedTipPercent, setSelectedTipPercent] = useState<number | null>(null);
+  const [customTip, setCustomTip] = useState<string>("");
 
   // Promo Code
   const [promoInput, setPromoInput] = useState("");
@@ -504,6 +509,7 @@ export default function HomeScreen() {
   const discount = appliedPromo ? calculateDiscount(appliedPromo, baseFare) : 0;
   const finalFare = baseFare - discount;
   const perPersonFare = splitData ? finalFare / splitData.totalPeople : finalFare;
+  const preTipAmount = selectedTipPercent ? (perPersonFare * selectedTipPercent) / 100 : (customTip ? parseFloat(customTip) : 0);
 
   const [placeSuggestions, setPlaceSuggestions] = useState<Location[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -1268,6 +1274,49 @@ export default function HomeScreen() {
         )}
       </TouchableOpacity>
 
+      {/* Tip Selector */}
+      <View style={{ marginBottom: 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <Text style={{ color: MUTED, fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 }}>Add a tip</Text>
+          {preTipAmount > 0 && <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 13 }}>GH₵{preTipAmount.toFixed(2)}</Text>}
+        </View>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {[10, 15, 20].map((percent) => (
+            <TouchableOpacity
+              key={percent}
+              onPress={() => { setSelectedTipPercent(percent); setCustomTip(""); }}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 10,
+                backgroundColor: selectedTipPercent === percent ? GOLD : CARD,
+                borderWidth: 1,
+                borderColor: selectedTipPercent === percent ? GOLD : BORDER,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: selectedTipPercent === percent ? "#000" : TEXT, fontWeight: "600", fontSize: 13 }}>{percent}%</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+          <TextInput
+            value={customTip}
+            onChangeText={(t) => { setCustomTip(t); setSelectedTipPercent(null); }}
+            placeholder="Custom amount"
+            placeholderTextColor="#4A4A4A"
+            keyboardType="decimal-pad"
+            style={{ flex: 1, backgroundColor: CARD, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: TEXT, fontSize: 13, borderWidth: 1, borderColor: BORDER }}
+          />
+          <TouchableOpacity
+            onPress={() => { setSelectedTipPercent(null); setCustomTip(""); }}
+            style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center" }}
+          >
+            <MaterialIcons name="close" size={18} color={MUTED} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Promo Code */}
       {appliedPromo ? (
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: `${GREEN}1A`, borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: `${GREEN}4D` }}>
@@ -1344,10 +1393,16 @@ export default function HomeScreen() {
             <Text style={{ color: MUTED, fontSize: 11 }}>Base fare + distance</Text>
             <Text style={{ color: TEXT, fontSize: 11, fontWeight: "600" }}>GH₵{(perPersonFare * 0.85).toFixed(2)}</Text>
           </View>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
             <Text style={{ color: MUTED, fontSize: 11 }}>Booking fee</Text>
             <Text style={{ color: TEXT, fontSize: 11, fontWeight: "600" }}>GH₵2.50</Text>
           </View>
+          {preTipAmount > 0 && (
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingBottom: 8, borderBottomWidth: 0.5, borderBottomColor: BORDER }}>
+              <Text style={{ color: MUTED, fontSize: 11 }}>Tip</Text>
+              <Text style={{ color: GOLD, fontSize: 11, fontWeight: "600" }}>GH₵{preTipAmount.toFixed(2)}</Text>
+            </View>
+          )}
         </View>
         <Text style={{ color: MUTED, fontSize: 10, marginTop: 4 }}>Estimated range based on live traffic, pickup timing, and waiting time</Text>
       </View>

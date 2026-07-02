@@ -389,3 +389,11 @@
 - [x] Update fare calculation functions to include booking fee
 - [x] Display booking fee breakdown in fare summary (Base fare + distance + Booking fee)
 - [x] Show booking fee as separate line item in booking sheet
+
+## Tip Option at Checkout (Jun 27)
+
+- [x] Add tip selector to booking sheet (10%, 15%, 20% quick buttons)
+- [x] Custom tip input field for flexible amounts
+- [x] Display selected tip amount in real-time
+- [x] Show tip in fare breakdown (Base fare + Booking fee + Tip)
+- [x] Tip included in total fare calculation
