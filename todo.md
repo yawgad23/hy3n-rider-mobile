@@ -382,3 +382,10 @@
 - [x] Add surge timer component to active ride card
 - [ ] Implement surge schedule logic in backend (peak hours vary by day)
 - [ ] Show historical surge patterns in activity tab
+
+## Booking Fee (Jun 27)
+
+- [x] Add GH₵2.50 booking fee to all ride categories
+- [x] Update fare calculation functions to include booking fee
+- [x] Display booking fee breakdown in fare summary (Base fare + distance + Booking fee)
+- [x] Show booking fee as separate line item in booking sheet

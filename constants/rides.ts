@@ -92,6 +92,7 @@ export const RIDE_CATEGORIES: RideCategory[] = [
 ];
 
 export const FREE_WAITING_MINUTES = 3;
+export const BOOKING_FEE = 2.50; // GH₵2.50 booking fee (like Uber)
 
 export const PAYMENT_METHODS = [
   { id: "cash", name: "Cash", icon: "payments" as const },
@@ -136,7 +137,8 @@ export function calculateFare(
   const timeFare = durationMinutes * category.pricePerMin;
   const subtotal = distanceFare + timeFare;
   const withSurge = subtotal * surgeMultiplier;
-  const final = Math.max(withSurge, category.minFare);
+  const withMinFare = Math.max(withSurge, category.minFare);
+  const final = withMinFare + BOOKING_FEE;
   
   return parseFloat(final.toFixed(2));
 }
@@ -158,19 +160,21 @@ export function getFareBreakdown(
   surgeMultiplier: number = 1.0
 ) {
   const category = RIDE_CATEGORIES.find(c => c.id === categoryId);
-  if (!category) return { baseFare: 0, distanceFare: 0, timeFare: 0, total: 0 };
+  if (!category) return { baseFare: 0, distanceFare: 0, timeFare: 0, bookingFee: 0, total: 0 };
 
   const baseFare = category.basePrice;
   const distanceFare = distanceKm * category.pricePerKm;
   const timeFare = durationMinutes * category.pricePerMin;
   const subtotal = baseFare + distanceFare + timeFare;
   const withSurge = subtotal * surgeMultiplier;
-  const total = Math.max(withSurge, category.minFare);
+  const withMinFare = Math.max(withSurge, category.minFare);
+  const total = withMinFare + BOOKING_FEE;
 
   return {
     baseFare: parseFloat(baseFare.toFixed(2)),
     distanceFare: parseFloat(distanceFare.toFixed(2)),
     timeFare: parseFloat(timeFare.toFixed(2)),
+    bookingFee: BOOKING_FEE,
     total: parseFloat(total.toFixed(2)),
   };
 }

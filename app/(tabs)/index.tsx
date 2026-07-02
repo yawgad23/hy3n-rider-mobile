@@ -1324,7 +1324,7 @@ export default function HomeScreen() {
             <Text style={{ color: "#F59E0B", fontSize: 12, fontWeight: "600" }}>Prices are higher due to demand</Text>
           </View>
         )}
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <View>
             <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "700", marginBottom: 4 }}>
               {splitData ? "Your Share" : "Estimated Fare"}
@@ -1337,6 +1337,17 @@ export default function HomeScreen() {
           <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 24 }}>
             GH₵{Math.max(0, perPersonFare * 0.92).toFixed(2)}–{(perPersonFare * 1.12).toFixed(2)}
           </Text>
+        </View>
+        {/* Fare breakdown with booking fee */}
+        <View style={{ borderTopWidth: 0.5, borderTopColor: BORDER, paddingTop: 10 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+            <Text style={{ color: MUTED, fontSize: 11 }}>Base fare + distance</Text>
+            <Text style={{ color: TEXT, fontSize: 11, fontWeight: "600" }}>GH₵{(perPersonFare * 0.85).toFixed(2)}</Text>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+            <Text style={{ color: MUTED, fontSize: 11 }}>Booking fee</Text>
+            <Text style={{ color: TEXT, fontSize: 11, fontWeight: "600" }}>GH₵2.50</Text>
+          </View>
         </View>
         <Text style={{ color: MUTED, fontSize: 10, marginTop: 4 }}>Estimated range based on live traffic, pickup timing, and waiting time</Text>
       </View>
