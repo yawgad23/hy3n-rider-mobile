@@ -21,6 +21,9 @@
       },
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://TODO-set-hy3n-api-cloud-run-url"
       }
     },
     "production": {
@@ -30,6 +33,9 @@
       },
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://TODO-set-hy3n-api-cloud-run-url"
       }
     }
   },

@@ -1,7 +1,46 @@
-import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+
+let expoNotifications: any = null;
+let isExpoGo = false;
+
+try {
+  // In Expo Go SDK 53/54 on Android, importing expo-notifications crashes/throws on load.
+  // We check Constants to see if we are in the store client (Expo Go).
+  isExpoGo = Constants?.executionEnvironment === 'storeClient';
+  if (Platform.OS !== 'android' || !isExpoGo) {
+    expoNotifications = require('expo-notifications');
+  }
+} catch (e) {
+  console.warn('[HY3N] Failed to load expo-notifications module:', e);
+}
+
+// AndroidImportance mock matches expo-notifications definitions
+const AndroidImportanceMock = {
+  UNSPECIFIED: 0,
+  NONE: 1,
+  MIN: 2,
+  LOW: 3,
+  DEFAULT: 3,
+  HIGH: 4,
+  MAX: 5,
+};
+
+// Stub implementation for environment where expo-notifications is unavailable (like Android Expo Go)
+const NotificationsStub = {
+  setNotificationHandler: () => {},
+  setNotificationChannelAsync: async () => {},
+  getPermissionsAsync: async () => ({ status: 'undetermined' }),
+  requestPermissionsAsync: async () => ({ status: 'undetermined' }),
+  getExpoPushTokenAsync: async () => ({ data: '' }),
+  scheduleNotificationAsync: async () => '',
+  addNotificationReceivedListener: () => ({ remove: () => {} }),
+  addNotificationResponseReceivedListener: () => ({ remove: () => {} }),
+  AndroidImportance: AndroidImportanceMock,
+};
+
+export const Notifications = expoNotifications || NotificationsStub;
 
 // ── Foreground handler: always show alerts when app is open ──────────────────
 Notifications.setNotificationHandler({

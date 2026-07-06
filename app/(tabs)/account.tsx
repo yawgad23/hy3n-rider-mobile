@@ -17,7 +17,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/auth-context";
 import * as LocalAuthentication from 'expo-local-authentication';
-import * as Notifications from 'expo-notifications';
+import { Notifications } from '@/lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const GOLD = "#D4AF37";

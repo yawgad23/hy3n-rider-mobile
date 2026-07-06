@@ -9,8 +9,8 @@ import { Platform, View, Image, Animated } from "react-native";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { AuthProvider } from "@/lib/auth-context";
-import * as Notifications from 'expo-notifications';
-import { registerForPushNotificationsAsync, setupNotificationChannels } from '@/lib/notifications';
+import { Notifications, registerForPushNotificationsAsync, setupNotificationChannels } from '@/lib/notifications';
+import type { EventSubscription, Notification, NotificationResponse } from 'expo-notifications';
 import {
   SafeAreaFrameContext,
   SafeAreaInsetsContext,
@@ -138,8 +138,8 @@ export default function RootLayout() {
   const [insets, setInsets] = useState<EdgeInsets>(initialInsets);
   const [frame, setFrame] = useState<Rect>(initialFrame);
   const [splashDone, setSplashDone] = useState(false);
-  const notificationListener = useRef<Notifications.EventSubscription | null>(null);
-  const responseListener = useRef<Notifications.EventSubscription | null>(null);
+  const notificationListener = useRef<EventSubscription | null>(null);
+  const responseListener = useRef<EventSubscription | null>(null);
 
   useEffect(() => {
     initManusRuntime();
@@ -152,12 +152,12 @@ export default function RootLayout() {
     registerForPushNotificationsAsync();
 
     // Listen for notifications received while app is foregrounded
-    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+    notificationListener.current = Notifications.addNotificationReceivedListener((notification: Notification) => {
       console.log('[HY3N] Notification received:', notification.request.content.title);
     });
 
     // Listen for user tapping a notification
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+    responseListener.current = Notifications.addNotificationResponseReceivedListener((response: NotificationResponse) => {
       const data = response.notification.request.content.data;
       console.log('[HY3N] Notification tapped:', data);
     });

@@ -2,6 +2,10 @@
 
 # dependencies
 node_modules/
+# This project uses pnpm (see packageManager in package.json) — pnpm-lock.yaml
+# is the tracked lockfile. A committed package-lock.json alongside it can make
+# EAS Build infer npm instead and reintroduce dependency duplication bugs.
+package-lock.json
 
 # Expo
 .expo/

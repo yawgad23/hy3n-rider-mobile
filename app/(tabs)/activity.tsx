@@ -157,7 +157,7 @@ export default function ActivityScreen() {
 
       if (selectedIssue === "Lost item in vehicle" && rideId) {
         const driverId = (reportRide as any)?.driver_id || (reportRide as any)?.driverId || null;
-        await firestoreDB.create("RideReport", {
+        await firestoreDB.create(COLLECTIONS.RIDE_REPORTS, {
           ride_id: rideId,
           driver_id: driverId,
           rider_id: user.uid,

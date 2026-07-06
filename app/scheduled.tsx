@@ -168,7 +168,7 @@ export default function ScheduledTripsScreen() {
               <MaterialIcons name="schedule" size={36} color={GREEN} />
             </View>
             <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, marginBottom: 8 }}>No Upcoming Trips</Text>
-            <Text style={{ color: MUTED, fontSize: 14, textAlign: "center", marginBottom: 20 }}>Schedule a ride from the home screen by tapping "Where to?" and selecting "Schedule".</Text>
+            <Text style={{ color: MUTED, fontSize: 14, textAlign: "center", marginBottom: 20 }}>Schedule a ride from the home screen by tapping &quot;Where to?&quot; and selecting &quot;Schedule&quot;.</Text>
             <TouchableOpacity onPress={() => router.push("/")} style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 13, paddingHorizontal: 32 }}>
               <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Book a Ride</Text>
             </TouchableOpacity>

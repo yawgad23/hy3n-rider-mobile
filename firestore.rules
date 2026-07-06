@@ -1,0 +1,99 @@
+rules_version = '2';
+
+// Firestore Security Rules — HY3N Rider (project: hy3n26)
+//
+// Scope: only the collections the rider app's client SDK reads/writes directly.
+// Everything written via the server (firebase-admin in server/_core, server/routers.ts,
+// server/_core/hubtelWebhook.ts) bypasses these rules entirely, so it is intentionally
+// NOT opened up here — e.g. wallets and wallet_transactions are server-write-only.
+//
+// Known limitation: dispatchService.rateDriver() in lib/dispatch.ts recalculates a
+// driver's average rating by querying ALL rides for that driver_id from the rider's
+// own session. That query can't be made to satisfy a per-rider ownership rule without
+// exposing every rider's ride history to every other rider, so it is left denied here.
+// It already fails gracefully (caught + console.warn) — the fix is to move that
+// recalculation server-side (Admin SDK) rather than loosen these rules.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Rider's own profile. Auto-ID document with a `user_id` field (not doc-id-as-uid).
+    match /rider_profiles/{profileId} {
+      allow read, update, delete: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+    }
+
+    // Wallet balance — doc ID is the rider's uid. All writes happen server-side
+    // (tRPC wallet.topup + Hubtel webhook via Admin SDK), so the client is read-only.
+    match /wallets/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // Wallet transactions — created/updated only by the server. Client reads its own.
+    match /wallet_transactions/{txId} {
+      allow read: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Rides — rider creates/owns; driver_id clause supports the driver app sharing
+    // this same Firestore database. rider_id is immutable after creation.
+    match /rides/{rideId} {
+      allow read: if request.auth != null &&
+        (resource.data.rider_id == request.auth.uid || resource.data.driver_id == request.auth.uid);
+      allow create: if request.auth != null && request.resource.data.rider_id == request.auth.uid;
+      allow update: if request.auth != null &&
+        (resource.data.rider_id == request.auth.uid || resource.data.driver_id == request.auth.uid) &&
+        request.resource.data.rider_id == resource.data.rider_id;
+      allow delete: if false;
+    }
+
+    // In-ride chat. Membership is checked against the parent ride doc.
+    match /ride_messages/{messageId} {
+      allow read, delete: if request.auth != null &&
+        (get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.rider_id == request.auth.uid ||
+         get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.driver_id == request.auth.uid);
+      allow create: if request.auth != null &&
+        request.resource.data.sender_id == request.auth.uid &&
+        (get(/databases/$(database)/documents/rides/$(request.resource.data.ride_id)).data.rider_id == request.auth.uid ||
+         get(/databases/$(database)/documents/rides/$(request.resource.data.ride_id)).data.driver_id == request.auth.uid);
+      // markMessagesAsRead flips `read` on the OTHER participant's messages.
+      allow update: if request.auth != null &&
+        (get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.rider_id == request.auth.uid ||
+         get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.driver_id == request.auth.uid) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+    }
+
+    // Driver directory — riders need to see available drivers to be matched.
+    // Profile owner (driver) manages their own doc.
+    match /driver_profiles/{driverId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+    }
+
+    // Support tickets — rider creates/reads own; status changes are back-office only.
+    match /support_tickets/{ticketId} {
+      allow read: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Lost-item / ride reports — filed by riders (lost_item) or drivers (found_item).
+    // driver_id clause mirrors the rides rule so both apps can share this collection.
+    match /ride_reports/{reportId} {
+      allow read: if request.auth != null &&
+        (resource.data.rider_id == request.auth.uid || resource.data.driver_id == request.auth.uid);
+      allow create: if request.auth != null &&
+        (request.resource.data.rider_id == request.auth.uid || request.resource.data.driver_id == request.auth.uid);
+      allow update, delete: if false;
+    }
+
+    // Everything else (scheduled_rides, loyalty_*, saved_places, referrals,
+    // sos_incidents, promo_codes, payments, daily_commissions, ...) is currently
+    // only touched server-side via Admin SDK, which bypasses these rules — so it's
+    // deny-by-default here until client code actually needs it.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
