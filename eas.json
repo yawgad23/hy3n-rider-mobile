@@ -23,7 +23,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://TODO-set-hy3n-api-cloud-run-url"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-yvurtipaxq-ew.a.run.app"
       }
     },
     "production": {
@@ -35,7 +35,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://TODO-set-hy3n-api-cloud-run-url"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api-yvurtipaxq-ew.a.run.app"
       }
     }
   },
