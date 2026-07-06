@@ -8,10 +8,7 @@ import { useAuth } from '@/lib/auth-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { auth, app } from '@/lib/firebase';
 import { PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
-// FirebaseRecaptchaVerifierModal crashes on web — only import on native
-const FirebaseRecaptchaVerifierModal = Platform.OS !== 'web'
-  ? require('expo-firebase-recaptcha').FirebaseRecaptchaVerifierModal
-  : null;
+import { FirebaseRecaptchaVerifierModal, type FirebaseRecaptchaVerifierHandle } from '@/components/firebase-recaptcha-verifier';
 
 const GOLD = '#D4AF37';
 const GREEN = '#006B3F';
@@ -39,8 +36,8 @@ export default function LoginScreen() {
   const { signIn, signInWithGoogle } = useAuth();
   const [tab, setTab] = useState<LoginTab>('phone');
 
-  // Recaptcha ref for phone auth (typed as any to avoid web build type error)
-  const recaptchaVerifier = useRef<any>(null);
+  // Recaptcha ref for phone auth (native only — see below)
+  const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierHandle>(null);
 
   // Phone OTP state
   const [phone, setPhone] = useState('');
@@ -138,7 +135,7 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {/* Firebase Recaptcha Verifier — invisible, required for phone OTP on native only */}
-      {Platform.OS !== 'web' && FirebaseRecaptchaVerifierModal && (
+      {Platform.OS !== 'web' && (
         <FirebaseRecaptchaVerifierModal
           ref={recaptchaVerifier}
           firebaseConfig={app.options}
