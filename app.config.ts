@@ -133,15 +133,18 @@ const config: ExpoConfig = {
           minSdkVersion: 24,
         },
         ios: {
-          // Some Swift pods pulled in transitively (AppCheckCore, via
-          // Google Sign-In's App Check dependency) require modular headers
-          // to build as static libraries. Without this, `pod install`
-          // fails: "The following Swift pods cannot yet be integrated as
-          // static libraries... AppCheckCore depends upon GoogleUtilities
-          // and RecaptchaInterop, which do not define modules."
+          // Enables modular headers for Expo's own pods (needed for some of
+          // them to build as static libraries). Doesn't cover third-party
+          // pods — see plugins/withPodfileModularHeaders.js below for the
+          // AppCheckCore/GoogleUtilities/RecaptchaInterop ones pulled in by
+          // Google Sign-In, which this option has no effect on.
           useModularHeaders: true,
         },
       },
+    ],
+    [
+      "./plugins/withPodfileModularHeaders",
+      {},
     ],
   ],
   experiments: {
