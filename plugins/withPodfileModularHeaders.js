@@ -10,16 +10,16 @@
  *   libraries: The Swift pod `AppCheckCore` depends upon `GoogleUtilities`
  *   and `RecaptchaInterop`, which do not define modules.
  *
- * This patches the generated Podfile's post_install hook to force
- * DEFINES_MODULE = YES on exactly those three pod targets (the same effect
- * CocoaPods' own `:modular_headers => true` has), since expo-build-properties
- * has no option to target arbitrary third-party pods.
+ * A post_install hook is too late to fix this — CocoaPods validates static-
+ * library integration during dependency resolution, before post_install
+ * ever runs. The only place this can be fixed is the Podfile's own
+ * top-level DSL, which is what CocoaPods' error message itself suggests
+ * first: `use_modular_headers!` globally, before any `target` block.
  */
 const { withDangerousMod } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
-const MODULAR_HEADER_PODS = ['AppCheckCore', 'GoogleUtilities', 'RecaptchaInterop'];
 const MARKER = '# @generated begin modular-headers-fix';
 
 module.exports = function withPodfileModularHeaders(config) {
@@ -33,22 +33,13 @@ module.exports = function withPodfileModularHeaders(config) {
         return config;
       }
 
-      const snippet = `  ${MARKER}
-  installer.pods_project.targets.each do |target|
-    if ${JSON.stringify(MODULAR_HEADER_PODS)}.include?(target.name)
-      target.build_configurations.each do |bc|
-        bc.build_settings['DEFINES_MODULE'] = 'YES'
-      end
-    end
-  end
-  # @generated end modular-headers-fix
-`;
+      const snippet = `${MARKER}\nuse_modular_headers!\n# @generated end modular-headers-fix\n\n`;
 
-      const postInstallRegex = /(post_install do \|installer\|\n)/;
-      if (postInstallRegex.test(contents)) {
-        contents = contents.replace(postInstallRegex, `$1${snippet}`);
+      const targetRegex = /(target ['"])/;
+      if (targetRegex.test(contents)) {
+        contents = contents.replace(targetRegex, `${snippet}$1`);
       } else {
-        contents += `\npost_install do |installer|\n${snippet}end\n`;
+        contents = snippet + contents;
       }
 
       fs.writeFileSync(podfilePath, contents);
