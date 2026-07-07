@@ -132,6 +132,15 @@ const config: ExpoConfig = {
           buildArchs: ["armeabi-v7a", "arm64-v8a"],
           minSdkVersion: 24,
         },
+        ios: {
+          // Some Swift pods pulled in transitively (AppCheckCore, via
+          // Google Sign-In's App Check dependency) require modular headers
+          // to build as static libraries. Without this, `pod install`
+          // fails: "The following Swift pods cannot yet be integrated as
+          // static libraries... AppCheckCore depends upon GoogleUtilities
+          // and RecaptchaInterop, which do not define modules."
+          useModularHeaders: true,
+        },
       },
     ],
   ],
