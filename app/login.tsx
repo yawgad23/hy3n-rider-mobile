@@ -156,9 +156,10 @@ export default function LoginScreen() {
             source={require('@/assets/images/icon.png')}
             style={{ width: 180, height: 180, resizeMode: 'contain' }}
           />
+          <Text style={styles.tagline}>Ghana's premium ride-hailing app</Text>
         </View>
-        <Text style={styles.title}>Akwaaba to HY3N</Text>
-        <Text style={styles.subtitle}>Ghana&apos;s premium ride-hailing app</Text>
+        <Text style={styles.title}>Akwaaba Ba Hy3n</Text>
+        <Text style={styles.subtitle}>Welcome to Hy3n</Text>
 
         {/* Tab Switcher */}
         <View style={styles.tabRow}>
@@ -369,6 +370,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   logoRow: { alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  tagline: { fontSize: 14, textAlign: 'center', marginTop: 8, marginBottom: 24, color: MUTED, fontWeight: '500' },
   title: { fontSize: 28, fontWeight: '700', textAlign: 'center', marginBottom: 6, color: TEXT },
   subtitle: { fontSize: 16, textAlign: 'center', marginBottom: 28, color: MUTED },
   tabRow: { flexDirection: 'row', backgroundColor: CARD, borderRadius: 12, padding: 4, marginBottom: 24, borderWidth: 1, borderColor: BORDER },
