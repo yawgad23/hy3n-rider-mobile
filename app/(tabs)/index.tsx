@@ -44,6 +44,7 @@ import { getApiBaseUrl } from "@/constants/oauth";
 import { RideChatModal } from "@/components/ride-chat-modal";
 import { useVoiceCall } from "@/hooks/use-voice-call";
 import { InCallScreen, IncomingCallModal } from "@/components/in-call-screen";
+import { PostRideModal } from "@/components/post-ride-modal";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -273,6 +274,8 @@ export default function HomeScreen() {
   const [tipAmount, setTipAmount] = useState<number | null>(null);
   const [rideRated, setRideRated] = useState(false);
   const [tipAdded, setTipAdded] = useState(false);
+  const [showPostRideModal, setShowPostRideModal] = useState(false);
+  const [completedRideData, setCompletedRideData] = useState<any>(null);
 
   // Multi-stop
   const [stops, setStops] = useState<(Location | null)[]>([]);
@@ -1082,22 +1085,25 @@ export default function HomeScreen() {
               </View>
             )}
 
-            {!rideRated && (
-              <TouchableOpacity
-                onPress={() => setShowRatingModal(true)}
-                style={{ width: "100%", backgroundColor: GOLD, borderRadius: 12, paddingVertical: 14, alignItems: "center", marginBottom: 10, flexDirection: "row", justifyContent: "center", gap: 8 }}
-              >
-                <MaterialIcons name="star" size={18} color="#000" />
-                <Text style={{ color: "#000", fontWeight: "bold", fontSize: 15 }}>Rate Your Driver</Text>
-              </TouchableOpacity>
-            )}
-
             <TouchableOpacity
-              onPress={() => setShowReceipt(true)}
-              style={{ width: "100%", borderWidth: 1, borderColor: BORDER, borderRadius: 12, paddingVertical: 13, alignItems: "center", marginBottom: 10, flexDirection: "row", justifyContent: "center", gap: 8 }}
+              onPress={() => {
+                setCompletedRideData({
+                  rideId: activeRide.firestoreId || activeRide.id,
+                  driverName: activeRide.driverName || 'Driver',
+                  driverRating: activeRide.driverRating || 4.8,
+                  fare: activeRide.fare,
+                  tip: tipAmount || 0,
+                  distance: activeRide.distance,
+                  duration: activeRide.duration,
+                  pickupAddress: pickupAddress,
+                  destinationAddress: activeRide.destination.name,
+                });
+                setShowPostRideModal(true);
+              }}
+              style={{ width: "100%", backgroundColor: GOLD, borderRadius: 12, paddingVertical: 14, alignItems: "center", marginBottom: 10, flexDirection: "row", justifyContent: "center", gap: 8 }}
             >
-              <MaterialIcons name="receipt" size={18} color={MUTED} />
-              <Text style={{ color: MUTED, fontWeight: "600", fontSize: 14 }}>View Receipt</Text>
+              <MaterialIcons name="star" size={18} color="#000" />
+              <Text style={{ color: "#000", fontWeight: "bold", fontSize: 15 }}>Rate & Share Receipt</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleFinishRide}
@@ -2014,11 +2020,33 @@ export default function HomeScreen() {
             <View style={{ flex: 1 }}>
               <Text style={{ color: TEXT, fontWeight: "700", fontSize: 14 }}>Scheduled trip confirmed</Text>
               <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
-                {scheduledFor ? `Pickup set for ${scheduledFor}. We’ll remind you before the ride starts.` : "Your pickup time has been saved."}
+                {scheduledFor ? `Pickup set for ${scheduledFor}. We'll remind you before the ride starts.` : "Your pickup time has been saved."}
               </Text>
             </View>
           </View>
         </View>
+      )}
+
+      {completedRideData && (
+        <PostRideModal
+          isVisible={showPostRideModal}
+          rideId={completedRideData.rideId}
+          driverName={completedRideData.driverName}
+          driverRating={completedRideData.driverRating}
+          fare={completedRideData.fare}
+          tip={completedRideData.tip}
+          distance={completedRideData.distance}
+          duration={completedRideData.duration}
+          pickupAddress={completedRideData.pickupAddress}
+          destinationAddress={completedRideData.destinationAddress}
+          onClose={() => {
+            setShowPostRideModal(false);
+            setRideRated(true);
+          }}
+          onRatingSubmitted={() => {
+            setRideRated(true);
+          }}
+        />
       )}
 
     </View>

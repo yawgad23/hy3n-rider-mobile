@@ -397,3 +397,104 @@
 - [x] Display selected tip amount in real-time
 - [x] Show tip in fare breakdown (Base fare + Booking fee + Tip)
 - [x] Tip included in total fare calculation
+
+
+## Uber & Bolt Features Implementation (Phase 2-10)
+
+### Phase 2: Real-Time Driver Tracking & Live Map
+- [ ] Live driver location updates (real-time Firestore listener)
+- [ ] Driver marker on map with vehicle icon
+- [ ] Route polyline from driver to pickup location
+- [ ] Route polyline from pickup to destination
+- [ ] ETA countdown timer (updates every second)
+- [ ] Distance to driver display (e.g., "2.3 km away")
+- [ ] Map auto-zoom to show driver + rider + destination
+- [ ] Driver speed indicator
+- [ ] Turn-by-turn navigation preview
+
+### Phase 3: Driver Details Card
+- [ ] Driver photo (profile picture from Firestore)
+- [ ] Driver name and rating (e.g., "Ahmed • 4.8 ⭐")
+- [ ] Vehicle details: make, model, color, plate number
+- [ ] Vehicle photo (if available)
+- [ ] Driver acceptance time
+- [ ] Call driver button (phone/in-app call)
+- [ ] Message driver button (in-app chat)
+- [ ] Driver verification badge (if verified)
+- [ ] Ride number and booking reference
+
+### Phase 4: Safety Features
+- [ ] SOS emergency button (prominent, red, always visible)
+- [ ] Emergency contact list (Police, Ambulance, Fire, HY3N Support)
+- [ ] Share trip with contacts (SMS/WhatsApp/Email)
+- [ ] Live trip sharing link (shows real-time location)
+- [ ] Trip recording consent (audio/video)
+- [ ] Driver details verification (check driver info)
+- [ ] Report safety concern during ride
+- [ ] Safety tips modal (before first ride)
+- [ ] Trusted contacts management (add/remove)
+
+### Phase 5: Payment Methods & Wallet
+- [ ] Wallet balance display (prominent on home screen)
+- [ ] Wallet top-up flow (MoMo, Card, Bank Transfer)
+- [ ] Payment method selection (Cash, MoMo, Wallet, Card)
+- [ ] Saved payment methods
+- [ ] Auto-deduct from wallet option
+- [ ] Transaction history with filters (date, type, amount)
+- [ ] Receipt generation and download
+- [ ] Refund requests for failed payments
+- [ ] Payment method management (add/remove/edit)
+- [ ] Subscription plans (monthly pass, unlimited rides)
+
+### Phase 6: Post-Ride Rating & Receipt
+- [ ] Rating modal (1-5 stars with emoji feedback)
+- [ ] Detailed feedback categories (Driver, Vehicle, Route, Safety)
+- [ ] Text comment field for additional feedback
+- [ ] Photo upload for issues (damage, cleanliness)
+- [ ] Tip option after ride completion
+- [ ] Receipt display (fare breakdown, taxes, tip)
+- [ ] Receipt download (PDF)
+- [ ] Receipt email/SMS
+- [ ] Ride completion animation/celebration
+- [ ] "Book Again" quick button
+
+### Phase 7: Ride Preferences & Customization
+- [ ] Ride preferences (AC, music, quiet ride, luggage space)
+- [ ] Driver preferences (female driver, experienced driver)
+- [ ] Accessibility options (wheelchair accessible, pet-friendly)
+- [ ] Music preference (genre, playlist)
+- [ ] Temperature preference (AC level)
+- [ ] Route preference (fastest, cheapest, scenic)
+- [ ] Stop preferences (allow stops, no stops)
+- [ ] Save preferences as default
+
+### Phase 8: Support Chat & Driver Communication
+- [ ] In-app chat with driver (real-time messaging)
+- [ ] Quick message templates ("I'm running late", "Where are you?")
+- [ ] Chat history (saved per ride)
+- [ ] Support ticket system (report issues)
+- [ ] Support chat with HY3N team
+- [ ] FAQ chatbot (common questions)
+- [ ] Call driver button (phone integration)
+- [ ] Message notifications
+
+### Phase 9: Cancellation Policy & Fees
+- [ ] Free cancellation window (first 2 minutes)
+- [ ] Cancellation fee display (varies by status)
+- [ ] Cancellation reason selection
+- [ ] Refund processing (instant/delayed)
+- [ ] Cancellation history
+- [ ] Dispute resolution flow
+- [ ] Cancellation policies explanation
+
+### Phase 10: Additional Features
+- [ ] Ride history with detailed view
+- [ ] Favorite routes (save frequent trips)
+- [ ] Ride statistics (total rides, miles, money spent)
+- [ ] Loyalty program integration
+- [ ] Referral program (share code, track referrals)
+- [ ] Promo code management
+- [ ] Birthday rewards
+- [ ] Push notifications (driver found, arriving, etc.)
+- [ ] Offline mode (show cached data)
+- [ ] Accessibility features (voice commands, screen reader)
