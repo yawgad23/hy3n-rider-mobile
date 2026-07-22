@@ -498,3 +498,14 @@
 - [ ] Push notifications (driver found, arriving, etc.)
 - [ ] Offline mode (show cached data)
 - [ ] Accessibility features (voice commands, screen reader)
+
+
+## Book for Someone Feature (Jul 21)
+
+- [x] Add "Book for Someone" toggle on booking sheet (below "Now/Schedule" toggle)
+- [x] When enabled, show recipient details form (Name, Phone Number, Pickup Address)
+- [x] Save recipient info to ride creation (riderName, riderPhone, pickup address)
+- [ ] Show recipient info on active ride screen and in ride history
+- [ ] Driver app shows recipient name/phone instead of rider name when booking is for someone else
+- [ ] Receipt shows "Booked for: [Recipient Name]" instead of rider name
+- [ ] Rider can still track the ride and communicate with driver

@@ -284,6 +284,12 @@ export default function HomeScreen() {
   // Cancel with reason
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  // Book for Someone
+  const [bookForSomeone, setBookForSomeone] = useState(false);
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientPhone, setRecipientPhone] = useState("");
+  const [recipientAddress, setRecipientAddress] = useState("");
+
   // Ride options (AC, pet, luggage)
   const [rideOptions, setRideOptions] = useState({ ac: false, pet_friendly: false, extra_luggage: false, wheelchair_accessible: false });
   const [showRideOptions, setShowRideOptions] = useState(false);
@@ -579,11 +585,11 @@ export default function HomeScreen() {
         try {
           firestoreId = await dispatchService.createRide({
             riderId: user.uid,
-            riderName: riderProfile?.full_name || user.displayName || 'Rider',
-            riderPhone: riderProfile?.phone || user.phoneNumber || '',
+            riderName: bookForSomeone ? recipientName : (riderProfile?.full_name || user.displayName || 'Rider'),
+            riderPhone: bookForSomeone ? recipientPhone : (riderProfile?.phone || user.phoneNumber || ''),
             riderEmail: riderProfile?.email || user.email || '',
             category: selectedCategory.id,
-            pickup: { lat: userLocation[0], lng: userLocation[1], name: 'Current Location', address: 'Current Location' },
+            pickup: { lat: userLocation[0], lng: userLocation[1], name: recipientAddress || 'Current Location', address: recipientAddress || 'Current Location' },
             destination: { lat: destination.lat, lng: destination.lng, name: destination.name, address: destination.address || destination.name },
             stops: stops.filter(Boolean).map(s => ({ lat: s!.lat, lng: s!.lng, name: s!.name, address: s!.address || s!.name })),
             payment: selectedPayment.id,
@@ -1246,6 +1252,60 @@ export default function HomeScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Book for Someone */}
+      <TouchableOpacity
+        onPress={() => setBookForSomeone(!bookForSomeone)}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          padding: 12,
+          borderRadius: 12,
+          backgroundColor: bookForSomeone ? `${GOLD}1A` : CARD,
+          borderWidth: 1,
+          borderColor: bookForSomeone ? GOLD : BORDER,
+          marginBottom: bookForSomeone ? 12 : 10,
+        }}
+      >
+        <MaterialIcons name="person-add" size={18} color={bookForSomeone ? GOLD : MUTED} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: bookForSomeone ? GOLD : MUTED, fontSize: 13, fontWeight: "600" }}>Book for Someone</Text>
+          <Text style={{ color: MUTED, fontSize: 11 }}>Book a ride for another person</Text>
+        </View>
+        <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: bookForSomeone ? GOLD : BORDER, alignItems: "center", justifyContent: "center" }}>
+          {bookForSomeone && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: GOLD }} />}
+        </View>
+      </TouchableOpacity>
+
+      {bookForSomeone && (
+        <View style={{ backgroundColor: CARD, borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: BORDER, gap: 10 }}>
+          <TextInput
+            value={recipientName}
+            onChangeText={setRecipientName}
+            placeholder="Recipient's name"
+            placeholderTextColor={MUTED}
+            style={{ backgroundColor: BG, borderRadius: 8, padding: 10, color: TEXT, fontSize: 13, borderWidth: 1, borderColor: BORDER }}
+          />
+          <TextInput
+            value={recipientPhone}
+            onChangeText={setRecipientPhone}
+            placeholder="Phone number (e.g., 0501234567)"
+            placeholderTextColor={MUTED}
+            keyboardType="phone-pad"
+            style={{ backgroundColor: BG, borderRadius: 8, padding: 10, color: TEXT, fontSize: 13, borderWidth: 1, borderColor: BORDER }}
+          />
+          <TextInput
+            value={recipientAddress}
+            onChangeText={setRecipientAddress}
+            placeholder="Pickup address (optional)"
+            placeholderTextColor={MUTED}
+            multiline
+            numberOfLines={2}
+            style={{ backgroundColor: BG, borderRadius: 8, padding: 10, color: TEXT, fontSize: 13, borderWidth: 1, borderColor: BORDER }}
+          />
+        </View>
+      )}
 
       {/* Split Fare */}
       <TouchableOpacity
