@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { firebaseAuth, firestoreDB, COLLECTIONS } from './firebase';
 import type { User } from 'firebase/auth';
+import { setPersistence, browserLocalPersistence } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 export interface RiderProfile {
   id: string;
@@ -69,17 +72,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    const setupAuth = async () => {
+      try {
+        // Firebase persistence is already configured in firebase.ts
+        // No need to set it again here
+      } catch (err) {
+        console.error('Error setting persistence:', err);
+      }
+    };
+    
+    setupAuth();
+    
     const unsubscribe = firebaseAuth.onAuthStateChanged(async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
+        if (Platform.OS !== 'web') {
+          await AsyncStorage.setItem('firebaseUser', JSON.stringify({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            phoneNumber: firebaseUser.phoneNumber,
+          }));
+        }
         await loadProfile(firebaseUser);
       } else {
+        if (Platform.OS !== 'web') {
+          await AsyncStorage.removeItem('firebaseUser');
+        }
         setRiderProfile(null);
       }
       setLoading(false);
     });
     return unsubscribe;
   }, []);
+
 
   const signIn = async (email: string, password: string) => {
     const firebaseUser = await firebaseAuth.loginWithEmail(email, password);

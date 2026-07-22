@@ -509,3 +509,25 @@
 - [ ] Driver app shows recipient name/phone instead of rider name when booking is for someone else
 - [ ] Receipt shows "Booked for: [Recipient Name]" instead of rider name
 - [ ] Rider can still track the ride and communicate with driver
+
+
+## Critical Features (Jul 22)
+
+### 1. Dynamic Pricing Model
+- [ ] Track actual distance during ride (not static per-km)
+- [ ] Update fare in real-time as rider moves
+- [ ] Charge based on: base fare + (actual distance × rate) + surge + booking fee + tip
+- [ ] Show live fare breakdown during ride
+
+### 2. Multiple Simultaneous Rides
+- [ ] Refactor activeRide state to activeRides array
+- [ ] Allow booking new ride while another is active
+- [ ] Show all active rides in tab bar badge
+- [ ] Switch between active rides in UI
+
+### 3. Real-Time Driver Tracking
+- [ ] Live driver location updates on map (every 2-3 seconds)
+- [ ] Driver marker animation as location changes
+- [ ] Route visualization (driver → pickup → destination)
+- [ ] ETA countdown timer (updates every second)
+- [ ] Distance to pickup display
