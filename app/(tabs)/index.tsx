@@ -45,6 +45,8 @@ import { RideChatModal } from "@/components/ride-chat-modal";
 import { useVoiceCall } from "@/hooks/use-voice-call";
 import { InCallScreen, IncomingCallModal } from "@/components/in-call-screen";
 import { PostRideModal } from "@/components/post-ride-modal";
+import { calculateDynamicFare, calculateDistance, RideMetrics } from "@/lib/dynamic-pricing";
+import { getDistanceToPickup, getDistanceToDestination, estimateETA, formatDistance, isDriverNearPickup } from "@/lib/driver-tracking";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -237,6 +239,15 @@ export default function HomeScreen() {
   ]);
   const [activeRide, setActiveRide] = useState<ActiveRide | null>(null);
   const [bookingLoading, setBookingLoading] = useState(false);
+  
+  // Dynamic pricing & driver tracking
+  const [rideMetrics, setRideMetrics] = useState<RideMetrics | null>(null);
+  const [currentDynamicFare, setCurrentDynamicFare] = useState<number>(0);
+  const [distanceToPickup, setDistanceToPickup] = useState<number>(0);
+  const [distanceToDestination, setDistanceToDestination] = useState<number>(0);
+  const [driverLocation, setDriverLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [etaMinutes, setEtaMinutes] = useState<number>(0);
+  const [totalDistanceTraveled, setTotalDistanceTraveled] = useState<number>(0);
   const [searchHistory, setSearchHistory] = useState<Location[]>([]);
 
   // Schedule
@@ -400,6 +411,31 @@ export default function HomeScreen() {
           if (ride.status === 'in_progress') notifyTripStarted(prev.destination.name);
           if (ride.status === 'completed') notifyTripCompleted(prev.fare);
         }
+        // Update driver location for tracking
+        if (driver) {
+          setDriverLocation({ lat: driver.location.lat, lng: driver.location.lng });
+          
+          // Calculate distances for dynamic pricing
+          const pickupLat = typeof prev.pickup === 'object' ? (prev.pickup as any).lat : 0;
+          const pickupLng = typeof prev.pickup === 'object' ? (prev.pickup as any).lng : 0;
+          const distToPickup = calculateDistance(
+            driver.location.lat,
+            driver.location.lng,
+            pickupLat,
+            pickupLng
+          );
+          const distToDestination = calculateDistance(
+            pickupLat,
+            pickupLng,
+            prev.destination.lat,
+            prev.destination.lng
+          );
+          
+          setDistanceToPickup(distToPickup);
+          setDistanceToDestination(distToDestination);
+          setEtaMinutes(etaMin ?? 0);
+        }
+        
         return {
           ...prev,
           status: ride.status as ActiveRide['status'],
