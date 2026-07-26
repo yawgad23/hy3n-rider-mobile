@@ -287,6 +287,8 @@ export default function HomeScreen() {
     "Can you call me?",
     "I'm outside now",
   ];
+  const getSplitPeopleCount = useCallback(() => Math.max(2, Math.min(6, parseInt(splitCount || "2"))), [splitCount]);
+  const isWalletPayment = (ride: ActiveRide) => ride.paymentId === "wallet" || ride.payment?.toLowerCase() === "wallet";
 
   useEffect(() => {
     AsyncStorage.getItem("savedPlaces").then((v) => { if (v) setSavedPlaces(JSON.parse(v)); });
@@ -331,13 +333,13 @@ export default function HomeScreen() {
   }, [user?.uid]);
 
   useEffect(() => {
-    const count = Math.max(2, Math.min(6, parseInt(splitCount || "2")));
+    const count = getSplitPeopleCount();
     setSplitContacts((prev) => {
       const next = [...prev];
       while (next.length < count - 1) next.push({ name: "", phone: "" });
       return next.slice(0, count - 1);
     });
-  }, [splitCount]);
+  }, [getSplitPeopleCount]);
 
   // Real Firestore ride listener — subscribes to live ride updates when a Firestore ride ID is set
   const firestoreUnsubRef = useRef<(() => void) | null>(null);
@@ -474,21 +476,14 @@ export default function HomeScreen() {
 
     if (activeRide?.status !== "searching") return;
 
-    searchTimeoutRef.current = setTimeout(async () => {
-      try {
-        const onlineDrivers = await firestoreDB.list(COLLECTIONS.DRIVER_PROFILES, { is_online: true }, "updated_date", "desc", 20);
-        const availableDrivers = onlineDrivers.filter((d: any) => d.is_available);
-        Alert.alert(
-          "No Driver Found",
-          availableDrivers.length === 0
-            ? "No drivers are currently online in your area. Please try again shortly."
-            : "Drivers are online, but all are currently busy. Please try again in a few minutes."
-        );
-      } catch {
-        Alert.alert("No Driver Found", "We couldn't find a driver within 6 minutes. Please try again.");
-      } finally {
-        setActiveRide(null);
-      }
+    searchTimeoutRef.current = setTimeout(() => {
+      Alert.alert(
+        "No Driver Found",
+        nearbyDrivers.length === 0
+          ? "No drivers are currently online in your area. Please try again shortly."
+          : "Drivers are online, but all are currently busy. Please try again in a few minutes."
+      );
+      setActiveRide(null);
     }, 6 * 60 * 1000);
 
     return () => {
@@ -497,7 +492,7 @@ export default function HomeScreen() {
         searchTimeoutRef.current = null;
       }
     };
-  }, [activeRide?.status]);
+  }, [activeRide?.status, nearbyDrivers.length]);
 
   const distance = destination
     ? Math.sqrt(
@@ -569,14 +564,17 @@ export default function HomeScreen() {
 
     if (selectedPayment.id === "mobile_money") {
       const normalized = momoNumber.replace(/\D/g, "");
-      if (normalized.length < 10) {
+      const isGhanaMomo = /^0\d{9}$/.test(normalized) || /^233\d{9}$/.test(normalized);
+      if (!isGhanaMomo) {
         setShowMomoModal(true);
         return;
       }
     }
 
     if (selectedPayment.id === "card") {
-      if (!cardName.trim() || cardNumber.replace(/\s/g, "").length < 12 || !cardExpiry.trim() || cardCvv.trim().length < 3) {
+      const cardDigits = cardNumber.replace(/\s/g, "");
+      const validCardLength = cardDigits.length === 15 || cardDigits.length === 16;
+      if (!cardName.trim() || !validCardLength || !cardExpiry.trim() || cardCvv.trim().length < 3) {
         setShowCardModal(true);
         return;
       }
@@ -591,6 +589,7 @@ export default function HomeScreen() {
         const balance = Number(wallet?.balance ?? 0);
         if (balance < surgedFare) {
           Alert.alert("Insufficient Wallet Balance", `You need GH₵${(surgedFare - balance).toFixed(2)} more to book this ride.`);
+          setBookingLoading(false);
           return;
         }
         await firestoreDB.create(COLLECTIONS.PAYMENTS, {
@@ -644,7 +643,7 @@ export default function HomeScreen() {
           status: 'searching',
           scheduled: isScheduled ? scheduledFor : null,
           splitData,
-          splitContacts: splitContacts.slice(0, Math.max(0, parseInt(splitCount || "2") - 1)),
+          splitContacts: splitContacts.slice(0, getSplitPeopleCount() - 1),
           ridePin: pin,
           surgeMultiplier: SURGE,
         });
@@ -670,6 +669,14 @@ export default function HomeScreen() {
     "Price is too high",
     "Other",
   ];
+  const resetBookingState = () => {
+    setDestination(null);
+    setSplitData(null);
+    setStops([]);
+    setAppliedPromo(null);
+    setIsScheduled(false);
+    setScheduledFor(null);
+  };
   const handleCancelRide = () => {
     if (activeRide?.status === "in_progress") {
       Alert.alert("Cannot Cancel", "You cannot cancel a ride that is already in progress.");
@@ -703,23 +710,13 @@ export default function HomeScreen() {
     }
     setShowCancelModal(false);
     setActiveRide(null);
-    setDestination(null);
-    setSplitData(null);
-    setStops([]);
-    setAppliedPromo(null);
-    setIsScheduled(false);
-    setScheduledFor(null);
+    resetBookingState();
     setCancelReason("");
   };
 
   const handleCancelBooking = () => {
-    setDestination(null);
     setSelectedCategory(RIDE_CATEGORIES[0]);
-    setAppliedPromo(null);
-    setSplitData(null);
-    setStops([]);
-    setIsScheduled(false);
-    setScheduledFor(null);
+    resetBookingState();
   };
 
   const handleQuickPlace = (place: SavedPlace) => {
@@ -764,14 +761,19 @@ export default function HomeScreen() {
   };
 
   const handleSplitConfirm = () => {
-    const count = parseInt(splitCount);
+    const count = getSplitPeopleCount();
     if (isNaN(count) || count < 2 || count > 6) {
       Alert.alert("Invalid", "Please enter a number between 2 and 6");
       return;
     }
     const requiredContacts = splitContacts.slice(0, count - 1);
-    if (requiredContacts.some((c) => !c.name.trim() || !c.phone.trim())) {
-      Alert.alert("Missing contacts", "Please enter all rider names and phone numbers for split fare.");
+    const invalidContact = requiredContacts.some((c) => {
+      const normalizedPhone = c.phone.replace(/\D/g, "");
+      const validPhone = /^0\d{9}$/.test(normalizedPhone) || /^233\d{9}$/.test(normalizedPhone);
+      return !c.name.trim() || !validPhone;
+    });
+    if (invalidContact) {
+      Alert.alert("Invalid contacts", "Please enter all rider names and valid Ghana phone numbers for split fare.");
       return;
     }
     setSplitData({ totalPeople: count, perPersonFare: parseFloat((finalFare / count).toFixed(2)) });
@@ -794,12 +796,13 @@ export default function HomeScreen() {
       return;
     }
     setScheduledFor(
-      scheduledDate.toLocaleString("en-GH", {
+      scheduledDate.toLocaleString("en-GB", {
         weekday: "short",
         month: "short",
         day: "numeric",
         hour: "numeric",
         minute: "2-digit",
+        hour12: true,
       })
     );
     setIsScheduled(true);
@@ -830,7 +833,7 @@ export default function HomeScreen() {
 
   const handleFinishRide = async () => {
     // Settle wallet payment: deduct fare from rider, credit driver
-    if (activeRide?.status === 'completed' && (activeRide.paymentId === 'wallet' || activeRide.payment.toLowerCase() === 'wallet') && user) {
+    if (activeRide?.status === 'completed' && isWalletPayment(activeRide) && user) {
       try {
         const fare = activeRide.fare + (activeRide.waitingFee || 0);
         const driverId = (activeRide as any).driverId || (activeRide as any).driver_id || '';
@@ -860,12 +863,7 @@ export default function HomeScreen() {
       updateProfile({ total_rides: newTotal }).catch(() => {});
     }
     setActiveRide(null);
-    setDestination(null);
-    setSplitData(null);
-    setStops([]);
-    setAppliedPromo(null);
-    setIsScheduled(false);
-    setScheduledFor(null);
+    resetBookingState();
   };
 
   const renderActiveRide = () => {
@@ -1221,10 +1219,20 @@ export default function HomeScreen() {
               <Text style={{ color: TEXT, fontSize: 13, fontWeight: "600" }} numberOfLines={1}>{stop?.name}</Text>
               <Text style={{ color: MUTED, fontSize: 11 }} numberOfLines={1}>{stop?.address}</Text>
             </View>
-            <TouchableOpacity disabled={idx === 0} onPress={() => moveStop(idx, -1)}>
+            <TouchableOpacity
+              disabled={idx === 0}
+              onPress={() => moveStop(idx, -1)}
+              accessibilityLabel={idx === 0 ? "First stop cannot move up" : "Move stop up"}
+              accessibilityHint={idx === 0 ? "This is already the first stop" : "Moves this stop earlier in the route"}
+            >
               <MaterialIcons name="arrow-upward" size={16} color={idx === 0 ? BORDER : MUTED} />
             </TouchableOpacity>
-            <TouchableOpacity disabled={idx === stops.length - 1} onPress={() => moveStop(idx, 1)}>
+            <TouchableOpacity
+              disabled={idx === stops.length - 1}
+              onPress={() => moveStop(idx, 1)}
+              accessibilityLabel={idx === stops.length - 1 ? "Last stop cannot move down" : "Move stop down"}
+              accessibilityHint={idx === stops.length - 1 ? "This is already the last stop" : "Moves this stop later in the route"}
+            >
               <MaterialIcons name="arrow-downward" size={16} color={idx === stops.length - 1 ? BORDER : MUTED} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setStops((prev) => prev.filter((_, i) => i !== idx))}>
@@ -1765,7 +1773,7 @@ export default function HomeScreen() {
             <Text style={{ color: MUTED, fontSize: 12, marginBottom: 8 }}>
               Contact picker (enter friend details)
             </Text>
-            {splitContacts.slice(0, Math.max(0, parseInt(splitCount || "2") - 1)).map((contact, idx) => (
+            {splitContacts.slice(0, getSplitPeopleCount() - 1).map((contact, idx) => (
               <View key={idx} style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
                 <TextInput
                   value={contact.name}

@@ -95,6 +95,7 @@ export default function AccountScreen() {
   const [editingPlace, setEditingPlace] = useState<SavedPlace | null>(null);
   const [placeAddress, setPlaceAddress] = useState("");
   const [placeName, setPlaceName] = useState("");
+  const isCustomPlace = (place: SavedPlace) => place.id.startsWith("custom-");
 
   const [showLoyalty, setShowLoyalty] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -188,19 +189,26 @@ export default function AccountScreen() {
   const handleSavePlace = () => {
     if (!placeAddress.trim()) { Alert.alert("Required", "Please enter an address"); return; }
     if (!editingPlace) return;
-    if (editingPlace.id.startsWith("custom-")) {
+    if (isCustomPlace(editingPlace)) {
       if (!placeName.trim()) { Alert.alert("Required", "Please enter a place name"); return; }
-      setSavedPlaces(prev => [
-        ...prev,
-        { id: editingPlace.id, label: placeName.trim(), address: placeAddress.trim(), icon: "star" as const },
-      ]);
+      setSavedPlaces(prev => {
+        const exists = prev.some((p) => p.id === editingPlace.id);
+        if (exists) {
+          return prev.map((p) => p.id === editingPlace.id ? { ...p, label: placeName.trim(), address: placeAddress.trim() } : p);
+        }
+        return [...prev, { id: editingPlace.id, label: placeName.trim(), address: placeAddress.trim(), icon: "star" as const }];
+      });
     } else {
       setSavedPlaces(prev => prev.map(p => p.id === editingPlace.id ? { ...p, address: placeAddress.trim() } : p));
     }
+    resetPlaceForm();
+    Alert.alert("Saved", "Place updated successfully");
+  };
+
+  const resetPlaceForm = () => {
     setEditingPlace(null);
     setPlaceName("");
     setPlaceAddress("");
-    Alert.alert("Saved", "Place updated successfully");
   };
 
   const handleRedeemReward = (reward: typeof REWARDS[0]) => {
@@ -426,7 +434,7 @@ export default function AccountScreen() {
                   placeholderTextColor="#4A4A4A"
                   style={{ backgroundColor: CARD, borderRadius: 12, padding: 14, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER, marginBottom: 16 }}
                 />
-                {editingPlace.id.startsWith("custom-") && (
+                {isCustomPlace(editingPlace) && (
                   <>
                     <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Place Name</Text>
                     <TextInput
@@ -439,7 +447,7 @@ export default function AccountScreen() {
                   </>
                 )}
                 <View style={{ flexDirection: "row", gap: 10 }}>
-                  <TouchableOpacity onPress={() => { setEditingPlace(null); setPlaceName(""); setPlaceAddress(""); }} style={{ flex: 1, borderWidth: 1, borderColor: BORDER, borderRadius: 12, paddingVertical: 13, alignItems: "center" }}>
+                  <TouchableOpacity onPress={resetPlaceForm} style={{ flex: 1, borderWidth: 1, borderColor: BORDER, borderRadius: 12, paddingVertical: 13, alignItems: "center" }}>
                     <Text style={{ color: MUTED, fontWeight: "600" }}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={handleSavePlace} style={{ flex: 1, backgroundColor: GREEN, borderRadius: 12, paddingVertical: 13, alignItems: "center" }}>
@@ -468,7 +476,8 @@ export default function AccountScreen() {
                 ))}
                 <TouchableOpacity
                   onPress={() => {
-                    setEditingPlace({ id: `custom-${Date.now()}`, label: "Custom Place", address: "", icon: "star" as const });
+                    const customId = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                    setEditingPlace({ id: customId, label: "Custom Place", address: "", icon: "star" as const });
                     setPlaceName("");
                     setPlaceAddress("");
                   }}
