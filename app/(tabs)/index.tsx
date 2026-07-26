@@ -86,6 +86,7 @@ interface ActiveRide {
   status: "searching" | "matched" | "driver_arriving" | "driver_arrived" | "in_progress" | "completed" | "cancelled";
   scheduled?: string | null;
   splitData?: { totalPeople: number; perPersonFare: number } | null;
+  splitContacts?: Array<{ name: string; phone: string }>;
   driverName?: string;
   driverRating?: number;
   driverVehicle?: string;
@@ -203,6 +204,7 @@ export default function HomeScreen() {
   const [splitData, setSplitData] = useState<{ totalPeople: number; perPersonFare: number } | null>(null);
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [splitCount, setSplitCount] = useState("2");
+  const [splitContacts, setSplitContacts] = useState<Array<{ name: string; phone: string }>>([{ name: "", phone: "" }]);
 
   // Promo Code
   const [promoInput, setPromoInput] = useState("");
@@ -230,6 +232,14 @@ export default function HomeScreen() {
   // Cancel with reason
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [showMomoModal, setShowMomoModal] = useState(false);
+  const [showCardModal, setShowCardModal] = useState(false);
+  const [momoNumber, setMomoNumber] = useState("");
+  const [cardName, setCardName] = useState("");
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ride options (AC, pet, luggage)
   const [rideOptions, setRideOptions] = useState({ ac: false, pet_friendly: false, extra_luggage: false, wheelchair_accessible: false });
   const [showRideOptions, setShowRideOptions] = useState(false);
@@ -319,6 +329,15 @@ export default function HomeScreen() {
     const t = setTimeout(checkPendingRating, 2000);
     return () => clearTimeout(t);
   }, [user?.uid]);
+
+  useEffect(() => {
+    const count = Math.max(2, Math.min(6, parseInt(splitCount || "2")));
+    setSplitContacts((prev) => {
+      const next = [...prev];
+      while (next.length < count - 1) next.push({ name: "", phone: "" });
+      return next.slice(0, count - 1);
+    });
+  }, [splitCount]);
 
   // Real Firestore ride listener — subscribes to live ride updates when a Firestore ride ID is set
   const firestoreUnsubRef = useRef<(() => void) | null>(null);
@@ -447,6 +466,39 @@ export default function HomeScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+    }
+
+    if (activeRide?.status !== "searching") return;
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const onlineDrivers = await firestoreDB.list(COLLECTIONS.DRIVER_PROFILES, { is_online: true }, "updated_date", "desc", 20);
+        const availableDrivers = onlineDrivers.filter((d: any) => d.is_available);
+        Alert.alert(
+          "No Driver Found",
+          availableDrivers.length === 0
+            ? "No drivers are currently online in your area. Please try again shortly."
+            : "Drivers are online, but all are currently busy. Please try again in a few minutes."
+        );
+      } catch {
+        Alert.alert("No Driver Found", "We couldn't find a driver within 6 minutes. Please try again.");
+      } finally {
+        setActiveRide(null);
+      }
+    }, 6 * 60 * 1000);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+        searchTimeoutRef.current = null;
+      }
+    };
+  }, [activeRide?.status]);
+
   const distance = destination
     ? Math.sqrt(
         Math.pow((destination.lat - userLocation[0]) * 111, 2) +
@@ -514,10 +566,43 @@ export default function HomeScreen() {
 
   const handleBook = async () => {
     if (!destination) return;
+
+    if (selectedPayment.id === "mobile_money") {
+      const normalized = momoNumber.replace(/\D/g, "");
+      if (normalized.length < 10) {
+        setShowMomoModal(true);
+        return;
+      }
+    }
+
+    if (selectedPayment.id === "card") {
+      if (!cardName.trim() || cardNumber.replace(/\s/g, "").length < 12 || !cardExpiry.trim() || cardCvv.trim().length < 3) {
+        setShowCardModal(true);
+        return;
+      }
+    }
+
     setBookingLoading(true);
     const pin = generateRidePin();
     const surgedFare = Math.round(perPersonFare * SURGE * 100) / 100;
     try {
+      if (selectedPayment.id === "wallet" && user?.uid) {
+        const wallet = await firestoreDB.get(COLLECTIONS.WALLET, user.uid);
+        const balance = Number(wallet?.balance ?? 0);
+        if (balance < surgedFare) {
+          Alert.alert("Insufficient Wallet Balance", `You need GH₵${(surgedFare - balance).toFixed(2)} more to book this ride.`);
+          return;
+        }
+        await firestoreDB.create(COLLECTIONS.PAYMENTS, {
+          rider_id: user.uid,
+          amount: surgedFare,
+          method: "wallet",
+          status: "authorized",
+          type: "ride_hold",
+          created_at: new Date().toISOString(),
+        });
+      }
+
       // Create real Firestore ride request
       let firestoreId: string | undefined;
       if (user) {
@@ -559,6 +644,7 @@ export default function HomeScreen() {
           status: 'searching',
           scheduled: isScheduled ? scheduledFor : null,
           splitData,
+          splitContacts: splitContacts.slice(0, Math.max(0, parseInt(splitCount || "2") - 1)),
           ridePin: pin,
           surgeMultiplier: SURGE,
         });
@@ -619,6 +705,7 @@ export default function HomeScreen() {
     setActiveRide(null);
     setDestination(null);
     setSplitData(null);
+    setStops([]);
     setAppliedPromo(null);
     setIsScheduled(false);
     setScheduledFor(null);
@@ -630,6 +717,7 @@ export default function HomeScreen() {
     setSelectedCategory(RIDE_CATEGORIES[0]);
     setAppliedPromo(null);
     setSplitData(null);
+    setStops([]);
     setIsScheduled(false);
     setScheduledFor(null);
   };
@@ -637,6 +725,31 @@ export default function HomeScreen() {
   const handleQuickPlace = (place: SavedPlace) => {
     if (!place.lat || !place.lng) { setSearchOpen(true); return; }
     handleSelectDestination({ name: place.name, address: place.address, lat: place.lat, lng: place.lng });
+  };
+
+  const handleAddStop = () => {
+    if (stops.length >= 3) {
+      Alert.alert("Limit reached", "You can add up to 3 stops.");
+      return;
+    }
+    const options = POPULAR_DESTINATIONS.slice(0, 6).map((p) => ({
+      text: p.name,
+      onPress: () => setStops((prev) => [...prev, p]),
+    }));
+    Alert.alert("Add a stop", "Select a stop from popular places", [
+      ...options,
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
+  const moveStop = (index: number, direction: -1 | 1) => {
+    setStops((prev) => {
+      const next = [...prev];
+      const swapIndex = index + direction;
+      if (swapIndex < 0 || swapIndex >= next.length) return prev;
+      [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+      return next;
+    });
   };
 
   const handleApplyPromo = () => {
@@ -656,6 +769,11 @@ export default function HomeScreen() {
       Alert.alert("Invalid", "Please enter a number between 2 and 6");
       return;
     }
+    const requiredContacts = splitContacts.slice(0, count - 1);
+    if (requiredContacts.some((c) => !c.name.trim() || !c.phone.trim())) {
+      Alert.alert("Missing contacts", "Please enter all rider names and phone numbers for split fare.");
+      return;
+    }
     setSplitData({ totalPeople: count, perPersonFare: parseFloat((finalFare / count).toFixed(2)) });
     setShowSplitModal(false);
   };
@@ -665,7 +783,25 @@ export default function HomeScreen() {
       Alert.alert("Required", "Please enter both date and time");
       return;
     }
-    setScheduledFor(`${scheduleDate} at ${scheduleTime}`);
+    const scheduledDate = new Date(`${scheduleDate} ${scheduleTime}`);
+    if (Number.isNaN(scheduledDate.getTime())) {
+      Alert.alert("Invalid Date/Time", "Please enter a valid date and time.");
+      return;
+    }
+    const minTime = Date.now() + 30 * 60 * 1000;
+    if (scheduledDate.getTime() < minTime) {
+      Alert.alert("Too Soon", "Scheduled rides must be at least 30 minutes from now.");
+      return;
+    }
+    setScheduledFor(
+      scheduledDate.toLocaleString("en-GH", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    );
     setIsScheduled(true);
     setShowScheduleModal(false);
   };
@@ -694,7 +830,7 @@ export default function HomeScreen() {
 
   const handleFinishRide = async () => {
     // Settle wallet payment: deduct fare from rider, credit driver
-    if (activeRide?.status === 'completed' && activeRide.payment === 'wallet' && user) {
+    if (activeRide?.status === 'completed' && (activeRide.paymentId === 'wallet' || activeRide.payment.toLowerCase() === 'wallet') && user) {
       try {
         const fare = activeRide.fare + (activeRide.waitingFee || 0);
         const driverId = (activeRide as any).driverId || (activeRide as any).driver_id || '';
@@ -726,6 +862,7 @@ export default function HomeScreen() {
     setActiveRide(null);
     setDestination(null);
     setSplitData(null);
+    setStops([]);
     setAppliedPromo(null);
     setIsScheduled(false);
     setScheduledFor(null);
@@ -1064,6 +1201,37 @@ export default function HomeScreen() {
           <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 15 }} numberOfLines={1}>{destination?.name}</Text>
           <Text style={{ color: MUTED, fontSize: 11 }}>{distance.toFixed(1)} km · ~{duration} min</Text>
         </View>
+      </View>
+
+      {/* Stops / Waypoints */}
+      <View style={{ marginBottom: 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600" }}>
+            Stops ({stops.length}/3)
+          </Text>
+          <TouchableOpacity onPress={handleAddStop} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <MaterialIcons name="add-circle-outline" size={16} color={GOLD} />
+            <Text style={{ color: GOLD, fontSize: 12, fontWeight: "600" }}>Add stop</Text>
+          </TouchableOpacity>
+        </View>
+        {stops.map((stop, idx) => (
+          <View key={`${stop?.name}-${idx}`} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: CARD, borderRadius: 12, padding: 10, borderWidth: 1, borderColor: BORDER, marginBottom: 6 }}>
+            <MaterialIcons name="place" size={16} color={GOLD} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: TEXT, fontSize: 13, fontWeight: "600" }} numberOfLines={1}>{stop?.name}</Text>
+              <Text style={{ color: MUTED, fontSize: 11 }} numberOfLines={1}>{stop?.address}</Text>
+            </View>
+            <TouchableOpacity disabled={idx === 0} onPress={() => moveStop(idx, -1)}>
+              <MaterialIcons name="arrow-upward" size={16} color={idx === 0 ? BORDER : MUTED} />
+            </TouchableOpacity>
+            <TouchableOpacity disabled={idx === stops.length - 1} onPress={() => moveStop(idx, 1)}>
+              <MaterialIcons name="arrow-downward" size={16} color={idx === stops.length - 1 ? BORDER : MUTED} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setStops((prev) => prev.filter((_, i) => i !== idx))}>
+              <MaterialIcons name="close" size={16} color={RED} />
+            </TouchableOpacity>
+          </View>
+        ))}
       </View>
 
       {/* Surge banner — Uber/Bolt style: plain language, no multiplier */}
@@ -1594,6 +1762,28 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+            <Text style={{ color: MUTED, fontSize: 12, marginBottom: 8 }}>
+              Contact picker (enter friend details)
+            </Text>
+            {splitContacts.slice(0, Math.max(0, parseInt(splitCount || "2") - 1)).map((contact, idx) => (
+              <View key={idx} style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+                <TextInput
+                  value={contact.name}
+                  onChangeText={(text) => setSplitContacts((prev) => prev.map((c, i) => (i === idx ? { ...c, name: text } : c)))}
+                  placeholder={`Friend ${idx + 1} name`}
+                  placeholderTextColor="#4A4A4A"
+                  style={{ flex: 1, backgroundColor: CARD, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: TEXT, borderWidth: 1, borderColor: BORDER, fontSize: 12 }}
+                />
+                <TextInput
+                  value={contact.phone}
+                  onChangeText={(text) => setSplitContacts((prev) => prev.map((c, i) => (i === idx ? { ...c, phone: text } : c)))}
+                  placeholder="+233..."
+                  placeholderTextColor="#4A4A4A"
+                  keyboardType="phone-pad"
+                  style={{ flex: 1, backgroundColor: CARD, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: TEXT, borderWidth: 1, borderColor: BORDER, fontSize: 12 }}
+                />
+              </View>
+            ))}
             <TouchableOpacity
               onPress={handleSplitConfirm}
               style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, alignItems: "center", marginBottom: 10 }}
@@ -1601,6 +1791,79 @@ export default function HomeScreen() {
               <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Confirm Split</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowSplitModal(false)} style={{ alignItems: "center", paddingVertical: 10 }}>
+              <Text style={{ color: MUTED, fontSize: 14 }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MoMo Payment Modal */}
+      <Modal visible={showMomoModal} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: SURFACE, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: insets.bottom + 24 }}>
+            <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>MoMo Payment</Text>
+            <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>Enter your Mobile Money number</Text>
+            <TextInput
+              value={momoNumber}
+              onChangeText={setMomoNumber}
+              placeholder="0XX XXX XXXX"
+              placeholderTextColor="#4A4A4A"
+              keyboardType="phone-pad"
+              style={{ backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER, marginBottom: 16 }}
+            />
+            <TouchableOpacity onPress={() => setShowMomoModal(false)} style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, alignItems: "center", marginBottom: 10 }}>
+              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Use this number</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowMomoModal(false)} style={{ alignItems: "center", paddingVertical: 10 }}>
+              <Text style={{ color: MUTED, fontSize: 14 }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Card Payment Modal */}
+      <Modal visible={showCardModal} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: SURFACE, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: insets.bottom + 24 }}>
+            <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>Card Payment</Text>
+            <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>Enter your card details</Text>
+            <TextInput
+              value={cardName}
+              onChangeText={setCardName}
+              placeholder="Name on card"
+              placeholderTextColor="#4A4A4A"
+              style={{ backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER, marginBottom: 10 }}
+            />
+            <TextInput
+              value={cardNumber}
+              onChangeText={setCardNumber}
+              placeholder="Card number"
+              placeholderTextColor="#4A4A4A"
+              keyboardType="number-pad"
+              style={{ backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER, marginBottom: 10 }}
+            />
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
+              <TextInput
+                value={cardExpiry}
+                onChangeText={setCardExpiry}
+                placeholder="MM/YY"
+                placeholderTextColor="#4A4A4A"
+                style={{ flex: 1, backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }}
+              />
+              <TextInput
+                value={cardCvv}
+                onChangeText={setCardCvv}
+                placeholder="CVV"
+                placeholderTextColor="#4A4A4A"
+                keyboardType="number-pad"
+                secureTextEntry
+                style={{ flex: 1, backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }}
+              />
+            </View>
+            <TouchableOpacity onPress={() => setShowCardModal(false)} style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, alignItems: "center", marginBottom: 10 }}>
+              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Use this card</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowCardModal(false)} style={{ alignItems: "center", paddingVertical: 10 }}>
               <Text style={{ color: MUTED, fontSize: 14 }}>Cancel</Text>
             </TouchableOpacity>
           </View>
