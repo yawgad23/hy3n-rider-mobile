@@ -57,6 +57,13 @@ const FAQ_ITEMS = [
   { q: "Can I schedule a ride in advance?", a: "Yes! When booking, tap 'Schedule' instead of 'Now' to pick a date and time up to 7 days in advance." },
 ];
 
+type SavedPlace = {
+  id: string;
+  label: string;
+  address: string;
+  icon: "home" | "work" | "star";
+};
+
 const SAVED_PLACES_DEFAULT = [
   { id: "home", label: "Home", address: "Nmai Dzorm, Accra", icon: "home" as const },
   { id: "work", label: "Work", address: "Not set", icon: "work" as const },
@@ -84,9 +91,11 @@ export default function AccountScreen() {
   }, [riderProfile]);
 
   const [showSavedPlaces, setShowSavedPlaces] = useState(false);
-  const [savedPlaces, setSavedPlaces] = useState(SAVED_PLACES_DEFAULT);
-  const [editingPlace, setEditingPlace] = useState<typeof SAVED_PLACES_DEFAULT[0] | null>(null);
+  const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>(SAVED_PLACES_DEFAULT);
+  const [editingPlace, setEditingPlace] = useState<SavedPlace | null>(null);
   const [placeAddress, setPlaceAddress] = useState("");
+  const [placeName, setPlaceName] = useState("");
+  const isCustomPlace = (place: SavedPlace) => place.id.startsWith("custom-");
 
   const [showLoyalty, setShowLoyalty] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -179,9 +188,27 @@ export default function AccountScreen() {
 
   const handleSavePlace = () => {
     if (!placeAddress.trim()) { Alert.alert("Required", "Please enter an address"); return; }
-    setSavedPlaces(prev => prev.map(p => p.id === editingPlace?.id ? { ...p, address: placeAddress } : p));
-    setEditingPlace(null);
+    if (!editingPlace) return;
+    if (isCustomPlace(editingPlace)) {
+      if (!placeName.trim()) { Alert.alert("Required", "Please enter a place name"); return; }
+      setSavedPlaces(prev => {
+        const exists = prev.some((p) => p.id === editingPlace.id);
+        if (exists) {
+          return prev.map((p) => p.id === editingPlace.id ? { ...p, label: placeName.trim(), address: placeAddress.trim() } : p);
+        }
+        return [...prev, { id: editingPlace.id, label: placeName.trim(), address: placeAddress.trim(), icon: "star" as const }];
+      });
+    } else {
+      setSavedPlaces(prev => prev.map(p => p.id === editingPlace.id ? { ...p, address: placeAddress.trim() } : p));
+    }
+    resetPlaceForm();
     Alert.alert("Saved", "Place updated successfully");
+  };
+
+  const resetPlaceForm = () => {
+    setEditingPlace(null);
+    setPlaceName("");
+    setPlaceAddress("");
   };
 
   const handleRedeemReward = (reward: typeof REWARDS[0]) => {
@@ -407,8 +434,20 @@ export default function AccountScreen() {
                   placeholderTextColor="#4A4A4A"
                   style={{ backgroundColor: CARD, borderRadius: 12, padding: 14, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER, marginBottom: 16 }}
                 />
+                {isCustomPlace(editingPlace) && (
+                  <>
+                    <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Place Name</Text>
+                    <TextInput
+                      value={placeName}
+                      onChangeText={setPlaceName}
+                      placeholder="e.g. Gym, School, Church"
+                      placeholderTextColor="#4A4A4A"
+                      style={{ backgroundColor: CARD, borderRadius: 12, padding: 14, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER, marginBottom: 16 }}
+                    />
+                  </>
+                )}
                 <View style={{ flexDirection: "row", gap: 10 }}>
-                  <TouchableOpacity onPress={() => setEditingPlace(null)} style={{ flex: 1, borderWidth: 1, borderColor: BORDER, borderRadius: 12, paddingVertical: 13, alignItems: "center" }}>
+                  <TouchableOpacity onPress={resetPlaceForm} style={{ flex: 1, borderWidth: 1, borderColor: BORDER, borderRadius: 12, paddingVertical: 13, alignItems: "center" }}>
                     <Text style={{ color: MUTED, fontWeight: "600" }}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={handleSavePlace} style={{ flex: 1, backgroundColor: GREEN, borderRadius: 12, paddingVertical: 13, alignItems: "center" }}>
@@ -436,7 +475,12 @@ export default function AccountScreen() {
                   </View>
                 ))}
                 <TouchableOpacity
-                  onPress={() => Alert.alert("Add Place", "Custom saved places coming soon!")}
+                  onPress={() => {
+                    const customId = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                    setEditingPlace({ id: customId, label: "Custom Place", address: "", icon: "star" as const });
+                    setPlaceName("");
+                    setPlaceAddress("");
+                  }}
                   style={{ flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1, borderColor: `${GOLD}4D`, borderRadius: 14, padding: 14 }}
                 >
                   <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${GOLD}1A`, alignItems: "center", justifyContent: "center" }}>
