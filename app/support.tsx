@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Alert, ActivityIndicator, Linking } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
+import { useAuth } from "@/lib/auth-context";
+import { firestoreDB, COLLECTIONS } from "@/lib/firebase";
+import { formatTicketTimestamp, normalizeTicketStatus, ticketProgress, ticketStatusLabel } from "@/lib/support-ticket";
+import { buildSupportMailto, buildSupportWhatsAppUrl, SUPPORT_EMAIL, SUPPORT_PHONE_E164 } from "@/lib/support-contact";
 
 const GREEN = "#006B3F";
 const RED = "#CE1126";
@@ -22,49 +26,92 @@ const TICKET_CATEGORIES = [
   { id: "other", label: "Other", icon: "help" as const, color: MUTED },
 ];
 
-const MOCK_TICKETS = [
-  { id: "TKT-001", category: "Payment Problem", subject: "Overcharged for ride to Airport", status: "resolved" as const, date: "Jun 14, 2026", response: "We've refunded GH₵12.50 to your wallet. Sorry for the inconvenience!" },
-  { id: "TKT-002", category: "App Bug", subject: "Map not loading on home screen", status: "in_progress" as const, date: "Jun 16, 2026", response: null },
-];
+type SupportTicket = {
+  id: string;
+  category: string;
+  subject: string;
+  description?: string;
+  status: string;
+  date?: string;
+  created_date?: string;
+  updated_date?: string;
+  response?: string | null;
+  response_date?: string | null;
+};
 
 export default function SupportScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const [showNewTicket, setShowNewTicket] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [tickets, setTickets] = useState(MOCK_TICKETS);
-  const [selectedTicket, setSelectedTicket] = useState<typeof MOCK_TICKETS[0] | null>(null);
+  const [loadingTickets, setLoadingTickets] = useState(true);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      setTickets([]);
+      setLoadingTickets(false);
+      return;
+    }
+    setLoadingTickets(true);
+    const unsubscribe = firestoreDB.subscribe(COLLECTIONS.SUPPORT_TICKETS, { user_id: user.uid }, (items) => {
+      const nextTickets = (items as SupportTicket[]).sort((a, b) => {
+        const aDate = new Date(a.updated_date || a.created_date || a.date || 0).getTime();
+        const bDate = new Date(b.updated_date || b.created_date || b.date || 0).getTime();
+        return bDate - aDate;
+      });
+      setTickets(nextTickets);
+      setLoadingTickets(false);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
+    if (!selectedTicket) return;
+    const refreshedTicket = tickets.find((ticket) => ticket.id === selectedTicket.id);
+    if (refreshedTicket && refreshedTicket !== selectedTicket) setSelectedTicket(refreshedTicket);
+  }, [tickets, selectedTicket]);
 
   const handleSubmit = async () => {
     if (!selectedCategory) { Alert.alert("Required", "Please select a category"); return; }
     if (!subject.trim()) { Alert.alert("Required", "Please enter a subject"); return; }
     if (!description.trim() || description.length < 20) { Alert.alert("Required", "Please describe your issue in at least 20 characters"); return; }
+    if (!user) { Alert.alert("Sign in required", "Please sign in again before creating a support ticket."); return; }
     setSubmitting(true);
-    await new Promise(r => setTimeout(r, 1500));
-    const newTicket = {
-      id: "TKT-" + String(tickets.length + 3).padStart(3, "0"),
-      category: TICKET_CATEGORIES.find(c => c.id === selectedCategory)?.label || "Other",
-      subject,
-      status: "in_progress" as const,
-      date: new Date().toLocaleDateString("en-GH", { month: "short", day: "numeric", year: "numeric" }),
-      response: null,
-    };
-    setTickets(prev => [newTicket, ...prev]);
-    setSubmitting(false);
-    setShowNewTicket(false);
-    setSelectedCategory("");
-    setSubject("");
-    setDescription("");
-    Alert.alert("Ticket Submitted", `Your support ticket ${newTicket.id} has been submitted. We'll respond within 24 hours.`);
+    try {
+      const newTicket = await firestoreDB.create(COLLECTIONS.SUPPORT_TICKETS, {
+        user_id: user.uid,
+        category: TICKET_CATEGORIES.find(c => c.id === selectedCategory)?.label || "Other",
+        subject: subject.trim(),
+        description: description.trim(),
+        status: "open",
+        source: "rider_support",
+      });
+      setShowNewTicket(false);
+      setSelectedCategory("");
+      setSubject("");
+      setDescription("");
+      Alert.alert("Ticket Submitted", `Your support ticket ${newTicket.id} is now open. We’ll show status updates here.`);
+    } catch {
+      Alert.alert("Unable to submit", "Please try again in a moment.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const statusConfig = {
+  const statusConfig: Record<string, { label: string; color: string }> = {
     resolved: { label: "Resolved", color: GREEN },
-    in_progress: { label: "In Progress", color: GOLD },
+    closed: { label: "Closed", color: MUTED },
+    rejected: { label: "Closed without action", color: RED },
+    pending_user: { label: "Waiting for you", color: GOLD },
+    in_progress: { label: "In progress", color: GOLD },
     open: { label: "Open", color: "#4A90E2" },
-  };
+  } as const;
+  const selectedStatus = normalizeTicketStatus(selectedTicket?.status);
 
   return (
     <ScreenContainer containerClassName="bg-[#0A0A0A]" safeAreaClassName="bg-[#0A0A0A]">
@@ -87,16 +134,16 @@ export default function SupportScreen() {
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 20 }}>
           <TouchableOpacity
             onPress={() => {
-              const whatsappUrl = "https://wa.me/233200000000?text=Hi%20HY3N%20Support%2C%20I%20need%20help%20with%20my%20ride.";
+              const whatsappUrl = buildSupportWhatsAppUrl("Hi HY3N Support, I need help with my ride.");
               Linking.canOpenURL(whatsappUrl).then(supported => {
                 if (supported) {
                   Linking.openURL(whatsappUrl);
                 } else {
-                  Alert.alert("WhatsApp not found", "Please install WhatsApp or email us at hello@ridehy3n.com");
+                  Alert.alert("WhatsApp not found", `Please install WhatsApp or email us at ${SUPPORT_EMAIL}`);
                 }
               });
             }}
-            style={{ flex: 1, backgroundColor: CARD, borderRadius: 14, padding: 14, alignItems: "center", borderWidth: 0.5, borderColor: BORDER, gap: 6 }}
+          style={{ flex: 1, backgroundColor: CARD, borderRadius: 14, padding: 14, alignItems: "center", borderWidth: 0.5, borderColor: BORDER, gap: 6 }}
           >
             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: GREEN + "1A", alignItems: "center", justifyContent: "center" }}>
               <MaterialIcons name="chat" size={20} color={GREEN} />
@@ -106,7 +153,8 @@ export default function SupportScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => Linking.openURL("tel:+233200000000")}
+            onPress={() => Linking.openURL(`tel:${SUPPORT_PHONE_E164}`)}
+
             style={{ flex: 1, backgroundColor: CARD, borderRadius: 14, padding: 14, alignItems: "center", borderWidth: 0.5, borderColor: BORDER, gap: 6 }}
           >
             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#4A90E21A", alignItems: "center", justifyContent: "center" }}>
@@ -117,7 +165,7 @@ export default function SupportScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => Linking.openURL("mailto:hello@ridehy3n.com?subject=HY3N%20Rider%20Support&body=Hi%20HY3N%20Support%20Team%2C%0A%0AI%20need%20help%20with%3A%0A%0A")}
+            onPress={() => Linking.openURL(buildSupportMailto("HY3N Rider Support", "Hi HY3N Support Team,\n\nI need help with:\n\n"))}
             style={{ flex: 1, backgroundColor: CARD, borderRadius: 14, padding: 14, alignItems: "center", borderWidth: 0.5, borderColor: BORDER, gap: 6 }}
           >
             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: GOLD + "1A", alignItems: "center", justifyContent: "center" }}>
@@ -134,14 +182,21 @@ export default function SupportScreen() {
           <Text style={{ color: MUTED, fontSize: 12 }}>{tickets.length} total</Text>
         </View>
 
-        {tickets.length === 0 ? (
+        {loadingTickets ? (
+          <View style={{ alignItems: "center", paddingVertical: 32 }}>
+            <ActivityIndicator color={GOLD} />
+            <Text style={{ color: MUTED, fontSize: 13, marginTop: 12 }}>Loading your support cases…</Text>
+          </View>
+        ) : tickets.length === 0 ? (
           <View style={{ alignItems: "center", paddingVertical: 32 }}>
             <MaterialIcons name="support-agent" size={40} color={MUTED} />
             <Text style={{ color: MUTED, fontSize: 14, marginTop: 12, textAlign: "center" }}>No support tickets yet.</Text>
           </View>
         ) : (
           tickets.map((ticket) => {
-            const sc = statusConfig[ticket.status] || statusConfig.open;
+            const normalizedStatus = normalizeTicketStatus(ticket.status);
+            const sc = statusConfig[normalizedStatus] || statusConfig.open;
+            const updatedAt = formatTicketTimestamp(ticket.updated_date || ticket.created_date || ticket.date);
             return (
               <TouchableOpacity
                 key={ticket.id}
@@ -157,7 +212,8 @@ export default function SupportScreen() {
                       </View>
                     </View>
                     <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 13 }} numberOfLines={1}>{ticket.subject}</Text>
-                    <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{ticket.category} • {ticket.date}</Text>
+                    <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{ticket.category} • {updatedAt || "Recently created"}</Text>
+                    <Text style={{ color: sc.color, fontSize: 10, marginTop: 6, fontWeight: "600" }}>{ticketStatusLabel(normalizedStatus)} · Tap to view progress</Text>
                   </View>
                   <MaterialIcons name="chevron-right" size={18} color={MUTED} />
                 </View>
@@ -249,14 +305,33 @@ export default function SupportScreen() {
                 {[
                   { label: "Ticket ID", value: selectedTicket.id },
                   { label: "Category", value: selectedTicket.category },
-                  { label: "Date", value: selectedTicket.date },
-                  { label: "Status", value: (statusConfig[selectedTicket.status] || statusConfig.open).label },
+                  { label: "Created", value: formatTicketTimestamp(selectedTicket.created_date || selectedTicket.date) || "Recently" },
+                  { label: "Last updated", value: formatTicketTimestamp(selectedTicket.updated_date) || "Not available" },
+                  { label: "Status", value: ticketStatusLabel(selectedStatus) },
                 ].map((row) => (
                   <View key={row.label} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 10 }}>
                     <Text style={{ color: MUTED, fontSize: 13 }}>{row.label}</Text>
                     <Text style={{ color: TEXT, fontSize: 13, fontWeight: "600" }}>{row.value}</Text>
                   </View>
                 ))}
+              </View>
+              <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Case Progress</Text>
+              <View style={{ backgroundColor: CARD, borderRadius: 14, padding: 14, marginBottom: 16, borderWidth: 0.5, borderColor: BORDER }}>
+                {ticketProgress(selectedStatus).map((step, index) => (
+                  <View key={step.key} style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, minHeight: index === ticketProgress(selectedStatus).length - 1 ? 26 : 42 }}>
+                    <View style={{ alignItems: "center", width: 20 }}>
+                      <View style={{ width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: step.complete || step.current ? GREEN : "transparent", borderWidth: 1.5, borderColor: step.complete || step.current ? GREEN : BORDER }}>
+                        {(step.complete || step.current) && <MaterialIcons name={step.complete ? "check" : "more-horiz"} size={12} color="#fff" />}
+                      </View>
+                      {index < ticketProgress(selectedStatus).length - 1 && <View style={{ width: 1, flex: 1, minHeight: 22, backgroundColor: step.complete ? GREEN : BORDER, marginTop: 3 }} />}
+                    </View>
+                    <View style={{ flex: 1, paddingBottom: 8 }}>
+                      <Text style={{ color: step.current || step.complete ? TEXT : MUTED, fontWeight: step.current ? "800" : "600", fontSize: 13 }}>{step.label}</Text>
+                      {step.current && <Text style={{ color: GOLD, fontSize: 10, marginTop: 2 }}>{ticketStatusLabel(selectedStatus)}</Text>}
+                    </View>
+                  </View>
+                ))}
+                {selectedStatus === "pending_user" && <Text style={{ color: GOLD, fontSize: 11, marginTop: 4 }}>HY3N Support needs more information from you. Check the case response below.</Text>}
               </View>
               <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Your Issue</Text>
               <View style={{ backgroundColor: CARD, borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 0.5, borderColor: BORDER }}>
@@ -271,6 +346,7 @@ export default function SupportScreen() {
                       <Text style={{ color: GREEN, fontWeight: "600", fontSize: 13 }}>HY3N Support Team</Text>
                     </View>
                     <Text style={{ color: TEXT, fontSize: 13, lineHeight: 20 }}>{selectedTicket.response}</Text>
+                    {selectedTicket.response_date && <Text style={{ color: MUTED, fontSize: 10, marginTop: 8 }}>Updated {formatTicketTimestamp(selectedTicket.response_date)}</Text>}
                   </View>
                 </>
               )}

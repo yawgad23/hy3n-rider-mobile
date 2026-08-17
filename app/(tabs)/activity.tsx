@@ -20,6 +20,7 @@ import { useAuth } from "@/lib/auth-context";
 import { firestoreDB, COLLECTIONS } from "@/lib/firebase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { buildLostItemDescription, buildLostItemSupportMessage, validateLostItemForm, type LostItemContactMethod } from "@/lib/lost-item-support";
+import { buildSupportMailto, buildSupportWhatsAppUrl, SUPPORT_PHONE_E164 } from "@/lib/support-contact";
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -203,11 +204,10 @@ export default function ActivityScreen() {
       contactMethod: lostItemContactMethod,
       contactValue: lostItemContactValue,
     }, ride.destination_address);
-    const encodedMessage = encodeURIComponent(message);
     const urls: Record<LostItemContactMethod, string> = {
-      whatsapp: `https://wa.me/233200000000?text=${encodedMessage}`,
-      phone: "tel:+233200000000",
-      email: `mailto:hello@ridehy3n.com?subject=HY3N%20Lost%20Item%20Support&body=${encodedMessage}`,
+      whatsapp: buildSupportWhatsAppUrl(message),
+      phone: `tel:${SUPPORT_PHONE_E164}`,
+      email: buildSupportMailto("HY3N Lost Item Support", message),
     };
     try {
       const url = urls[channel];

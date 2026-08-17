@@ -567,9 +567,9 @@
 - [x] Improve trusted contacts and share-trip flow with vehicle, driver, route, and live-location details
 - [ ] Add masked communication affordances and reliable in-ride support entry points
 - [ ] Improve upfront fare, payment-method locking, payment failure recovery, and receipt detail
-- [ ] Improve scheduled-ride availability, confirmation, reschedule, and cancellation states
+- [x] Improve scheduled-ride availability, confirmation, reschedule, and cancellation states
 - [ ] Add locally supported ride options without inventing backend supply (for example premium, XL, electric, or women-for-women only when supported)
-- [ ] Add structured post-ride issue reporting, lost-item flow, and support handoff
+- [x] Add structured post-ride issue reporting, lost-item flow, and support handoff
 - [ ] Improve saved places, search history, promotions, loyalty, and rider notifications
 - [x] Add deterministic tests for new rider parity state transitions and safety flows
 - [x] Validate iOS, Android, and web-safe fallbacks without modifying the separate backend
@@ -581,3 +581,19 @@
 - [x] Link the form directly to existing 24/7 WhatsApp, phone, email, and support-screen handoffs
 - [x] Preserve the separate hy3n-backend boundary and use the existing support/report data path only
 - [x] Add deterministic validation tests for required lost-item fields and support handoff formatting
+
+## Ticket-Status Tracking & Post-Trip Receipt Emails (Aug 2026)
+
+- [x] Add real-time Firestore support ticket status tracking for lost-item reports and other cases
+- [x] Surface case progress, timestamps, and support replies directly inside the Support screen
+- [x] Integrate post-trip receipt email trigger and confirmation status after ride completion via the standalone backend boundary
+- [x] Add deterministic unit tests for ticket status parsing and receipt email request formatting
+
+## Production Support Contacts (Aug 2026)
+
+- [x] Replace placeholder Rider App WhatsApp and phone links with the official 24/7 support number: +233 55 727 8990
+
+## Production Build Compatibility (Aug 2026)
+
+- [x] Align Expo SDK package versions and remove duplicate native dependencies reported by Expo Doctor
+- [ ] Validate react-native-webrtc on iOS and Android production builds because Expo Doctor reports it as untested on the New Architecture

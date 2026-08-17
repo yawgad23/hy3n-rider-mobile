@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Alert } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Alert, Modal } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
@@ -7,6 +7,7 @@ import { useRouter } from "expo-router";
 const GREEN = "#006B3F";
 const RED = "#CE1126";
 const GOLD = "#D4AF37";
+const BG = "#0A0A0A";
 const CARD = "#1A1A1A";
 const BORDER = "#2A2A2A";
 const TEXT = "#FAFAFA";
@@ -64,9 +65,21 @@ function formatScheduledTime(iso: string) {
 export default function ScheduledTripsScreen() {
   const router = useRouter();
   const [trips, setTrips] = useState<ScheduledTrip[]>(MOCK_SCHEDULED);
+  const [rescheduleModalVisible, setRescheduleModalVisible] = useState(false);
+  const [selectedTrip, setSelectedTrip] = useState<ScheduledTrip | null>(null);
+  const [selectedHoursOffset, setSelectedHoursOffset] = useState(2);
 
   const upcoming = trips.filter(t => t.status === "upcoming");
   const cancelled = trips.filter(t => t.status === "cancelled");
+
+  const handleRescheduleSubmit = () => {
+    if (!selectedTrip) return;
+    const newTime = new Date(Date.now() + selectedHoursOffset * 3600000).toISOString();
+    setTrips(prev => prev.map(t => t.id === selectedTrip.id ? { ...t, scheduledTime: newTime } : t));
+    setRescheduleModalVisible(false);
+    setSelectedTrip(null);
+    Alert.alert("Ride Rescheduled", `Your ride to ${selectedTrip.destination} has been rescheduled successfully.`);
+  };
 
   const handleCancel = (trip: ScheduledTrip) => {
     Alert.alert(
@@ -124,11 +137,14 @@ export default function ScheduledTripsScreen() {
               <Text style={{ color: RED, fontWeight: "600", fontSize: 13 }}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => Alert.alert("Edit Trip", "Trip editing coming soon!")}
+              onPress={() => {
+                setSelectedTrip(trip);
+                setRescheduleModalVisible(true);
+              }}
               style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10, backgroundColor: `${GREEN}1A`, borderWidth: 1, borderColor: `${GREEN}4D` }}
             >
               <MaterialIcons name="edit" size={16} color={GREEN} />
-              <Text style={{ color: GREEN, fontWeight: "600", fontSize: 13 }}>Edit</Text>
+              <Text style={{ color: GREEN, fontWeight: "600", fontSize: 13 }}>Reschedule</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -182,6 +198,53 @@ export default function ScheduledTripsScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Reschedule Modal */}
+      <Modal visible={rescheduleModalVisible} animationType="slide" presentationStyle="pageSheet">
+        <View style={{ flex: 1, backgroundColor: BG, padding: 20 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 20, borderBottomWidth: 0.5, borderBottomColor: BORDER, paddingBottom: 16 }}>
+            <Text style={{ color: TEXT, fontSize: 18, fontWeight: "bold" }}>Reschedule Trip</Text>
+            <TouchableOpacity onPress={() => setRescheduleModalVisible(false)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: CARD, alignItems: "center", justifyContent: "center" }}>
+              <MaterialIcons name="close" size={20} color={TEXT} />
+            </TouchableOpacity>
+          </View>
+
+          {selectedTrip && (
+            <View style={{ backgroundColor: CARD, borderRadius: 14, padding: 14, marginBottom: 20, borderWidth: 0.5, borderColor: BORDER }}>
+              <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 14 }}>{selectedTrip.destination}</Text>
+              <Text style={{ color: MUTED, fontSize: 12, marginTop: 4 }}>Pickup: {selectedTrip.pickupAddress}</Text>
+              <Text style={{ color: GOLD, fontSize: 12, marginTop: 6, fontWeight: "600" }}>Current: {formatScheduledTime(selectedTrip.scheduledTime)}</Text>
+            </View>
+          )}
+
+          <Text style={{ color: MUTED, fontSize: 12, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 12 }}>Choose New Pickup Time</Text>
+          <View style={{ gap: 10, marginBottom: 24 }}>
+            {[
+              { label: "In 1 hour", hours: 1 },
+              { label: "In 2 hours", hours: 2 },
+              { label: "In 4 hours", hours: 4 },
+              { label: "Tomorrow morning (8:00 AM)", hours: 14 },
+              { label: "Tomorrow evening (5:00 PM)", hours: 23 },
+            ].map(opt => (
+              <TouchableOpacity
+                key={opt.hours}
+                onPress={() => setSelectedHoursOffset(opt.hours)}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 14, borderRadius: 12, backgroundColor: selectedHoursOffset === opt.hours ? `${GREEN}1A` : CARD, borderWidth: 1, borderColor: selectedHoursOffset === opt.hours ? GREEN : BORDER }}
+              >
+                <Text style={{ color: selectedHoursOffset === opt.hours ? TEXT : MUTED, fontWeight: selectedHoursOffset === opt.hours ? "bold" : "normal", fontSize: 14, flex: 1 }}>{opt.label}</Text>
+                {selectedHoursOffset === opt.hours && <MaterialIcons name="check-circle" size={18} color={GREEN} />}
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity
+            onPress={handleRescheduleSubmit}
+            style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 16, alignItems: "center", marginTop: "auto" }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>Confirm New Time</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }

@@ -5,6 +5,8 @@ import { calculateBearing, estimateETA, interpolatePosition } from "@/lib/driver
 import { countActiveRides, removeRide, updateRide, upsertRide, type RideStateRecord } from "@/lib/rider-ride-state";
 import { buildEmergencyAssistMessage, getCancellationPolicy, getSafetySignal, selectedRideOptionLabels } from "@/lib/rider-parity";
 import { buildLostItemDescription, buildLostItemSupportMessage, validateLostItemForm } from "@/lib/lost-item-support";
+import { normalizeTicketStatus, ticketProgress, ticketStatusLabel } from "@/lib/support-ticket";
+import { buildReceiptEmailPayload, receiptRequestKey } from "@/lib/receipt-email";
 
 type TestRide = RideStateRecord & { fare: number };
 
@@ -61,6 +63,39 @@ describe("HY3N Rider App feature math", () => {
     const form = { rideId: "ride-123", itemDescription: "Black wallet under the rear seat", contactMethod: "whatsapp" as const, contactValue: "0501234567" };
     expect(buildLostItemDescription(form)).toContain("Preferred contact: whatsapp");
     expect(buildLostItemSupportMessage(form, "Airport")).toContain("Destination: Airport");
+  });
+
+  it("normalizes backend ticket states and renders a deterministic progress timeline", () => {
+    expect(normalizeTicketStatus("assigned")).toBe("in_progress");
+    expect(normalizeTicketStatus("awaiting_rider")).toBe("pending_user");
+    expect(ticketStatusLabel("closed")).toBe("Closed");
+    expect(ticketProgress("pending_user").map((step) => [step.key, step.complete, step.current])).toEqual([
+      ["open", true, false],
+      ["in_progress", false, true],
+      ["resolved", false, false],
+    ]);
+  });
+
+  it("builds a sanitized receipt payload and stable request key", () => {
+    const payload = buildReceiptEmailPayload({
+      riderEmail: "  RIDER@EXAMPLE.COM ",
+      riderName: "  Ama  ",
+      driverName: "  Kojo ",
+      driverVehicle: "  Toyota Prius ",
+      driverPlate: "  GR 1234-24 ",
+      pickup: "  Osu ",
+      destination: " Airport ",
+      fare: 42.5,
+      paymentMethod: " Card ",
+      tripId: " trip-123 ",
+      completedAt: "2026-08-17T12:00:00.000Z",
+      category: "comfort",
+    });
+    expect(payload.riderEmail).toBe("rider@example.com");
+    expect(payload.riderName).toBe("Ama");
+    expect(payload.driverPlate).toBe("GR 1234-24");
+    expect(payload.tripId).toBe("trip-123");
+    expect(receiptRequestKey("trip-123")).toBe("hy3n_receipt_email_requested_trip-123");
   });
 
   it("keeps simultaneous rides isolated when one ride is added, updated, or removed", () => {

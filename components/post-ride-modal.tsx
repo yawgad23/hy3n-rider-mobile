@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { firestoreDB, COLLECTIONS } from '@/lib/firebase';
+import { trpc } from '@/lib/trpc';
+import { buildReceiptEmailPayload, type ReceiptEmailStatus } from '@/lib/receipt-email';
 
 const GOLD = '#D4AF37';
 const GREEN = '#006B3F';
@@ -32,6 +34,15 @@ interface PostRideModalProps {
   duration: number;
   pickupAddress: string;
   destinationAddress: string;
+  riderEmail?: string;
+  riderName?: string;
+  driverVehicle?: string;
+  driverPlate?: string;
+  paymentMethod?: string;
+  category?: string;
+  completedAt?: string;
+  receiptEmailStatus?: ReceiptEmailStatus;
+  onReceiptEmailStatusChange?: (status: ReceiptEmailStatus) => void;
   onClose: () => void;
   onRatingSubmitted?: () => void;
 }
@@ -47,6 +58,15 @@ export function PostRideModal({
   duration,
   pickupAddress,
   destinationAddress,
+  riderEmail = '',
+  riderName = 'HY3N Rider',
+  driverVehicle = 'HY3N vehicle',
+  driverPlate = 'Not available',
+  paymentMethod = 'Selected method',
+  category = 'Ride',
+  completedAt,
+  receiptEmailStatus = 'idle',
+  onReceiptEmailStatusChange,
   onClose,
   onRatingSubmitted,
 }: PostRideModalProps) {
@@ -55,6 +75,8 @@ export function PostRideModal({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showReceipt, setShowReceipt] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const sendReceiptMutation = trpc.trips.sendReceipt.useMutation();
+  const [emailStatus, setEmailStatus] = useState<ReceiptEmailStatus>(receiptEmailStatus);
 
   const FEEDBACK_TAGS = [
     'Driver was friendly',
@@ -68,6 +90,42 @@ export function PostRideModal({
     setSelectedTags(prev =>
       prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
     );
+  };
+
+  const handleSendReceiptEmail = async () => {
+    if (!riderEmail.trim()) {
+      Alert.alert('Email unavailable', 'Add an email address to your HY3N account to receive trip receipts.');
+      return;
+    }
+    const nextStatus: ReceiptEmailStatus = 'sending';
+    setEmailStatus(nextStatus);
+    onReceiptEmailStatusChange?.(nextStatus);
+    try {
+      const result = await sendReceiptMutation.mutateAsync(buildReceiptEmailPayload({
+        riderEmail,
+        riderName,
+        driverName,
+        driverVehicle,
+        driverPlate,
+        pickup: pickupAddress,
+        destination: destinationAddress,
+        fare: fare + tip,
+        paymentMethod,
+        tripId: rideId,
+        completedAt: completedAt || new Date().toISOString(),
+        distance,
+        duration,
+        category,
+      }));
+      const status: ReceiptEmailStatus = result.success ? 'sent' : 'failed';
+      setEmailStatus(status);
+      onReceiptEmailStatusChange?.(status);
+      Alert.alert(result.success ? 'Receipt emailed' : 'Email not sent', result.success ? `Your receipt was sent to ${riderEmail}.` : 'Please try again or use Share Receipt.');
+    } catch {
+      setEmailStatus('failed');
+      onReceiptEmailStatusChange?.('failed');
+      Alert.alert('Email not sent', 'Please try again or use Share Receipt.');
+    }
   };
 
   const handleSubmitRating = async () => {
@@ -288,7 +346,21 @@ export function PostRideModal({
                       </View>
                     </View>
 
-                    <View style={{ alignItems: 'center', marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: BORDER }}>
+                    <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: BORDER }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1 }}>
+                          <MaterialIcons name={emailStatus === 'sent' ? 'mark-email-read' : emailStatus === 'failed' ? 'error-outline' : 'email'} size={17} color={emailStatus === 'sent' ? GREEN : emailStatus === 'failed' ? '#CE1126' : GOLD} />
+                          <Text style={{ color: emailStatus === 'sent' ? GREEN : emailStatus === 'failed' ? '#CE1126' : MUTED, fontSize: 11, fontWeight: '600' }}>
+                            {emailStatus === 'sent' ? `Receipt sent to ${riderEmail}` : emailStatus === 'sending' ? 'Sending receipt email…' : emailStatus === 'failed' ? 'Receipt email failed' : 'Email this receipt'}
+                          </Text>
+                        </View>
+                        {emailStatus !== 'sending' && emailStatus !== 'sent' && (
+                          <TouchableOpacity onPress={handleSendReceiptEmail} style={{ backgroundColor: `${GOLD}1A`, borderWidth: 1, borderColor: `${GOLD}66`, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 }}>
+                            <Text style={{ color: GOLD, fontSize: 10, fontWeight: '700' }}>{emailStatus === 'failed' ? 'Retry' : 'Send'}</Text>
+                          </TouchableOpacity>
+                        )}
+                        {emailStatus === 'sending' && <ActivityIndicator size="small" color={GOLD} />}
+                      </View>
                       <Text style={{ color: MUTED, fontSize: 11, textAlign: 'center' }}>
                         Thank you for riding with HY3N!
                       </Text>

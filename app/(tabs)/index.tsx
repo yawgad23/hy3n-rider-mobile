@@ -49,6 +49,8 @@ import { calculateDynamicFare, calculateDistance, RideMetrics } from "@/lib/dyna
 import { getDistanceToPickup, getDistanceToDestination, estimateETA, formatDistance, isDriverNearPickup, calculateBearing } from "@/lib/driver-tracking";
 import { upsertRide, updateRide, removeRide, countActiveRides } from "@/lib/rider-ride-state";
 import { buildEmergencyAssistMessage, DEFAULT_RIDE_OPTIONS, getCancellationPolicy, getSafetySignal, RIDE_OPTION_DEFINITIONS, selectedRideOptionLabels, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
+import { trpc } from "@/lib/trpc";
+import { buildReceiptEmailPayload, receiptRequestKey, type ReceiptEmailStatus } from "@/lib/receipt-email";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -331,6 +333,9 @@ export default function HomeScreen() {
   const [tipAdded, setTipAdded] = useState(false);
   const [showPostRideModal, setShowPostRideModal] = useState(false);
   const [completedRideData, setCompletedRideData] = useState<any>(null);
+  const [receiptEmailStatus, setReceiptEmailStatus] = useState<ReceiptEmailStatus>("idle");
+  const receiptEmailMutation = trpc.trips.sendReceipt.useMutation();
+  const receiptRequestRef = useRef<string | null>(null);
 
   // Multi-stop
   const [stops, setStops] = useState<(Location | null)[]>([]);
@@ -1050,6 +1055,49 @@ export default function HomeScreen() {
       { text: "Cancel", style: "cancel" },
     ]);
   };
+
+  useEffect(() => {
+    const ride = activeRide;
+    const riderEmail = user?.email?.trim();
+    if (!ride || ride.status !== "completed" || !riderEmail) return;
+    const tripId = ride.firestoreId || ride.id;
+    const requestKey = receiptRequestKey(tripId);
+    if (receiptRequestRef.current === requestKey) return;
+    receiptRequestRef.current = requestKey;
+
+    const requestReceipt = async () => {
+      const alreadyRequested = await AsyncStorage.getItem(requestKey);
+      if (alreadyRequested === "sent") {
+        setReceiptEmailStatus("sent");
+        return;
+      }
+      setReceiptEmailStatus("sending");
+      try {
+        const result = await receiptEmailMutation.mutateAsync(buildReceiptEmailPayload({
+          riderEmail,
+          riderName: (riderProfile as any)?.full_name || user?.displayName || "HY3N Rider",
+          driverName: ride.driverName || "Driver",
+          driverVehicle: ride.driverVehicle || "HY3N vehicle",
+          driverPlate: ride.driverPlate || "Not available",
+          pickup: pickupAddress,
+          destination: ride.destination.name,
+          fare: (ride.currentFare ?? ride.fare) + (tipAmount || 0),
+          paymentMethod: ride.payment || "Selected method",
+          tripId,
+          completedAt: new Date().toISOString(),
+          distance: ride.actualDistanceKm ?? ride.distance,
+          duration: ride.duration,
+          category: ride.category,
+        }));
+        const status: ReceiptEmailStatus = result.success ? "sent" : "failed";
+        setReceiptEmailStatus(status);
+        if (result.success) await AsyncStorage.setItem(requestKey, "sent");
+      } catch {
+        setReceiptEmailStatus("failed");
+      }
+    };
+    requestReceipt();
+  }, [activeRide?.id, activeRide?.status, user?.email]);
 
   const handleFinishRide = async () => {
     // Settle wallet payment: deduct fare from rider, credit driver
@@ -2560,6 +2608,15 @@ export default function HomeScreen() {
           duration={completedRideData.duration}
           pickupAddress={completedRideData.pickupAddress}
           destinationAddress={completedRideData.destinationAddress}
+          riderEmail={user?.email || ""}
+          riderName={(riderProfile as any)?.full_name || user?.displayName || "HY3N Rider"}
+          driverVehicle={activeRide?.driverVehicle || "HY3N vehicle"}
+          driverPlate={activeRide?.driverPlate || "Not available"}
+          paymentMethod={activeRide?.payment || "Selected method"}
+          category={activeRide?.category || "Ride"}
+          completedAt={new Date().toISOString()}
+          receiptEmailStatus={receiptEmailStatus}
+          onReceiptEmailStatusChange={setReceiptEmailStatus}
           onClose={() => {
             setShowPostRideModal(false);
             setRideRated(true);
