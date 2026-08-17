@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { calculateDynamicFare, calculateDistance } from "@/lib/dynamic-pricing";
 import { calculateBearing, estimateETA, interpolatePosition } from "@/lib/driver-tracking";
 import { countActiveRides, removeRide, updateRide, upsertRide, type RideStateRecord } from "@/lib/rider-ride-state";
+import { buildEmergencyAssistMessage, getCancellationPolicy, getSafetySignal, selectedRideOptionLabels } from "@/lib/rider-parity";
 
 type TestRide = RideStateRecord & { fare: number };
 
@@ -27,6 +28,30 @@ describe("HY3N Rider App feature math", () => {
     expect(estimateETA(1, 30)).toBe(2);
     expect(calculateBearing(0, 0, 1, 0)).toBeCloseTo(0, 5);
     expect(interpolatePosition(0, 0, 10, 20, 0.5)).toEqual({ lat: 5, lng: 10 });
+  });
+
+  it("formats rider parity safety and preference state deterministically", () => {
+    expect(selectedRideOptionLabels({ ac: true, pet_friendly: false, extra_luggage: true, wheelchair_accessible: false })).toEqual(["Air conditioning", "Extra luggage"]);
+    expect(getSafetySignal({ status: "in_progress", distanceFromRouteKm: 0.7 })).toBe("route_deviation");
+    expect(getSafetySignal({ status: "in_progress", stoppedSeconds: 180 })).toBe("long_stop");
+    expect(getSafetySignal({ status: "matched" })).toBe("clear");
+  });
+
+  it("applies the rider cancellation policy and creates a shareable emergency handoff", () => {
+    const matchedAt = new Date(1_000_000).toISOString();
+    expect(getCancellationPolicy("matched", matchedAt, 1_000_000 + 30_000).isFree).toBe(true);
+    expect(getCancellationPolicy("matched", matchedAt, 1_000_000 + 180_000).fee).toBe(5);
+    const message = buildEmergencyAssistMessage({
+      rideId: "ride-123",
+      pickup: "Osu",
+      destination: "Airport",
+      driverName: "Kwame",
+      driverPlate: "GR 1234-24",
+      latitude: 5.56,
+      longitude: -0.18,
+    });
+    expect(message).toContain("HY3N emergency assist request");
+    expect(message).toContain("maps.google.com/?q=5.56,-0.18");
   });
 
   it("keeps simultaneous rides isolated when one ride is added, updated, or removed", () => {

@@ -16,6 +16,7 @@ interface LeafletMapProps {
   destination?: [number, number] | null;
   driverLocation?: [number, number] | null;
   driverBearing?: number | null;
+  safetySignal?: "clear" | "route_deviation" | "long_stop";
   nearbyDrivers?: NearbyDriver[];
 }
 
@@ -33,6 +34,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     destination = null,
     driverLocation = null,
     driverBearing = null,
+    safetySignal = "clear",
     nearbyDrivers = [],
   },
   ref
@@ -56,6 +58,11 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   const driverLat = driverLocation ? driverLocation[0] : null;
   const driverLng = driverLocation ? driverLocation[1] : null;
   const bearing = typeof driverBearing === "number" ? driverBearing : 0;
+  const safetyBanner = safetySignal === "route_deviation"
+    ? '<div class="safety-banner danger">Route check: your driver appears to be off the planned route.</div>'
+    : safetySignal === "long_stop"
+    ? '<div class="safety-banner warning">Trip check: your driver has been stationary for several minutes.</div>'
+    : '';
 
   // Serialize nearby drivers for injection into the WebView HTML
   const nearbyDriversJson = JSON.stringify(
@@ -74,10 +81,14 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     html, body, #map { width: 100%; height: 100%; background: #0D1117; }
     .leaflet-control-zoom { display: none; }
     .leaflet-control-attribution { display: none; }
+    .safety-banner { position: absolute; top: 14px; left: 14px; right: 14px; z-index: 1000; padding: 10px 12px; border-radius: 12px; color: #fff; font: 600 12px -apple-system, BlinkMacSystemFont, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+    .safety-banner.danger { background: rgba(206,17,38,.94); }
+    .safety-banner.warning { background: rgba(212,175,55,.96); color: #111; }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  ${safetyBanner}
   <script>
     var map = L.map('map', {
       center: [${userLat}, ${userLng}],

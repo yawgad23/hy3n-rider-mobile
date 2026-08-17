@@ -48,6 +48,7 @@ import { PostRideModal } from "@/components/post-ride-modal";
 import { calculateDynamicFare, calculateDistance, RideMetrics } from "@/lib/dynamic-pricing";
 import { getDistanceToPickup, getDistanceToDestination, estimateETA, formatDistance, isDriverNearPickup, calculateBearing } from "@/lib/driver-tracking";
 import { upsertRide, updateRide, removeRide, countActiveRides } from "@/lib/rider-ride-state";
+import { buildEmergencyAssistMessage, DEFAULT_RIDE_OPTIONS, getCancellationPolicy, getSafetySignal, RIDE_OPTION_DEFINITIONS, selectedRideOptionLabels, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -110,7 +111,10 @@ interface ActiveRide {
   finalFare?: number;
   firestoreId?: string;  // real Firestore document ID
   cancelReason?: string;
-  rideOptions?: { ac: boolean; pet_friendly: boolean; extra_luggage: boolean; wheelchair_accessible: boolean };
+  rideOptions?: RiderRideOptions;
+  safetySignal?: SafetySignal;
+  routeDeviationKm?: number;
+  driverStoppedAt?: number;
   matchedAt?: string;  // ISO timestamp when driver was matched — used for 2-min free cancel window
   actualDistanceKm?: number;
   currentFare?: number;
@@ -351,8 +355,16 @@ export default function HomeScreen() {
   const [cardCvv, setCardCvv] = useState("");
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ride options (AC, pet, luggage)
-  const [rideOptions, setRideOptions] = useState({ ac: false, pet_friendly: false, extra_luggage: false, wheelchair_accessible: false });
+  const [rideOptions, setRideOptions] = useState<RiderRideOptions>({ ...DEFAULT_RIDE_OPTIONS });
   const [showRideOptions, setShowRideOptions] = useState(false);
+
+  const updateRideOption = (key: keyof RiderRideOptions) => {
+    setRideOptions((previous) => {
+      const next = { ...previous, [key]: !previous[key] };
+      AsyncStorage.setItem(`rideOptions:${user?.uid ?? "guest"}`, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
   // In-ride chat
   const [showChat, setShowChat] = useState(false);
   // Waiting timer (rider side) — shows how long driver has been waiting at pickup
@@ -412,6 +424,17 @@ export default function HomeScreen() {
     });
   }, []);
 
+  useEffect(() => {
+    AsyncStorage.getItem(`rideOptions:${user?.uid ?? "guest"}`).then((value) => {
+      if (!value) return;
+      try {
+        setRideOptions({ ...DEFAULT_RIDE_OPTIONS, ...JSON.parse(value) });
+      } catch {
+        setRideOptions({ ...DEFAULT_RIDE_OPTIONS });
+      }
+    });
+  }, [user?.uid]);
+
   // Pending rating check: on app load, look for completed rides in last 24h with no rating
   useEffect(() => {
     if (!user?.uid) return;
@@ -460,6 +483,12 @@ export default function HomeScreen() {
             ? calculateETA(nextDriverLocation!, { lat: prev.destination.lat, lng: prev.destination.lng })
             : prev.eta;
           const enteredTrip = ride.status === 'in_progress' && prev.status !== 'in_progress';
+          const routeDeviationKm = Number((ride as any).route_deviation_km ?? prev.routeDeviationKm ?? 0);
+          const driverStoppedAt = nextDriverLocation && prev.driverLocation && calculateDistance(prev.driverLocation.lat, prev.driverLocation.lng, nextDriverLocation.lat, nextDriverLocation.lng) < 0.01
+            ? (prev.driverStoppedAt ?? Date.now())
+            : undefined;
+          const stoppedSeconds = driverStoppedAt ? Math.max(0, Math.floor((Date.now() - driverStoppedAt) / 1000)) : 0;
+          const safetySignal = getSafetySignal({ status: ride.status, distanceFromRouteKm: routeDeviationKm, stoppedSeconds });
 
           if (ride.status !== prev.status) {
             if (ride.status === 'matched' && driver) notifyDriverFound(driver.name, etaMin ?? 5);
@@ -500,6 +529,9 @@ export default function HomeScreen() {
             driverPhone: driver?.phone ?? prev.driverPhone,
             driverLocation: nextDriverLocation,
             driverBearing,
+            safetySignal,
+            routeDeviationKm,
+            driverStoppedAt,
             eta: etaMin ?? prev.eta,
             etaSeconds: (ride as any).eta_seconds ?? ((etaMin ?? 0) * 60),
             waitingFee: (ride as any).waiting_fee ?? prev.waitingFee,
@@ -681,6 +713,7 @@ export default function HomeScreen() {
   const discount = appliedPromo ? calculateDiscount(appliedPromo, baseFare) : 0;
   const finalFare = baseFare - discount;
   const preTipAmount = selectedTipPercent ? (finalFare * selectedTipPercent) / 100 : (customTip ? parseFloat(customTip) : 0);
+  const selectedOptionLabels = selectedRideOptionLabels(rideOptions);
 
   const [placeSuggestions, setPlaceSuggestions] = useState<Location[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -799,6 +832,7 @@ export default function HomeScreen() {
             duration,
             promoCode: appliedPromo ?? undefined,
             discount: appliedPromo ? Math.round((finalFare - surgedFare) * 100) / 100 : undefined,
+            rideOptions,
           });
         } catch (err) {
           console.error('Firestore ride creation failed, continuing with local state:', err);
@@ -820,6 +854,7 @@ export default function HomeScreen() {
           status: 'searching',
           scheduled: isScheduled ? scheduledFor : null,
           ridePin: pin,
+          rideOptions,
           surgeMultiplier: SURGE,
         });
         if (isScheduled) {
@@ -859,26 +894,17 @@ export default function HomeScreen() {
     setCancelReason("");
     setShowCancelModal(true);
   };
-  const FREE_CANCEL_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
-  const CANCEL_FEE = 2; // GH₵2
   const confirmCancelRide = async () => {
     if (activeRide?.firestoreId) {
       try {
-        // Check if outside the 2-min free cancellation window
-        const hasDriver = activeRide.matchedAt && ['driver_arriving', 'matched'].includes(activeRide.status);
-        const elapsedMs = hasDriver ? Date.now() - new Date(activeRide.matchedAt!).getTime() : 0;
-        const applyFee = hasDriver && elapsedMs > FREE_CANCEL_WINDOW_MS;
+        const policy = getCancellationPolicy(activeRide.status, activeRide.matchedAt);
         await dispatchService.cancelRide(
           activeRide.firestoreId,
           cancelReason || 'Cancelled by rider',
-          applyFee ? CANCEL_FEE : 0
+          policy.fee,
         );
-        if (applyFee) {
-          Alert.alert(
-            'Cancellation Fee Applied',
-            `A GH₵${CANCEL_FEE}.00 cancellation fee has been charged because you cancelled more than 2 minutes after your driver was matched.`,
-            [{ text: 'OK' }]
-          );
+        if (!policy.isFree) {
+          Alert.alert('Cancellation Fee Applied', `A GH₵${policy.fee.toFixed(2)} cancellation fee has been charged.`, [{ text: 'OK' }]);
         }
       } catch (e) { /* silent */ }
     }
@@ -944,9 +970,15 @@ export default function HomeScreen() {
       Alert.alert("Invalid Date/Time", "Please enter a valid date and time.");
       return;
     }
-    const minTime = Date.now() + 30 * 60 * 1000;
+    const now = Date.now();
+    const minTime = now + 30 * 60 * 1000;
+    const maxTime = now + 7 * 24 * 60 * 60 * 1000;
     if (scheduledDate.getTime() < minTime) {
       Alert.alert("Too Soon", "Scheduled rides must be at least 30 minutes from now.");
+      return;
+    }
+    if (scheduledDate.getTime() > maxTime) {
+      Alert.alert("Too Far Ahead", "HY3N scheduled rides can currently be booked up to 7 days ahead.");
       return;
     }
     setScheduledFor(
@@ -983,6 +1015,40 @@ export default function HomeScreen() {
     try {
       await Share.share({ message: msg, title: "My HY3N Trip" });
     } catch (e) {}
+  };
+
+  const handleEmergencyAssist = () => {
+    if (!activeRide) return;
+    const message = buildEmergencyAssistMessage({
+      rideId: activeRide.id,
+      pickup: activeRide.pickup,
+      destination: activeRide.destination.name,
+      driverName: activeRide.driverName,
+      driverPlate: activeRide.driverPlate,
+      driverVehicle: activeRide.driverVehicle,
+      latitude: activeRide.driverLocation?.lat,
+      longitude: activeRide.driverLocation?.lng,
+    });
+    Alert.alert("Emergency Assist", "Choose how to get help. Your trip summary can be shared with a trusted person.", [
+      {
+        text: "Share trip details",
+        onPress: async () => {
+          try { await Share.share({ message, title: "HY3N Emergency Assist" }); } catch {}
+        },
+      },
+      {
+        text: "Call emergency services",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            if (await Linking.canOpenURL("tel:112")) await Linking.openURL("tel:112");
+          } catch {
+            Alert.alert("Unable to call", "Please call 112 or your local emergency number directly.");
+          }
+        },
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   const handleFinishRide = async () => {
@@ -1159,11 +1225,26 @@ export default function HomeScreen() {
               </View>
               {/* Ride PIN row */}
               {activeRide.ridePin && (
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 8, paddingHorizontal: 14, backgroundColor: `#0A0A0A`, borderTopWidth: 0.5, borderTopColor: BORDER }}>
+                <TouchableOpacity
+                  onPress={async () => {
+                    try { await Share.share({ message: `My HY3N pickup code is ${activeRide.ridePin}. Please confirm it before the ride starts.`, title: "HY3N Pickup Code" }); } catch {}
+                  }}
+                  accessibilityLabel="Share ride pickup code"
+                  accessibilityHint="Shares the pickup code with the driver or a trusted person"
+                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 8, paddingHorizontal: 14, backgroundColor: `#0A0A0A`, borderTopWidth: 0.5, borderTopColor: BORDER }}
+                >
                   <MaterialIcons name="lock" size={14} color={GOLD} />
-                  <Text style={{ color: MUTED, fontSize: 12 }}>Ride PIN:</Text>
+                  <Text style={{ color: MUTED, fontSize: 12 }}>Pickup code:</Text>
                   <Text style={{ color: GOLD, fontWeight: "800", fontSize: 16, letterSpacing: 4 }}>{activeRide.ridePin}</Text>
-                  <Text style={{ color: MUTED, fontSize: 11 }}>— share with driver</Text>
+                  <Text style={{ color: MUTED, fontSize: 11 }}>Tap to share</Text>
+                </TouchableOpacity>
+              )}
+              {activeRide.rideOptions && selectedRideOptionLabels(activeRide.rideOptions).length > 0 && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8, paddingHorizontal: 14, backgroundColor: `${GREEN}12`, borderTopWidth: 0.5, borderTopColor: `${GREEN}44` }}>
+                  <MaterialIcons name="tune" size={15} color={GREEN} />
+                  <Text style={{ color: GREEN, fontSize: 11, flex: 1 }} numberOfLines={2}>
+                    Preferences: {selectedRideOptionLabels(activeRide.rideOptions).join(" · ")}
+                  </Text>
                 </View>
               )}
               {/* Surge badge if applicable */}
@@ -1236,6 +1317,25 @@ export default function HomeScreen() {
               </View>
             )}
 
+            {activeRide.safetySignal === "route_deviation" && (
+              <View style={{ flexDirection: "row", gap: 10, alignItems: "center", backgroundColor: `${RED}18`, borderColor: `${RED}66`, borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 10 }}>
+                <MaterialIcons name="route" size={20} color={RED} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: RED, fontWeight: "800", fontSize: 13 }}>Route check</Text>
+                  <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>Your driver appears to be away from the planned route. Use Emergency Assist or contact support if you feel unsafe.</Text>
+                </View>
+              </View>
+            )}
+            {activeRide.safetySignal === "long_stop" && (
+              <View style={{ flexDirection: "row", gap: 10, alignItems: "center", backgroundColor: `${GOLD}18`, borderColor: `${GOLD}66`, borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 10 }}>
+                <MaterialIcons name="pause-circle-outline" size={20} color={GOLD} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: GOLD, fontWeight: "800", fontSize: 13 }}>Trip check</Text>
+                  <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>The vehicle has been stationary for several minutes. Check in with your driver or use Emergency Assist.</Text>
+                </View>
+              </View>
+            )}
+
             {/* Trip Route */}
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 14, backgroundColor: `${CARD}`, borderRadius: 14, marginBottom: 10, borderWidth: 0.5, borderColor: BORDER, borderLeftWidth: 3, borderLeftColor: GOLD }}>
               <View style={{ alignItems: "center", gap: 4, marginTop: 2 }}>
@@ -1255,7 +1355,12 @@ export default function HomeScreen() {
               </View>
               <View style={{ alignItems: "flex-end" }}>
                 <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 16 }}>GH₵{liveFare.toFixed(2)}</Text>
+                <Text style={{ color: MUTED, fontSize: 10, marginTop: 3 }}>Estimate updates</Text>
               </View>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingTop: 10, marginTop: 2, borderTopWidth: 0.5, borderTopColor: BORDER }}>
+              <MaterialIcons name="lock" size={13} color={MUTED} />
+              <Text style={{ color: MUTED, fontSize: 11 }}>Payment: {activeRide.payment || "Selected method"} · locked for this ride</Text>
             </View>
 
             {/* Share Trip + SOS row */}
@@ -1268,18 +1373,13 @@ export default function HomeScreen() {
                 <Text style={{ color: MUTED, fontSize: 13, fontWeight: "500" }}>Share Trip</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => Alert.alert(
-                  '🚨 Emergency SOS',
-                  'This will immediately notify HY3N Safety team and your emergency contacts with your current location.',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Send SOS', style: 'destructive', onPress: () => Alert.alert('SOS Sent', 'HY3N Safety team and your emergency contacts have been notified.') },
-                  ]
-                )}
+                onPress={handleEmergencyAssist}
+                accessibilityLabel="Emergency assist"
+                accessibilityHint="Shares trip details or calls emergency services"
                 style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: `${RED}1A`, borderRadius: 12, borderWidth: 1, borderColor: `${RED}55` }}
               >
                 <MaterialIcons name="emergency" size={18} color={RED} />
-                <Text style={{ color: RED, fontSize: 13, fontWeight: "700" }}>SOS</Text>
+                <Text style={{ color: RED, fontSize: 13, fontWeight: "700" }}>Emergency</Text>
               </TouchableOpacity>
             </View>
 
@@ -1602,6 +1702,23 @@ export default function HomeScreen() {
         </View>
       )}
 
+      {/* Ride Preferences */}
+      <TouchableOpacity
+        onPress={() => setShowRideOptions(true)}
+        accessibilityLabel="Ride preferences"
+        accessibilityHint="Choose vehicle preferences for this booking"
+        style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, backgroundColor: selectedOptionLabels.length > 0 ? `${GREEN}1A` : CARD, borderWidth: 1, borderColor: selectedOptionLabels.length > 0 ? GREEN : BORDER, marginBottom: 12 }}
+      >
+        <MaterialIcons name="tune" size={18} color={selectedOptionLabels.length > 0 ? GREEN : MUTED} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: selectedOptionLabels.length > 0 ? GREEN : MUTED, fontSize: 13, fontWeight: "600" }}>Ride preferences</Text>
+          <Text style={{ color: MUTED, fontSize: 11 }} numberOfLines={1}>
+            {selectedOptionLabels.length > 0 ? selectedOptionLabels.join(" · ") : "AC, pet, luggage, or accessibility"}
+          </Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={20} color={MUTED} />
+      </TouchableOpacity>
+
       {/* Tip Selector */}
       <View style={{ marginBottom: 12 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
@@ -1889,6 +2006,7 @@ export default function HomeScreen() {
             : null
         }
         driverBearing={activeRide?.driverBearing ?? null}
+        safetySignal={activeRide?.safetySignal ?? "clear"}
         nearbyDrivers={nearbyDrivers}
       />
 
@@ -2010,12 +2128,48 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
+      {/* Ride Preferences Modal */}
+      <Modal visible={showRideOptions} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: SURFACE, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: insets.bottom + 24 }}>
+            <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>Ride preferences</Text>
+            <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>We’ll request these preferences when the matching supply supports them.</Text>
+            {RIDE_OPTION_DEFINITIONS.map((option) => {
+              const enabled = rideOptions[option.key];
+              return (
+                <TouchableOpacity
+                  key={option.key}
+                  onPress={() => updateRideOption(option.key)}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: enabled }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: BORDER }}
+                >
+                  <View style={{ width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: enabled ? `${GREEN}33` : CARD }}>
+                    <MaterialIcons name={option.icon as any} size={20} color={enabled ? GREEN : MUTED} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: TEXT, fontWeight: "600", fontSize: 14 }}>{option.label}</Text>
+                    <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{option.description}</Text>
+                  </View>
+                  <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: enabled ? GREEN : BORDER, alignItems: "center", justifyContent: "center" }}>
+                    {enabled && <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: GREEN }} />}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity onPress={() => setShowRideOptions(false)} style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, alignItems: "center", marginTop: 18 }}>
+              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Schedule Modal */}
       <Modal visible={showScheduleModal} transparent animationType="slide">
         <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: SURFACE, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: insets.bottom + 24 }}>
             <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>Schedule Trip</Text>
-            <Text style={{ color: MUTED, fontSize: 13, marginBottom: 20 }}>Must be at least 30 minutes from now</Text>
+            <Text style={{ color: MUTED, fontSize: 13, marginBottom: 20 }}>Book from 30 minutes to 7 days ahead</Text>
             <Text style={{ color: MUTED, fontSize: 12, marginBottom: 6 }}>Date (e.g. Jun 20, 2026)</Text>
             <TextInput
               value={scheduleDate}
@@ -2335,15 +2489,19 @@ export default function HomeScreen() {
         <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
           <View style={{ backgroundColor: CARD, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 }}>
             <Text style={{ color: TEXT, fontWeight: "800", fontSize: 18, marginBottom: 4 }}>Cancel Ride</Text>
-            {/* Show cancellation fee warning if outside 2-min free window */}
-            {activeRide?.matchedAt && ['driver_arriving', 'matched'].includes(activeRide.status) && Date.now() - new Date(activeRide.matchedAt).getTime() > FREE_CANCEL_WINDOW_MS ? (
-              <View style={{ backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 10, padding: 10, marginBottom: 12 }}>
-                <Text style={{ color: RED, fontSize: 13, fontWeight: '600' }}>⚠️ A GH₵2.00 cancellation fee will apply</Text>
-                <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>Your driver has been waiting more than 2 minutes. Cancellations after the free window incur a GH₵2 fee.</Text>
-              </View>
-            ) : (
-              <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>Please select a reason for cancelling:</Text>
-            )}
+            {(() => {
+              const policy = activeRide
+                ? getCancellationPolicy(activeRide.status, activeRide.matchedAt)
+                : { isFree: true, fee: 0, message: "Cancel without a fee." };
+              return policy.isFree ? (
+                <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>{policy.message} Select a reason for cancelling:</Text>
+              ) : (
+                <View style={{ backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                  <Text style={{ color: RED, fontSize: 13, fontWeight: '600' }}>⚠️ GH₵{policy.fee.toFixed(2)} cancellation fee may apply</Text>
+                  <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>{policy.message}</Text>
+                </View>
+              );
+            })()}
             {CANCEL_REASONS.map((reason) => (
               <TouchableOpacity
                 key={reason}

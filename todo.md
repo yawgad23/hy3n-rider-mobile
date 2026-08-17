@@ -555,3 +555,21 @@
 
 - [x] Remove Split Fare completely from the Rider App UI, booking state, handlers, and related copy
 - [x] Validate that booking, payment selection, tips, booking fee, surge, and multi-ride flows remain unaffected
+
+## Uber/Bolt Rider Parity Expansion (Aug 2026)
+
+- [x] Preserve the separate `hy3n-backend` boundary and avoid adding server, database, dispatch, webhook, or payment-authorisation code here
+- [x] Add robust ride-category cards with price, ETA, capacity, accessibility, and availability states
+- [x] Add pickup-code/PIN presentation and verification states for the rider
+- [x] Add explicit cancellation policy, fee messaging, reason selection, and cancellation recovery
+- [x] Add route-deviation and unexpected-long-stop safety states using mobile tracking data
+- [x] Add emergency assist flow with location/trip summary handoff to the existing backend contract
+- [x] Improve trusted contacts and share-trip flow with vehicle, driver, route, and live-location details
+- [ ] Add masked communication affordances and reliable in-ride support entry points
+- [ ] Improve upfront fare, payment-method locking, payment failure recovery, and receipt detail
+- [ ] Improve scheduled-ride availability, confirmation, reschedule, and cancellation states
+- [ ] Add locally supported ride options without inventing backend supply (for example premium, XL, electric, or women-for-women only when supported)
+- [ ] Add structured post-ride issue reporting, lost-item flow, and support handoff
+- [ ] Improve saved places, search history, promotions, loyalty, and rider notifications
+- [x] Add deterministic tests for new rider parity state transitions and safety flows
+- [x] Validate iOS, Android, and web-safe fallbacks without modifying the separate backend
