@@ -11,6 +11,7 @@ import {
   TextInput,
   ActivityIndicator,
   Share,
+  Linking,
 } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -18,6 +19,7 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/auth-context";
 import { firestoreDB, COLLECTIONS } from "@/lib/firebase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { buildLostItemDescription, buildLostItemSupportMessage, validateLostItemForm, type LostItemContactMethod } from "@/lib/lost-item-support";
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -125,6 +127,9 @@ export default function ActivityScreen() {
   const [reportNote, setReportNote] = useState("");
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [reportSubmitted, setReportSubmitted] = useState(false);
+  const [lostItemDescription, setLostItemDescription] = useState("");
+  const [lostItemContactMethod, setLostItemContactMethod] = useState<LostItemContactMethod>("whatsapp");
+  const [lostItemContactValue, setLostItemContactValue] = useState("");
 
   const pastRides = rides.filter(r => r.status !== "upcoming");
   const upcomingRides = rides.filter(r => r.status === "upcoming");
@@ -140,29 +145,42 @@ export default function ActivityScreen() {
     if (!selectedIssue) { Alert.alert("Required", "Please select an issue type"); return; }
     if (!user) { Alert.alert("Sign in required", "Please sign in again before submitting a report."); return; }
 
+    const isLostItem = selectedIssue === "Lost item in vehicle";
+    if (isLostItem) {
+      const validationError = validateLostItemForm({ itemDescription: lostItemDescription });
+      if (validationError) { Alert.alert("More details needed", validationError); return; }
+    }
+
     setReportSubmitting(true);
     try {
-      const description = reportNote.trim();
-      const rideId = reportRide?.id || selectedRide?.id || null;
+      const rideId = reportRide?.id || selectedRide?.id || "unknown-ride";
+      const description = isLostItem
+        ? buildLostItemDescription({ rideId, itemDescription: lostItemDescription, contactMethod: lostItemContactMethod, contactValue: lostItemContactValue })
+        : reportNote.trim();
 
       await firestoreDB.create(COLLECTIONS.SUPPORT_TICKETS, {
         user_id: user.uid,
         ride_id: rideId,
-        category: "Ride issue",
+        category: isLostItem ? "Lost item" : "Ride issue",
         subject: selectedIssue,
         description: description || selectedIssue,
+        preferred_contact_method: isLostItem ? lostItemContactMethod : undefined,
+        contact_details: isLostItem ? lostItemContactValue.trim() || undefined : undefined,
         status: "open",
         source: "rider_activity",
       });
 
-      if (selectedIssue === "Lost item in vehicle" && rideId) {
+      if (isLostItem && rideId !== "unknown-ride") {
         const driverId = (reportRide as any)?.driver_id || (reportRide as any)?.driverId || null;
         await firestoreDB.create(COLLECTIONS.RIDE_REPORTS, {
           ride_id: rideId,
           driver_id: driverId,
           rider_id: user.uid,
           report_type: "lost_item",
-          description: description || "Rider reported a lost item in the vehicle.",
+          item_description: lostItemDescription.trim(),
+          preferred_contact_method: lostItemContactMethod,
+          contact_details: lostItemContactValue.trim() || null,
+          description,
           status: "open",
           created_date: new Date().toISOString(),
         });
@@ -174,6 +192,34 @@ export default function ActivityScreen() {
     } finally {
       setReportSubmitting(false);
     }
+  };
+
+  const openLostItemSupport = async (channel: LostItemContactMethod) => {
+    const ride = reportRide || selectedRide;
+    if (!ride) return;
+    const message = buildLostItemSupportMessage({
+      rideId: ride.id,
+      itemDescription: lostItemDescription || "Lost item in vehicle",
+      contactMethod: lostItemContactMethod,
+      contactValue: lostItemContactValue,
+    }, ride.destination_address);
+    const encodedMessage = encodeURIComponent(message);
+    const urls: Record<LostItemContactMethod, string> = {
+      whatsapp: `https://wa.me/233200000000?text=${encodedMessage}`,
+      phone: "tel:+233200000000",
+      email: `mailto:hello@ridehy3n.com?subject=HY3N%20Lost%20Item%20Support&body=${encodedMessage}`,
+    };
+    try {
+      const url = urls[channel];
+      if (await Linking.canOpenURL(url)) {
+        await Linking.openURL(url);
+        return;
+      }
+    } catch {}
+    Alert.alert("Open 24/7 support", "Choose another support channel from the HY3N Support Center.", [
+      { text: "Open Support Center", onPress: () => { setShowReport(false); router.push("/support"); } },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   return (
@@ -437,6 +483,9 @@ export default function ActivityScreen() {
                       setReportRide(selectedRide);
                       setSelectedIssue("Lost item in vehicle");
                       setReportNote("");
+                      setLostItemDescription("");
+                      setLostItemContactMethod("whatsapp");
+                      setLostItemContactValue("");
                       setReportSubmitted(false);
                       setShowReport(true);
                     }}
@@ -451,6 +500,9 @@ export default function ActivityScreen() {
                       setReportRide(selectedRide);
                       setSelectedIssue(null);
                       setReportNote("");
+                      setLostItemDescription("");
+                      setLostItemContactMethod("whatsapp");
+                      setLostItemContactValue("");
                       setReportSubmitted(false);
                       setShowReport(true);
                     }}
@@ -500,7 +552,25 @@ export default function ActivityScreen() {
                   <MaterialIcons name="check-circle" size={40} color={GREEN} />
                 </View>
                 <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, marginBottom: 8 }}>Report Submitted!</Text>
-                <Text style={{ color: MUTED, fontSize: 13, textAlign: "center", marginBottom: 24 }}>Our team will review your report within 24 hours</Text>
+                <Text style={{ color: MUTED, fontSize: 13, textAlign: "center", marginBottom: 16 }}>Your case is open. Our 24/7 support team can help coordinate recovery.</Text>
+                {selectedIssue === "Lost item in vehicle" && (
+                  <View style={{ flexDirection: "row", gap: 8, width: "100%", marginBottom: 18 }}>
+                    {([
+                      { id: "whatsapp" as const, label: "WhatsApp", icon: "chat" },
+                      { id: "phone" as const, label: "Call 24/7", icon: "call" },
+                      { id: "email" as const, label: "Email", icon: "email" },
+                    ]).map((channel) => (
+                      <TouchableOpacity
+                        key={channel.id}
+                        onPress={() => openLostItemSupport(channel.id)}
+                        style={{ flex: 1, alignItems: "center", gap: 4, paddingVertical: 10, borderRadius: 10, backgroundColor: `${GOLD}12`, borderWidth: 1, borderColor: `${GOLD}55` }}
+                      >
+                        <MaterialIcons name={channel.icon as any} size={16} color={GOLD} />
+                        <Text style={{ color: GOLD, fontSize: 10, fontWeight: "700" }}>{channel.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
                 <TouchableOpacity onPress={() => setShowReport(false)} style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 40 }}>
                   <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Done</Text>
                 </TouchableOpacity>
@@ -513,31 +583,105 @@ export default function ActivityScreen() {
                     <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{formatDate(reportRide.created_date)}</Text>
                   </View>
                 )}
-                <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 10 }}>Select Issue Type</Text>
-                <View style={{ gap: 8, marginBottom: 16 }}>
-                  {REPORT_ISSUES.map((issue) => (
-                    <TouchableOpacity
-                      key={issue}
-                      onPress={() => setSelectedIssue(issue)}
-                      style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 12, backgroundColor: selectedIssue === issue ? `${RED}1A` : CARD, borderWidth: 1, borderColor: selectedIssue === issue ? `${RED}66` : BORDER }}
-                    >
-                      <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: selectedIssue === issue ? RED : BORDER, alignItems: "center", justifyContent: "center" }}>
-                        {selectedIssue === issue && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: RED }} />}
+                {selectedIssue !== "Lost item in vehicle" ? (
+                  <>
+                    <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 10 }}>Select Issue Type</Text>
+                    <View style={{ gap: 8, marginBottom: 16 }}>
+                      {REPORT_ISSUES.map((issue) => (
+                        <TouchableOpacity
+                          key={issue}
+                          onPress={() => setSelectedIssue(issue)}
+                          style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 12, backgroundColor: selectedIssue === issue ? `${RED}1A` : CARD, borderWidth: 1, borderColor: selectedIssue === issue ? `${RED}66` : BORDER }}
+                        >
+                          <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: selectedIssue === issue ? RED : BORDER, alignItems: "center", justifyContent: "center" }}>
+                            {selectedIssue === issue && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: RED }} />}
+                          </View>
+                          <Text style={{ color: selectedIssue === issue ? TEXT : MUTED, fontSize: 14, fontWeight: selectedIssue === issue ? "600" : "400" }}>{issue}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Additional Notes (Optional)</Text>
+                    <TextInput
+                      value={reportNote}
+                      onChangeText={setReportNote}
+                      placeholder="Describe what happened..."
+                      placeholderTextColor="#4A4A4A"
+                      multiline
+                      numberOfLines={4}
+                      style={{ backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 13, borderWidth: 1, borderColor: BORDER, minHeight: 90, textAlignVertical: "top", marginBottom: 20 }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <View style={{ backgroundColor: `${GOLD}14`, borderRadius: 14, borderWidth: 1, borderColor: `${GOLD}55`, padding: 14, marginBottom: 16 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                        <MaterialIcons name="support-agent" size={18} color={GOLD} />
+                        <Text style={{ color: GOLD, fontWeight: "700", fontSize: 13 }}>Lost-item recovery</Text>
                       </View>
-                      <Text style={{ color: selectedIssue === issue ? TEXT : MUTED, fontSize: 14, fontWeight: selectedIssue === issue ? "600" : "400" }}>{issue}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Additional Notes (Optional)</Text>
-                <TextInput
-                  value={reportNote}
-                  onChangeText={setReportNote}
-                  placeholder="Describe what happened..."
-                  placeholderTextColor="#4A4A4A"
-                  multiline
-                  numberOfLines={4}
-                  style={{ backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 13, borderWidth: 1, borderColor: BORDER, minHeight: 90, textAlignVertical: "top", marginBottom: 20 }}
-                />
+                      <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18 }}>Tell us what was lost and how we should reach you. We’ll attach this trip’s details to your support case.</Text>
+                    </View>
+                    <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>What did you lose?</Text>
+                    <TextInput
+                      value={lostItemDescription}
+                      onChangeText={setLostItemDescription}
+                      placeholder="Describe the item, colour, and where you left it"
+                      placeholderTextColor="#4A4A4A"
+                      multiline
+                      numberOfLines={4}
+                      accessibilityLabel="Lost item description"
+                      style={{ backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 13, borderWidth: 1, borderColor: BORDER, minHeight: 100, textAlignVertical: "top", marginBottom: 16 }}
+                    />
+                    <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Preferred support channel</Text>
+                    <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+                      {([
+                        { id: "whatsapp" as const, label: "WhatsApp", icon: "chat" },
+                        { id: "phone" as const, label: "Call", icon: "call" },
+                        { id: "email" as const, label: "Email", icon: "email" },
+                      ]).map((channel) => {
+                        const active = lostItemContactMethod === channel.id;
+                        return (
+                          <TouchableOpacity
+                            key={channel.id}
+                            onPress={() => setLostItemContactMethod(channel.id)}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected: active }}
+                            style={{ flex: 1, alignItems: "center", gap: 4, paddingVertical: 10, borderRadius: 10, backgroundColor: active ? `${GREEN}1A` : CARD, borderWidth: 1, borderColor: active ? GREEN : BORDER }}
+                          >
+                            <MaterialIcons name={channel.icon as any} size={17} color={active ? GREEN : MUTED} />
+                            <Text style={{ color: active ? GREEN : MUTED, fontSize: 11, fontWeight: "600" }}>{channel.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <TextInput
+                      value={lostItemContactValue}
+                      onChangeText={setLostItemContactValue}
+                      placeholder="Phone, email, or WhatsApp number (optional)"
+                      placeholderTextColor="#4A4A4A"
+                      autoCapitalize="none"
+                      keyboardType={lostItemContactMethod === "phone" ? "phone-pad" : "default"}
+                      accessibilityLabel="Preferred contact details"
+                      style={{ backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 13, borderWidth: 1, borderColor: BORDER, marginBottom: 16 }}
+                    />
+                    <View style={{ flexDirection: "row", gap: 8, marginBottom: 20 }}>
+                      {([
+                        { id: "whatsapp" as const, label: "Open WhatsApp", icon: "chat" },
+                        { id: "phone" as const, label: "Call 24/7", icon: "call" },
+                        { id: "email" as const, label: "Email Support", icon: "email" },
+                      ]).map((channel) => (
+                        <TouchableOpacity
+                          key={channel.id}
+                          onPress={() => openLostItemSupport(channel.id)}
+                          accessibilityLabel={channel.label}
+                          style={{ flex: 1, alignItems: "center", gap: 4, paddingVertical: 9, borderRadius: 10, backgroundColor: `${GOLD}12`, borderWidth: 1, borderColor: `${GOLD}55` }}
+                        >
+                          <MaterialIcons name={channel.icon as any} size={15} color={GOLD} />
+                          <Text style={{ color: GOLD, fontSize: 10, fontWeight: "700", textAlign: "center" }}>{channel.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
                 <TouchableOpacity
                   onPress={handleSubmitReport}
                   disabled={reportSubmitting}
@@ -548,7 +692,7 @@ export default function ActivityScreen() {
                   ) : (
                     <>
                       <MaterialIcons name="flag" size={18} color="#fff" />
-                      <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Submit Report</Text>
+                      <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>{selectedIssue === "Lost item in vehicle" ? "Submit Lost-Item Case" : "Submit Report"}</Text>
                     </>
                   )}
                 </TouchableOpacity>

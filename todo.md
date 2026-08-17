@@ -573,3 +573,11 @@
 - [ ] Improve saved places, search history, promotions, loyalty, and rider notifications
 - [x] Add deterministic tests for new rider parity state transitions and safety flows
 - [x] Validate iOS, Android, and web-safe fallbacks without modifying the separate backend
+
+## Lost-Item Support Integration (Aug 2026)
+
+- [x] Add a structured lost-item contact form from completed ride details
+- [x] Include ride context, item description, preferred contact method, and optional callback details
+- [x] Link the form directly to existing 24/7 WhatsApp, phone, email, and support-screen handoffs
+- [x] Preserve the separate hy3n-backend boundary and use the existing support/report data path only
+- [x] Add deterministic validation tests for required lost-item fields and support handoff formatting

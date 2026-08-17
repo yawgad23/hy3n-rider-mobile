@@ -4,6 +4,7 @@ import { calculateDynamicFare, calculateDistance } from "@/lib/dynamic-pricing";
 import { calculateBearing, estimateETA, interpolatePosition } from "@/lib/driver-tracking";
 import { countActiveRides, removeRide, updateRide, upsertRide, type RideStateRecord } from "@/lib/rider-ride-state";
 import { buildEmergencyAssistMessage, getCancellationPolicy, getSafetySignal, selectedRideOptionLabels } from "@/lib/rider-parity";
+import { buildLostItemDescription, buildLostItemSupportMessage, validateLostItemForm } from "@/lib/lost-item-support";
 
 type TestRide = RideStateRecord & { fare: number };
 
@@ -52,6 +53,14 @@ describe("HY3N Rider App feature math", () => {
     });
     expect(message).toContain("HY3N emergency assist request");
     expect(message).toContain("maps.google.com/?q=5.56,-0.18");
+  });
+
+  it("validates lost-item details and builds a support handoff with ride context", () => {
+    expect(validateLostItemForm({ itemDescription: "" })).toBe("Please describe the item you lost.");
+    expect(validateLostItemForm({ itemDescription: "Black wallet" })).toBeNull();
+    const form = { rideId: "ride-123", itemDescription: "Black wallet under the rear seat", contactMethod: "whatsapp" as const, contactValue: "0501234567" };
+    expect(buildLostItemDescription(form)).toContain("Preferred contact: whatsapp");
+    expect(buildLostItemSupportMessage(form, "Airport")).toContain("Destination: Airport");
   });
 
   it("keeps simultaneous rides isolated when one ride is added, updated, or removed", () => {
