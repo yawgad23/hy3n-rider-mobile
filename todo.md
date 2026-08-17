@@ -534,7 +534,7 @@
 
 ## Current Rider App Delivery Continuation (Aug 2026)
 
-- [ ] Resolve GitHub 403 write access for yawgad23/hy3n-rider-mobile
+- [x] Resolve GitHub 403 write access for yawgad23/hy3n-rider-mobile
 - [x] Display live actual-distance fare updates on every active ride card and map sheet
 - [x] Refactor active ride state to support multiple simultaneous rides independently
 - [x] Show active ride count as a tab badge and preserve per-ride tracking subscriptions
