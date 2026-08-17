@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { firebaseAuth, firestoreDB, COLLECTIONS } from './firebase';
 import type { User } from 'firebase/auth';
-import { setPersistence, browserLocalPersistence } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
@@ -30,6 +29,7 @@ interface AuthContextType {
   setGuestMode: (val: boolean) => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string, inviteCode?: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -168,6 +168,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setRiderProfile((prev) => prev ? { ...prev, ...updated } : prev);
   };
 
+  const signInWithGoogle = async () => {
+    console.log("Inside signInWithGoogle helper in AuthProvider");
+    try {
+      const firebaseUser = await firebaseAuth.loginWithGoogle();
+      console.log("Firebase loginWithGoogle returned user:", firebaseUser?.uid);
+      setGuestMode(false);
+      await loadProfile(firebaseUser);
+    } catch (e: any) {
+      console.error("Error in signInWithGoogle helper:", e);
+      throw e;
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -177,6 +190,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setGuestMode,
       signIn,
       signUp,
+      signInWithGoogle,
       signOut: signOutUser,
       deleteAccount,
       refreshProfile,

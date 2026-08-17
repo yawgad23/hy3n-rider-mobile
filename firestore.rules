@@ -1,209 +1,97 @@
 rules_version = '2';
+
+// Firestore Security Rules — HY3N Rider (project: hy3n26)
+//
+// Scope: only the collections the rider app's client SDK reads/writes directly.
+// Everything written via the server (firebase-admin in server/_core, server/routers.ts,
+// server/_core/hubtelWebhook.ts) bypasses these rules entirely, so it is intentionally
+// NOT opened up here — e.g. wallets and wallet_transactions are server-write-only.
+//
+// Known limitation: dispatchService.rateDriver() in lib/dispatch.ts recalculates a
+// driver's average rating by querying ALL rides for that driver_id from the rider's
+// own session. That query can't be made to satisfy a per-rider ownership rule without
+// exposing every rider's ride history to every other rider, so it is left denied here.
+// It already fails gracefully (caught + console.warn) — the fix is to move that
+// recalculation server-side (Admin SDK) rather than loosen these rules.
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // ─── Helper Functions ───────────────────────────────────────────────────
-    
-    /**
-     * Check if user is authenticated
-     */
-    function isAuthenticated() {
-      return request.auth != null;
+
+    // Rider's own profile. Auto-ID document with a `user_id` field (not doc-id-as-uid).
+    match /rider_profiles/{profileId} {
+      allow read, update, delete: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
     }
-    
-    /**
-     * Check if user is the document owner (for personal data)
-     */
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-    
-    /**
-     * Check if user is an admin
-     * Admin status is stored in custom claims or a separate admin collection
-     */
-    function isAdmin() {
-      return request.auth.token.role == 'admin' || 
-             exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
-    
-    /**
-     * Check if user is a driver
-     */
-    function isDriver() {
-      return request.auth.token.role == 'driver' || 
-             get(/databases/$(database)/documents/drivers/$(request.auth.uid)).data.active == true;
-    }
-    
-    /**
-     * Check if user is a rider
-     */
-    function isRider() {
-      return request.auth.token.role == 'rider' || 
-             get(/databases/$(database)/documents/riders/$(request.auth.uid)).data.active == true;
-    }
-    
-    /**
-     * Validate wallet transaction amount (must be positive)
-     */
-    function isValidAmount() {
-      return request.resource.data.amount > 0;
-    }
-    
-    /**
-     * Check if transaction type is valid
-     */
-    function isValidTransactionType() {
-      return request.resource.data.type in ['credit', 'debit', 'refund'];
-    }
-    
-    // ─── Wallet Collection Rules ────────────────────────────────────────────
-    
-    /**
-     * /wallets/{userId}
-     * 
-     * Rules:
-     * - Users can only read/write their own wallet
-     * - Admins can read all wallets (for analytics/debugging)
-     * - Balance can only be modified by server (Firebase Admin SDK)
-     * - Prevent direct client-side balance manipulation
-     */
+
+    // Wallet balance — doc ID is the rider's uid. All writes happen server-side
+    // (tRPC wallet.topup + Hubtel webhook via Admin SDK), so the client is read-only.
     match /wallets/{userId} {
-      // Read: Owner or admin
-      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      
-      // Write: Server only (via Firebase Admin SDK)
-      // Client-side writes are blocked to prevent balance tampering
+      allow read: if request.auth != null && request.auth.uid == userId;
       allow write: if false;
-      
-      // Subcollection: Wallet transactions
-      match /transactions/{transactionId} {
-        // Read: Owner or admin
-        allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
-        
-        // Write: Server only
-        allow write: if false;
-      }
     }
-    
-    // ─── Wallet Transactions Collection Rules ──────────────────────────────
-    
-    /**
-     * /wallet_transactions/{transactionId}
-     * 
-     * Rules:
-     * - Users can read their own transactions
-     * - Admins can read all transactions
-     * - Only server can create transactions
-     */
-    match /wallet_transactions/{transactionId} {
-      allow read: if isAuthenticated() && 
-                     (request.auth.uid == resource.data.user_id || isAdmin());
-      
-      allow create: if false; // Server only
-      allow update: if false; // Prevent modification of historical records
-      allow delete: if false; // Prevent deletion
+
+    // Wallet transactions — created/updated only by the server. Client reads its own.
+    match /wallet_transactions/{txId} {
+      allow read: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow write: if false;
     }
-    
-    // ─── Daily Commission Collection Rules ──────────────────────────────────
-    
-    /**
-     * /daily_commissions/{commissionId}
-     * 
-     * Rules:
-     * - Drivers can read their own commission records
-     * - Admins can read all commissions
-     * - Only server can create/update commissions
-     * - Prevent drivers from modifying commission status
-     */
-    match /daily_commissions/{commissionId} {
-      allow read: if isAuthenticated() && 
-                     (request.auth.uid == resource.data.driver_id || isAdmin());
-      
-      allow create: if false; // Server only
-      allow update: if false; // Server only (webhook updates)
-      allow delete: if false; // Prevent deletion
-    }
-    
-    // ─── Rides Collection Rules ─────────────────────────────────────────────
-    
-    /**
-     * /rides/{rideId}
-     * 
-     * Rules:
-     * - Riders can read/write their own rides
-     * - Drivers can read/write rides they're assigned to
-     * - Admins can read all rides
-     */
+
+    // Rides — rider creates/owns; driver_id clause supports the driver app sharing
+    // this same Firestore database. rider_id is immutable after creation.
     match /rides/{rideId} {
-      // Read: Owner (rider or driver) or admin
-      allow read: if isAuthenticated() && 
-                     (request.auth.uid == resource.data.rider_id ||
-                      request.auth.uid == resource.data.driver_id ||
-                      isAdmin());
-      
-      // Write: Owner (rider or driver) only
-      allow write: if isAuthenticated() && 
-                      (request.auth.uid == resource.data.rider_id ||
-                       request.auth.uid == resource.data.driver_id);
+      allow read: if request.auth != null &&
+        (resource.data.rider_id == request.auth.uid || resource.data.driver_id == request.auth.uid);
+      allow create: if request.auth != null && request.resource.data.rider_id == request.auth.uid;
+      allow update: if request.auth != null &&
+        (resource.data.rider_id == request.auth.uid || resource.data.driver_id == request.auth.uid) &&
+        request.resource.data.rider_id == resource.data.rider_id;
+      allow delete: if false;
     }
-    
-    // ─── Drivers Collection Rules ───────────────────────────────────────────
-    
-    /**
-     * /drivers/{driverId}
-     * 
-     * Rules:
-     * - Drivers can read/write their own profile
-     * - Admins can read all driver profiles
-     */
-    match /drivers/{driverId} {
-      allow read: if isAuthenticated() && 
-                     (isOwner(driverId) || isAdmin());
-      
-      allow write: if isAuthenticated() && isOwner(driverId);
-      
-      // Prevent direct modification of sensitive fields
-      allow update: if isAuthenticated() && isOwner(driverId) &&
-                       !request.resource.data.diff(resource.data).affectedKeys()
-                         .hasAny(['total_earnings', 'rating', 'verified']);
+
+    // In-ride chat. Membership is checked against the parent ride doc.
+    match /ride_messages/{messageId} {
+      allow read, delete: if request.auth != null &&
+        (get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.rider_id == request.auth.uid ||
+         get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.driver_id == request.auth.uid);
+      allow create: if request.auth != null &&
+        request.resource.data.sender_id == request.auth.uid &&
+        (get(/databases/$(database)/documents/rides/$(request.resource.data.ride_id)).data.rider_id == request.auth.uid ||
+         get(/databases/$(database)/documents/rides/$(request.resource.data.ride_id)).data.driver_id == request.auth.uid);
+      // markMessagesAsRead flips `read` on the OTHER participant's messages.
+      allow update: if request.auth != null &&
+        (get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.rider_id == request.auth.uid ||
+         get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.driver_id == request.auth.uid) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
     }
-    
-    // ─── Riders Collection Rules ────────────────────────────────────────────
-    
-    /**
-     * /riders/{riderId}
-     * 
-     * Rules:
-     * - Riders can read/write their own profile
-     * - Admins can read all rider profiles
-     */
-    match /riders/{riderId} {
-      allow read: if isAuthenticated() && 
-                     (isOwner(riderId) || isAdmin());
-      
-      allow write: if isAuthenticated() && isOwner(riderId);
+
+    // Driver directory — riders need to see available drivers to be matched.
+    // Profile owner (driver) manages their own doc.
+    match /driver_profiles/{driverId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if request.auth != null && request.resource.data.user_id == request.auth.uid;
     }
-    
-    // ─── Admin Collection Rules ─────────────────────────────────────────────
-    
-    /**
-     * /admins/{adminId}
-     * 
-     * Rules:
-     * - Only admins can read admin collection
-     * - Prevent unauthorized elevation to admin
-     */
-    match /admins/{adminId} {
-      allow read: if isAuthenticated() && isAdmin();
-      allow write: if false; // Server only
+
+    // Support tickets — rider creates/reads own; status changes are back-office only.
+    match /support_tickets/{ticketId} {
+      allow read: if request.auth != null && resource.data.user_id == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if false;
     }
-    
-    // ─── Default Deny ───────────────────────────────────────────────────────
-    
-    /**
-     * Deny all other access by default
-     */
+
+    // Lost-item / ride reports — filed by riders (lost_item) or drivers (found_item).
+    // driver_id clause mirrors the rides rule so both apps can share this collection.
+    match /ride_reports/{reportId} {
+      allow read: if request.auth != null &&
+        (resource.data.rider_id == request.auth.uid || resource.data.driver_id == request.auth.uid);
+      allow create: if request.auth != null &&
+        (request.resource.data.rider_id == request.auth.uid || request.resource.data.driver_id == request.auth.uid);
+      allow update, delete: if false;
+    }
+
+    // Everything else (scheduled_rides, loyalty_*, saved_places, referrals,
+    // sos_incidents, promo_codes, payments, daily_commissions, ...) is currently
+    // only touched server-side via Admin SDK, which bypasses these rules — so it's
+    // deny-by-default here until client code actually needs it.
     match /{document=**} {
       allow read, write: if false;
     }

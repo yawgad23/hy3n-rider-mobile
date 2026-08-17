@@ -41,6 +41,7 @@ const env = {
 const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
+  owner: "yawgad",
   version: "1.0.0",
   extra: {
     eas: {
@@ -115,7 +116,19 @@ const config: ExpoConfig = {
           buildArchs: ["armeabi-v7a", "arm64-v8a"],
           minSdkVersion: 24,
         },
+        ios: {
+          // Enables modular headers for Expo's own pods (needed for some of
+          // them to build as static libraries). Doesn't cover third-party
+          // pods — see plugins/withPodfileModularHeaders.js below for the
+          // AppCheckCore/GoogleUtilities/RecaptchaInterop ones pulled in by
+          // Google Sign-In, which this option has no effect on.
+          useModularHeaders: true,
+        },
       },
+    ],
+    [
+      "./plugins/withPodfileModularHeaders",
+      {},
     ],
   ],
   experiments: {

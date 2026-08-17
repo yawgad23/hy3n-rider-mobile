@@ -99,32 +99,35 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="activity"
+        name="history"
         options={{
-          title: "Activity",
+          title: "History",
           tabBarIcon: ({ color, focused }) => (
             <TabBarIcon name="access-time" color={color} focused={focused} />
           ),
         }}
       />
       <Tabs.Screen
-        name="wallet"
+        name="profile"
         options={{
-          title: "Wallet",
-          tabBarIcon: ({ color, focused }) => (
-            <TabBarIcon name="account-balance-wallet" color={color} focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="account"
-        options={{
-          title: "Account",
+          title: "Profile",
           tabBarIcon: ({ color, focused }) => (
             <TabBarIcon name="person" color={color} focused={focused} />
           ),
         }}
       />
+      <Tabs.Screen
+        name="support"
+        options={{
+          title: "Support",
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="support-agent" color={color} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen name="activity" options={{ href: null }} />
+      <Tabs.Screen name="wallet" options={{ href: null }} />
+      <Tabs.Screen name="account" options={{ href: null }} />
     </Tabs>
   );
 }

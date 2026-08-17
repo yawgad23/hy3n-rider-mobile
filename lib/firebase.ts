@@ -68,17 +68,19 @@ const firebaseConfig = {
 // Initialize Firebase (avoid re-initialization)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
-// Use initializeAuth with platform-appropriate persistence
-// Web: browserLocalPersistence (localStorage) | Native: AsyncStorage
+// Initialize Auth using standard getAuth on Web (includes popup resolver),
+// and initializeAuth with AsyncStorage on Native.
 let auth: ReturnType<typeof getAuth>;
-try {
-  const persistence = Platform.OS === 'web'
-    ? browserLocalPersistence
-    : getReactNativePersistence(AsyncStorage);
-  auth = initializeAuth(app, { persistence });
-} catch (e: any) {
-  // Already initialized — get existing instance
+if (Platform.OS === 'web') {
   auth = getAuth(app);
+} else {
+  try {
+    const persistence = getReactNativePersistence(AsyncStorage);
+    auth = initializeAuth(app, { persistence });
+  } catch (e: any) {
+    // Fallback if already initialized
+    auth = getAuth(app);
+  }
 }
 
 const db = getFirestore(app);
@@ -170,30 +172,18 @@ export const firestoreDB = {
   },
 
   async list(collectionName: string, filters: Record<string, any> = {}, orderByField = 'created_date', orderDir: 'asc' | 'desc' = 'desc', limitNum?: number) {
-    try {
-      const colRef = collection(db, collectionName);
-      const constraints: any[] = [];
-      for (const [field, value] of Object.entries(filters)) {
-        if (value !== undefined && value !== null) {
-          constraints.push(where(field, '==', value));
-        }
+    const colRef = collection(db, collectionName);
+    const constraints: any[] = [];
+    for (const [field, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null) {
+        constraints.push(where(field, '==', value));
       }
-      constraints.push(orderBy(orderByField, orderDir));
-      if (limitNum) constraints.push(firestoreLimit(limitNum));
-      const q = query(colRef, ...constraints);
-      const snap = await getDocs(q);
-      return snapshotToArray(snap);
-    } catch (err: any) {
-      // Fallback: fetch all and filter in memory
-      const snap = await getDocs(collection(db, collectionName));
-      let results = snapshotToArray(snap);
-      for (const [field, value] of Object.entries(filters)) {
-        if (value !== undefined && value !== null) {
-          results = results.filter((d: any) => d[field] === value);
-        }
-      }
-      return results;
     }
+    constraints.push(orderBy(orderByField, orderDir));
+    if (limitNum) constraints.push(firestoreLimit(limitNum));
+    const q = query(colRef, ...constraints);
+    const snap = await getDocs(q);
+    return snapshotToArray(snap);
   },
 
   async create(collectionName: string, data: Record<string, any>) {

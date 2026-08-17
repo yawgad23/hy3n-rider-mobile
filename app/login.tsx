@@ -6,9 +6,9 @@ import {
 import { router } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { auth } from '@/lib/firebase';
+import { auth, app } from '@/lib/firebase';
 import { PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
-import { RecaptchaVerifier } from 'firebase/auth';
+import { FirebaseRecaptchaVerifierModal, type FirebaseRecaptchaVerifierHandle } from '@/components/firebase-recaptcha-verifier';
 
 const GOLD = '#D4AF37';
 const GREEN = '#006B3F';
@@ -33,11 +33,11 @@ function GoogleIcon() {
 }
 
 export default function LoginScreen() {
-  const { signIn } = useAuth();
+  const { signIn, signInWithGoogle } = useAuth();
   const [tab, setTab] = useState<LoginTab>('phone');
 
-  // Recaptcha verifier for phone auth
-  const recaptchaVerifier = useRef<RecaptchaVerifier | null>(null);
+  // Recaptcha ref for phone auth (native only — see below)
+  const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierHandle>(null);
 
   // Phone OTP state
   const [phone, setPhone] = useState('');
@@ -67,20 +67,9 @@ export default function LoginScreen() {
       setPhoneError('Phone OTP is not available on web. Please use the Email tab to log in.');
       return;
     }
-    // Create recaptcha verifier if not already created
     if (!recaptchaVerifier.current) {
-      try {
-        recaptchaVerifier.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
-          size: 'invisible',
-          callback: () => {},
-          'expired-callback': () => {
-            recaptchaVerifier.current = null;
-          },
-        });
-      } catch (err) {
-        setPhoneError('Failed to initialize verification. Please try again.');
-        return;
-      }
+      setPhoneError('Recaptcha not ready. Please try again.');
+      return;
     }
     setPhoneLoading(true);
     try {
@@ -145,8 +134,16 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      {/* Recaptcha container for web verification */}
-      <View id="recaptcha-container" style={{ display: 'none' }} />
+      {/* Firebase Recaptcha Verifier — invisible, required for phone OTP on native only */}
+      {Platform.OS !== 'web' && (
+        <FirebaseRecaptchaVerifierModal
+          ref={recaptchaVerifier}
+          firebaseConfig={app.options}
+          attemptInvisibleVerification={true}
+          title="Verify you're human"
+          cancelLabel="Cancel"
+        />
+      )}
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
@@ -323,11 +320,27 @@ export default function LoginScreen() {
         {/* Google Sign-In — proper multicolour G logo */}
         <TouchableOpacity
           style={styles.googleBtn}
-          onPress={() => Alert.alert(
-            'Google Sign-In',
-            'Google Sign-In is available in the published app. Please use Phone or Email login for now.',
-            [{ text: 'OK' }]
-          )}
+          onPress={async () => {
+            console.log("Google button pressed in UI");
+            try {
+              if (Platform.OS === 'web') {
+                console.log("Platform is web, calling signInWithGoogle...");
+                await signInWithGoogle();
+                console.log("Google Sign-In completed successfully, routing...");
+                router.replace('/(tabs)' as any);
+              } else {
+                console.log("Platform is native, showing alert...");
+                Alert.alert(
+                  'Google Sign-In',
+                  'Google Sign-In is available in the published app. Please use Phone or Email login for now.',
+                  [{ text: 'OK' }]
+                );
+              }
+            } catch (err: any) {
+              console.error("Catch block in Google Sign-In button handler:", err);
+              Alert.alert('Error', err.message || 'Google Sign-In failed');
+            }
+          }}
           activeOpacity={0.85}
         >
           {/* Proper Google G logo using SVG-style coloured text on white circle */}
