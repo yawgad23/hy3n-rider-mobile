@@ -90,8 +90,6 @@ interface ActiveRide {
   paymentId: string;
   status: "searching" | "matched" | "driver_arriving" | "driver_arrived" | "in_progress" | "completed" | "cancelled";
   scheduled?: string | null;
-  splitData?: { totalPeople: number; perPersonFare: number } | null;
-  splitContacts?: Array<{ name: string; phone: string }>;
   driverName?: string;
   driverRating?: number;
   driverVehicle?: string;
@@ -305,14 +303,7 @@ export default function HomeScreen() {
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
 
-  // Split Fare
-  const [splitData, setSplitData] = useState<{ totalPeople: number; perPersonFare: number } | null>(null);
-  const [showSplitModal, setShowSplitModal] = useState(false);
-
-  const [splitCount, setSplitCount] = useState("2");
-  const [splitContacts, setSplitContacts] = useState<Array<{ name: string; phone: string }>>([{ name: "", phone: "" }]);
-
-  // Tip (pre-ride) - declared after perPersonFare
+  // Tip (pre-ride)
   const [selectedTipPercent, setSelectedTipPercent] = useState<number | null>(null);
   const [customTip, setCustomTip] = useState<string>("");
 
@@ -406,7 +397,6 @@ export default function HomeScreen() {
     "Can you call me?",
     "I'm outside now",
   ];
-  const getSplitPeopleCount = useCallback(() => Math.max(2, Math.min(6, parseInt(splitCount || "2"))), [splitCount]);
   const isWalletPayment = (ride: ActiveRide) => ride.paymentId === "wallet" || ride.payment?.toLowerCase() === "wallet";
 
   useEffect(() => {
@@ -450,15 +440,6 @@ export default function HomeScreen() {
     const t = setTimeout(checkPendingRating, 2000);
     return () => clearTimeout(t);
   }, [user?.uid]);
-
-  useEffect(() => {
-    const count = getSplitPeopleCount();
-    setSplitContacts((prev) => {
-      const next = [...prev];
-      while (next.length < count - 1) next.push({ name: "", phone: "" });
-      return next.slice(0, count - 1);
-    });
-  }, [getSplitPeopleCount]);
 
   // Subscribe independently to every active ride so one booking never replaces another.
   const activeRideKeys = activeRides.map((ride) => ride.firestoreId || ride.id).join('|');
@@ -699,8 +680,7 @@ export default function HomeScreen() {
   const baseFare = destination ? calculateFare(selectedCategory.id, distance, duration) : 0;
   const discount = appliedPromo ? calculateDiscount(appliedPromo, baseFare) : 0;
   const finalFare = baseFare - discount;
-  const perPersonFare = splitData ? finalFare / splitData.totalPeople : finalFare;
-  const preTipAmount = selectedTipPercent ? (perPersonFare * selectedTipPercent) / 100 : (customTip ? parseFloat(customTip) : 0);
+  const preTipAmount = selectedTipPercent ? (finalFare * selectedTipPercent) / 100 : (customTip ? parseFloat(customTip) : 0);
 
   const [placeSuggestions, setPlaceSuggestions] = useState<Location[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -778,7 +758,7 @@ export default function HomeScreen() {
 
     setBookingLoading(true);
     const pin = generateRidePin();
-    const surgedFare = Math.round(perPersonFare * SURGE * 100) / 100;
+    const surgedFare = Math.round(finalFare * SURGE * 100) / 100;
     try {
       if (selectedPayment.id === "wallet" && user?.uid) {
         const wallet = await firestoreDB.get(COLLECTIONS.WALLET, user.uid);
@@ -813,12 +793,12 @@ export default function HomeScreen() {
             stops: stops.filter(Boolean).map(s => ({ lat: s!.lat, lng: s!.lng, name: s!.name, address: s!.address || s!.name })),
             payment: selectedPayment.id,
             fare: surgedFare,
-            baseFare: perPersonFare,
+            baseFare: finalFare,
             surgeMultiplier: SURGE,
             distance,
             duration,
             promoCode: appliedPromo ?? undefined,
-            discount: appliedPromo ? Math.round((perPersonFare - surgedFare) * 100) / 100 : undefined,
+            discount: appliedPromo ? Math.round((finalFare - surgedFare) * 100) / 100 : undefined,
           });
         } catch (err) {
           console.error('Firestore ride creation failed, continuing with local state:', err);
@@ -839,8 +819,6 @@ export default function HomeScreen() {
           paymentId: selectedPayment.id,
           status: 'searching',
           scheduled: isScheduled ? scheduledFor : null,
-          splitData,
-          splitContacts: splitContacts.slice(0, getSplitPeopleCount() - 1),
           ridePin: pin,
           surgeMultiplier: SURGE,
         });
@@ -868,7 +846,6 @@ export default function HomeScreen() {
   ];
   const resetBookingState = () => {
     setDestination(null);
-    setSplitData(null);
     setStops([]);
     setAppliedPromo(null);
     setIsScheduled(false);
@@ -955,26 +932,6 @@ export default function HomeScreen() {
     setAppliedPromo(code);
     setPromoExpanded(false);
     setPromoError("");
-  };
-
-  const handleSplitConfirm = () => {
-    const count = getSplitPeopleCount();
-    if (isNaN(count) || count < 2 || count > 6) {
-      Alert.alert("Invalid", "Please enter a number between 2 and 6");
-      return;
-    }
-    const requiredContacts = splitContacts.slice(0, count - 1);
-    const invalidContact = requiredContacts.some((c) => {
-      const normalizedPhone = c.phone.replace(/\D/g, "");
-      const validPhone = /^0\d{9}$/.test(normalizedPhone) || /^233\d{9}$/.test(normalizedPhone);
-      return !c.name.trim() || !validPhone;
-    });
-    if (invalidContact) {
-      Alert.alert("Invalid contacts", "Please enter all rider names and valid Ghana phone numbers for split fare.");
-      return;
-    }
-    setSplitData({ totalPeople: count, perPersonFare: parseFloat((finalFare / count).toFixed(2)) });
-    setShowSplitModal(false);
   };
 
   const handleScheduleConfirm = () => {
@@ -1298,23 +1255,8 @@ export default function HomeScreen() {
               </View>
               <View style={{ alignItems: "flex-end" }}>
                 <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 16 }}>GH₵{liveFare.toFixed(2)}</Text>
-                {activeRide.splitData && (
-                  <Text style={{ color: GREEN, fontSize: 10 }}>÷{activeRide.splitData.totalPeople}</Text>
-                )}
               </View>
             </View>
-
-            {activeRide.splitData && (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 10, backgroundColor: `${GOLD}1A`, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: `${GOLD}33` }}>
-                <MaterialIcons name="group" size={16} color={GOLD} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: GOLD, fontSize: 12, fontWeight: "600" }}>
-                    Split with {activeRide.splitData.totalPeople - 1} friend{activeRide.splitData.totalPeople > 2 ? "s" : ""}
-                  </Text>
-                  <Text style={{ color: MUTED, fontSize: 11 }}>Your share: GH₵{activeRide.splitData.perPersonFare.toFixed(2)}</Text>
-                </View>
-              </View>
-            )}
 
             {/* Share Trip + SOS row */}
             <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
@@ -1660,39 +1602,6 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Split Fare */}
-      <TouchableOpacity
-        onPress={() => setShowSplitModal(true)}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 10,
-          padding: 12,
-          borderRadius: 12,
-          backgroundColor: splitData ? `${GOLD}1A` : CARD,
-          borderWidth: 1,
-          borderColor: splitData ? GOLD : BORDER,
-          marginBottom: 10,
-        }}
-      >
-        <MaterialIcons name="group" size={18} color={splitData ? GOLD : MUTED} />
-        <View style={{ flex: 1 }}>
-          {splitData ? (
-            <>
-              <Text style={{ color: GOLD, fontSize: 13, fontWeight: "600" }}>Split with {splitData.totalPeople - 1} friend{splitData.totalPeople > 2 ? "s" : ""}</Text>
-              <Text style={{ color: MUTED, fontSize: 11 }}>GH₵{splitData.perPersonFare.toFixed(2)} each</Text>
-            </>
-          ) : (
-            <Text style={{ color: MUTED, fontSize: 13, fontWeight: "500" }}>Split fare with friends</Text>
-          )}
-        </View>
-        {splitData && (
-          <TouchableOpacity onPress={(e) => { setSplitData(null); }}>
-            <MaterialIcons name="close" size={16} color={MUTED} />
-          </TouchableOpacity>
-        )}
-      </TouchableOpacity>
-
       {/* Tip Selector */}
       <View style={{ marginBottom: 12 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
@@ -1795,22 +1704,21 @@ export default function HomeScreen() {
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <View>
             <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "700", marginBottom: 4 }}>
-              {splitData ? "Your Share" : "Estimated Fare"}
+              Estimated Fare
             </Text>
-            {splitData && <Text style={{ color: MUTED, fontSize: 11 }}>Total Trip: GH₵{finalFare.toFixed(2)}</Text>}
             {discount > 0 && (
               <Text style={{ color: MUTED, fontSize: 11, textDecorationLine: "line-through" }}>GH₵{baseFare.toFixed(2)}</Text>
             )}
           </View>
           <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 24 }}>
-            GH₵{Math.max(0, perPersonFare * 0.92).toFixed(2)}–{(perPersonFare * 1.12).toFixed(2)}
+            GH₵{Math.max(0, finalFare * 0.92).toFixed(2)}–{(finalFare * 1.12).toFixed(2)}
           </Text>
         </View>
         {/* Fare breakdown with booking fee */}
         <View style={{ borderTopWidth: 0.5, borderTopColor: BORDER, paddingTop: 10 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
             <Text style={{ color: MUTED, fontSize: 11 }}>Base fare + distance</Text>
-            <Text style={{ color: TEXT, fontSize: 11, fontWeight: "600" }}>GH₵{(perPersonFare * 0.85).toFixed(2)}</Text>
+            <Text style={{ color: TEXT, fontSize: 11, fontWeight: "600" }}>GH₵{(finalFare * 0.85).toFixed(2)}</Text>
           </View>
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
             <Text style={{ color: MUTED, fontSize: 11 }}>Booking fee</Text>
@@ -1848,7 +1756,7 @@ export default function HomeScreen() {
           <>
             <MaterialIcons name={isScheduled ? "event" : "navigation"} size={20} color="#fff" />
             <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>
-              {isScheduled ? "Schedule Trip" : `Request HY3N · GH₵${perPersonFare.toFixed(2)}`}
+              {isScheduled ? "Schedule Trip" : `Request HY3N · GH₵${finalFare.toFixed(2)}`}
             </Text>
           </>
         )}
@@ -2131,60 +2039,6 @@ export default function HomeScreen() {
               <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Confirm Schedule</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowScheduleModal(false)} style={{ alignItems: "center", paddingVertical: 10 }}>
-              <Text style={{ color: MUTED, fontSize: 14 }}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Split Fare Modal */}
-      <Modal visible={showSplitModal} transparent animationType="slide">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: SURFACE, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: insets.bottom + 24 }}>
-            <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>Split Fare</Text>
-            <Text style={{ color: MUTED, fontSize: 13, marginBottom: 20 }}>Share the cost with friends (2–6 people)</Text>
-            <Text style={{ color: MUTED, fontSize: 12, marginBottom: 8 }}>Number of people (including you)</Text>
-            <View style={{ flexDirection: "row", gap: 8, marginBottom: 20 }}>
-              {[2, 3, 4, 5, 6].map((n) => (
-                <TouchableOpacity
-                  key={n}
-                  onPress={() => setSplitCount(String(n))}
-                  style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: "center", backgroundColor: splitCount === String(n) ? `${GOLD}1A` : CARD, borderWidth: 1, borderColor: splitCount === String(n) ? GOLD : BORDER }}
-                >
-                  <Text style={{ color: splitCount === String(n) ? GOLD : TEXT, fontWeight: "bold", fontSize: 16 }}>{n}</Text>
-                  <Text style={{ color: MUTED, fontSize: 10, marginTop: 2 }}>GH₵{(finalFare / n).toFixed(2)}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={{ color: MUTED, fontSize: 12, marginBottom: 8 }}>
-              Contact picker (enter friend details)
-            </Text>
-            {splitContacts.slice(0, getSplitPeopleCount() - 1).map((contact, idx) => (
-              <View key={idx} style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
-                <TextInput
-                  value={contact.name}
-                  onChangeText={(text) => setSplitContacts((prev) => prev.map((c, i) => (i === idx ? { ...c, name: text } : c)))}
-                  placeholder={`Friend ${idx + 1} name`}
-                  placeholderTextColor="#4A4A4A"
-                  style={{ flex: 1, backgroundColor: CARD, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: TEXT, borderWidth: 1, borderColor: BORDER, fontSize: 12 }}
-                />
-                <TextInput
-                  value={contact.phone}
-                  onChangeText={(text) => setSplitContacts((prev) => prev.map((c, i) => (i === idx ? { ...c, phone: text } : c)))}
-                  placeholder="+233..."
-                  placeholderTextColor="#4A4A4A"
-                  keyboardType="phone-pad"
-                  style={{ flex: 1, backgroundColor: CARD, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: TEXT, borderWidth: 1, borderColor: BORDER, fontSize: 12 }}
-                />
-              </View>
-            ))}
-            <TouchableOpacity
-              onPress={handleSplitConfirm}
-              style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, alignItems: "center", marginBottom: 10 }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Confirm Split</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowSplitModal(false)} style={{ alignItems: "center", paddingVertical: 10 }}>
               <Text style={{ color: MUTED, fontSize: 14 }}>Cancel</Text>
             </TouchableOpacity>
           </View>

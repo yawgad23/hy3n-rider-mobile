@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const { width: W, height: H } = Dimensions.get("window");
+const { width: W } = Dimensions.get("window");
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -55,14 +55,6 @@ const SLIDES = [
     title: "Safe & Secure",
     description:
       "SOS emergency button, verified drivers, and trusted contacts for your peace of mind.",
-  },
-  {
-    icon: "people" as const,
-    color: GREEN,
-    bg: `${GREEN}1A`,
-    title: "Split Fare",
-    description:
-      "Share rides and split costs with friends — saving money has never been easier.",
   },
 ];
 

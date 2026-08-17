@@ -543,3 +543,15 @@
 - [x] Run Expo Doctor and production-oriented TypeScript/lint/test validation
 - [ ] Save a final managed-project checkpoint before production builds
 - [ ] Generate iOS and Android builds from the Expo web dashboard after checkpoint confirmation
+
+## Architecture Correction (Aug 2026)
+
+- [ ] Treat `hy3n-rider-mobile` as a mobile-client-only repository; backend remains in the separate `hy3n-backend` repository
+- [ ] Remove or isolate managed fullstack deployment expectations (`server`/`dist`) from Rider App deployment metadata
+- [ ] Verify Rider App API configuration points only to the deployed separate backend service
+- [ ] Validate and synchronize any mobile-only configuration correction to GitHub
+
+## Rider UX Change (Aug 2026)
+
+- [x] Remove Split Fare completely from the Rider App UI, booking state, handlers, and related copy
+- [x] Validate that booking, payment selection, tips, booking fee, surge, and multi-ride flows remain unaffected
