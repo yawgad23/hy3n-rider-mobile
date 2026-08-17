@@ -37,6 +37,23 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { user, loading } = useAuth();
   const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const [activeRideCount, setActiveRideCount] = useState(0);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setActiveRideCount(0);
+      return;
+    }
+    const key = `activeRideCount:${user.uid}`;
+    const readCount = async () => {
+      const stored = await AsyncStorage.getItem(key);
+      const count = Number.parseInt(stored ?? '0', 10);
+      setActiveRideCount(Number.isFinite(count) ? Math.max(0, count) : 0);
+    };
+    readCount().catch(() => setActiveRideCount(0));
+    const interval = setInterval(() => { readCount().catch(() => {}); }, 1000);
+    return () => clearInterval(interval);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (loading) return;
@@ -93,6 +110,8 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Home",
+          tabBarBadge: activeRideCount > 0 ? activeRideCount : undefined,
+          tabBarBadgeStyle: { backgroundColor: "#D4AF37", color: "#0A0A0A", fontWeight: "700" },
           tabBarIcon: ({ color, focused }) => (
             <TabBarIcon name="home" color={color} focused={focused} />
           ),

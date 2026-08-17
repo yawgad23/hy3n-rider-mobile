@@ -97,6 +97,7 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    "expo-asset",
     [
       "expo-splash-screen",
       {

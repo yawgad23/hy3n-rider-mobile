@@ -406,7 +406,7 @@
 - [ ] Driver marker on map with vehicle icon
 - [ ] Route polyline from driver to pickup location
 - [ ] Route polyline from pickup to destination
-- [ ] ETA countdown timer (updates every second)
+- [x] ETA countdown timer (updates every second)
 - [ ] Distance to driver display (e.g., "2.3 km away")
 - [ ] Map auto-zoom to show driver + rider + destination
 - [ ] Driver speed indicator
@@ -514,20 +514,32 @@
 ## Critical Features (Jul 22)
 
 ### 1. Dynamic Pricing Model
-- [ ] Track actual distance during ride (not static per-km)
-- [ ] Update fare in real-time as rider moves
-- [ ] Charge based on: base fare + (actual distance × rate) + surge + booking fee + tip
-- [ ] Show live fare breakdown during ride
+- [x] Track actual distance during ride (not static per-km)
+- [x] Update fare in real-time as rider moves
+- [x] Charge based on: base fare + (actual distance × rate) + surge + booking fee + tip
+- [x] Show live fare breakdown during ride
 
 ### 2. Multiple Simultaneous Rides
-- [ ] Refactor activeRide state to activeRides array
-- [ ] Allow booking new ride while another is active
-- [ ] Show all active rides in tab bar badge
-- [ ] Switch between active rides in UI
+- [x] Refactor activeRide state to activeRides array
+- [x] Allow booking new ride while another is active
+- [x] Show all active rides in tab bar badge
+- [x] Switch between active rides in UI
 
 ### 3. Real-Time Driver Tracking
-- [ ] Live driver location updates on map (every 2-3 seconds)
-- [ ] Driver marker animation as location changes
-- [ ] Route visualization (driver → pickup → destination)
-- [ ] ETA countdown timer (updates every second)
-- [ ] Distance to pickup display
+- [x] Live driver location updates on map (every 2-3 seconds)
+- [x] Driver marker animation as location changes
+- [x] Route visualization (driver → pickup → destination)
+- [x] ETA countdown timer (updates every second)
+- [x] Distance to pickup display
+
+## Current Rider App Delivery Continuation (Aug 2026)
+
+- [ ] Resolve GitHub 403 write access for yawgad23/hy3n-rider-mobile
+- [x] Display live actual-distance fare updates on every active ride card and map sheet
+- [x] Refactor active ride state to support multiple simultaneous rides independently
+- [x] Show active ride count as a tab badge and preserve per-ride tracking subscriptions
+- [x] Animate the driver marker smoothly and show bearing direction on the map
+- [x] Add deterministic unit tests for dynamic fare updates, multi-ride state, ETA countdown, and marker interpolation
+- [x] Run Expo Doctor and production-oriented TypeScript/lint/test validation
+- [ ] Save a final managed-project checkpoint before production builds
+- [ ] Generate iOS and Android builds from the Expo web dashboard after checkpoint confirmation

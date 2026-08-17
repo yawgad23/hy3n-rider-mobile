@@ -15,6 +15,7 @@ interface LeafletMapProps {
   userLocation?: [number, number];
   destination?: [number, number] | null;
   driverLocation?: [number, number] | null;
+  driverBearing?: number | null;
   nearbyDrivers?: NearbyDriver[];
 }
 
@@ -31,6 +32,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     userLocation,
     destination = null,
     driverLocation = null,
+    driverBearing = null,
     nearbyDrivers = [],
   },
   ref
@@ -53,6 +55,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   const destLng = destination ? destination[1] : null;
   const driverLat = driverLocation ? driverLocation[0] : null;
   const driverLng = driverLocation ? driverLocation[1] : null;
+  const bearing = typeof driverBearing === "number" ? driverBearing : 0;
 
   // Serialize nearby drivers for injection into the WebView HTML
   const nearbyDriversJson = JSON.stringify(
@@ -124,9 +127,9 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     ${driverLat !== null ? `
     // Driver marker (car icon)
     var driverIcon = L.divIcon({
-      html: '<div style="width:24px;height:24px;border-radius:50%;background:#CE1126;border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-size:12px;">🚗</div>',
-      iconSize: [24, 24],
-      iconAnchor: [12, 12],
+      html: '<div style="width:30px;height:30px;border-radius:50%;background:#CE1126;border:3px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(206,17,38,.55);transition:transform .9s linear;transform:rotate(${bearing}deg);"><div style="color:#fff;font-size:16px;line-height:1;transform:translateY(-1px);">➤</div></div>',
+      iconSize: [30, 30],
+      iconAnchor: [15, 15],
       className: '',
     });
     var driverMarker = L.marker([${driverLat}, ${driverLng}], { icon: driverIcon }).addTo(map);

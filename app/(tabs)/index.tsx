@@ -46,7 +46,8 @@ import { useVoiceCall } from "@/hooks/use-voice-call";
 import { InCallScreen, IncomingCallModal } from "@/components/in-call-screen";
 import { PostRideModal } from "@/components/post-ride-modal";
 import { calculateDynamicFare, calculateDistance, RideMetrics } from "@/lib/dynamic-pricing";
-import { getDistanceToPickup, getDistanceToDestination, estimateETA, formatDistance, isDriverNearPickup } from "@/lib/driver-tracking";
+import { getDistanceToPickup, getDistanceToDestination, estimateETA, formatDistance, isDriverNearPickup, calculateBearing } from "@/lib/driver-tracking";
+import { upsertRide, updateRide, removeRide, countActiveRides } from "@/lib/rider-ride-state";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -81,6 +82,7 @@ interface ActiveRide {
   categoryId: string;
   destination: Location;
   pickup: string;
+  pickupLocation: Location;
   distance: number;
   duration: number;
   fare: number;
@@ -97,6 +99,8 @@ interface ActiveRide {
   driverColour?: string;
   driverColourHex?: string;
   driverPhoto?: string;
+  driverLocation?: { lat: number; lng: number };
+  driverBearing?: number;
   driverTotalTrips?: number;
   driverPhone?: string;
   ridePin?: string;
@@ -110,6 +114,10 @@ interface ActiveRide {
   cancelReason?: string;
   rideOptions?: { ac: boolean; pet_friendly: boolean; extra_luggage: boolean; wheelchair_accessible: boolean };
   matchedAt?: string;  // ISO timestamp when driver was matched — used for 2-min free cancel window
+  actualDistanceKm?: number;
+  currentFare?: number;
+  trackingStartedAt?: number;
+  lastRiderLocation?: { lat: number; lng: number };
 }
 
 const DEFAULT_LOCATION: [number, number] = [5.6037, -0.187]; // Accra, Ghana
@@ -238,8 +246,47 @@ export default function HomeScreen() {
     { name: "Home", address: "Set location" },
     { name: "Work", address: "Set location" },
   ]);
-  const [activeRide, setActiveRide] = useState<ActiveRide | null>(null);
+  const [activeRides, setActiveRides] = useState<ActiveRide[]>([]);
+  const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
+  const activeRide = activeRides.find((ride) => ride.id === selectedRideId) ?? activeRides[0] ?? null;
   const [bookingLoading, setBookingLoading] = useState(false);
+
+  const addActiveRide = useCallback((ride: ActiveRide) => {
+    setActiveRides((prev) => upsertRide(prev, ride));
+    setSelectedRideId(ride.id);
+  }, []);
+
+  const updateActiveRide = useCallback((
+    rideIdOrUpdater: string | ((ride: ActiveRide) => ActiveRide),
+    targetedUpdater?: (ride: ActiveRide) => ActiveRide,
+  ) => {
+    setActiveRides((prev) => typeof rideIdOrUpdater === 'string'
+      ? updateRide(prev, rideIdOrUpdater, targetedUpdater ?? ((ride) => ride))
+      : prev.map(rideIdOrUpdater));
+  }, []);
+
+  const removeActiveRide = useCallback((rideId?: string) => {
+    if (!rideId) return;
+    setActiveRides((prev) => removeRide(prev, rideId));
+    setSelectedRideId((current) => current === rideId ? null : current);
+  }, []);
+
+  useEffect(() => {
+    if (activeRides.length === 0) {
+      setSelectedRideId(null);
+      return;
+    }
+    if (!selectedRideId || !activeRides.some((ride) => ride.id === selectedRideId)) {
+      setSelectedRideId(activeRides[0].id);
+    }
+  }, [activeRides, selectedRideId]);
+
+  // Keep the active ride count available to the tab layout for a persistent badge.
+  useEffect(() => {
+    if (!user?.uid) return;
+    const count = countActiveRides(activeRides);
+    AsyncStorage.setItem(`activeRideCount:${user.uid}`, String(count)).catch(() => {});
+  }, [activeRides, user?.uid]);
   
   // Dynamic pricing & driver tracking
   const [rideMetrics, setRideMetrics] = useState<RideMetrics | null>(null);
@@ -413,81 +460,132 @@ export default function HomeScreen() {
     });
   }, [getSplitPeopleCount]);
 
-  // Real Firestore ride listener — subscribes to live ride updates when a Firestore ride ID is set
-  const firestoreUnsubRef = useRef<(() => void) | null>(null);
+  // Subscribe independently to every active ride so one booking never replaces another.
+  const activeRideKeys = activeRides.map((ride) => ride.firestoreId || ride.id).join('|');
   useEffect(() => {
-    if (!activeRide?.firestoreId) return;
-    // Unsubscribe from any previous listener
-    if (firestoreUnsubRef.current) firestoreUnsubRef.current();
-    const unsub = dispatchService.listenToRide(activeRide.firestoreId, (ride: DispatchRide) => {
-      setActiveRide(prev => {
-        if (!prev) return null;
-        const driver = ride.driver;
-        const etaMin = driver
-          ? calculateETA({ lat: driver.location.lat, lng: driver.location.lng }, { lat: prev.destination.lat, lng: prev.destination.lng })
-          : prev.eta;
-        // Fire notifications on status transitions
-        if (ride.status !== prev.status) {
-          if (ride.status === 'matched' && driver) notifyDriverFound(driver.name, etaMin ?? 5);
-          if (ride.status === 'driver_arriving' && driver) notifyDriverArriving(driver.name);
-          if (ride.status === 'in_progress') notifyTripStarted(prev.destination.name);
-          if (ride.status === 'completed') notifyTripCompleted(prev.fare);
-        }
-        // Update driver location for tracking
-        if (driver) {
-          setDriverLocation({ lat: driver.location.lat, lng: driver.location.lng });
-          
-          // Calculate distances for dynamic pricing
-          const pickupLat = typeof prev.pickup === 'object' ? (prev.pickup as any).lat : 0;
-          const pickupLng = typeof prev.pickup === 'object' ? (prev.pickup as any).lng : 0;
-          const distToPickup = calculateDistance(
-            driver.location.lat,
-            driver.location.lng,
-            pickupLat,
-            pickupLng
-          );
-          const distToDestination = calculateDistance(
-            pickupLat,
-            pickupLng,
-            prev.destination.lat,
-            prev.destination.lng
-          );
-          
-          setDistanceToPickup(distToPickup);
-          setDistanceToDestination(distToDestination);
-          setEtaMinutes(etaMin ?? 0);
-        }
-        
-        return {
-          ...prev,
-          status: ride.status as ActiveRide['status'],
-          driverName: driver?.name ?? prev.driverName,
-          driverRating: driver?.rating ?? prev.driverRating,
-          driverVehicle: driver ? `${driver.vehicle_make} ${driver.vehicle_model}` : prev.driverVehicle,
-          driverPlate: driver?.plate ?? prev.driverPlate,
-          driverColour: driver?.vehicle_colour ?? prev.driverColour,
-          driverColourHex: driver?.vehicle_colour_hex ?? prev.driverColourHex,
-          driverTotalTrips: driver?.total_trips ?? prev.driverTotalTrips,
-          driverPhone: driver?.phone ?? prev.driverPhone,
-          eta: etaMin ?? prev.eta,
-          // Prefer live eta_seconds written by driver GPS; fall back to calculated
-          etaSeconds: (ride as any).eta_seconds ?? ((etaMin ?? 0) * 60),
-          waitingFee: (ride as any).waiting_fee ?? prev.waitingFee,
-          // Record when driver was first matched so we can enforce 2-min free cancel window
-          matchedAt: prev.matchedAt ?? ((ride.status === 'driver_arriving' || ride.status === 'matched') && !prev.matchedAt ? new Date().toISOString() : prev.matchedAt),
-          finalFare: ride.status === 'completed' ? prev.fare : prev.finalFare,
-        };
-      });
-    });
-    firestoreUnsubRef.current = unsub;
-    return () => unsub();
-  }, [activeRide?.firestoreId]);
+    const subscriptions = activeRides
+      .filter((ride) => Boolean(ride.firestoreId))
+      .map((trackedRide) => dispatchService.listenToRide(trackedRide.firestoreId!, (ride: DispatchRide) => {
+        updateActiveRide((prev) => {
+          if (prev.id !== trackedRide.id) return prev;
+          const driver = ride.driver;
+          const nextDriverLocation = driver
+            ? { lat: driver.location.lat, lng: driver.location.lng }
+            : prev.driverLocation;
+          const driverBearing = nextDriverLocation && prev.driverLocation
+            ? calculateBearing(prev.driverLocation.lat, prev.driverLocation.lng, nextDriverLocation.lat, nextDriverLocation.lng)
+            : prev.driverBearing;
+          const etaMin = driver
+            ? calculateETA(nextDriverLocation!, { lat: prev.destination.lat, lng: prev.destination.lng })
+            : prev.eta;
+          const enteredTrip = ride.status === 'in_progress' && prev.status !== 'in_progress';
+
+          if (ride.status !== prev.status) {
+            if (ride.status === 'matched' && driver) notifyDriverFound(driver.name, etaMin ?? 5);
+            if (ride.status === 'driver_arriving' && driver) notifyDriverArriving(driver.name);
+            if (ride.status === 'in_progress') notifyTripStarted(prev.destination.name);
+            if (ride.status === 'completed') notifyTripCompleted(prev.currentFare ?? prev.fare);
+          }
+
+          if (trackedRide.id === selectedRideId && nextDriverLocation) {
+            setDriverLocation(nextDriverLocation);
+            const distToPickup = calculateDistance(
+              nextDriverLocation.lat,
+              nextDriverLocation.lng,
+              prev.pickupLocation.lat,
+              prev.pickupLocation.lng,
+            );
+            const distToDestination = calculateDistance(
+              prev.pickupLocation.lat,
+              prev.pickupLocation.lng,
+              prev.destination.lat,
+              prev.destination.lng,
+            );
+            setDistanceToPickup(distToPickup);
+            setDistanceToDestination(distToDestination);
+            setEtaMinutes(etaMin ?? 0);
+          }
+
+          return {
+            ...prev,
+            status: ride.status as ActiveRide['status'],
+            driverName: driver?.name ?? prev.driverName,
+            driverRating: driver?.rating ?? prev.driverRating,
+            driverVehicle: driver ? `${driver.vehicle_make} ${driver.vehicle_model}` : prev.driverVehicle,
+            driverPlate: driver?.plate ?? prev.driverPlate,
+            driverColour: driver?.vehicle_colour ?? prev.driverColour,
+            driverColourHex: driver?.vehicle_colour_hex ?? prev.driverColourHex,
+            driverTotalTrips: driver?.total_trips ?? prev.driverTotalTrips,
+            driverPhone: driver?.phone ?? prev.driverPhone,
+            driverLocation: nextDriverLocation,
+            driverBearing,
+            eta: etaMin ?? prev.eta,
+            etaSeconds: (ride as any).eta_seconds ?? ((etaMin ?? 0) * 60),
+            waitingFee: (ride as any).waiting_fee ?? prev.waitingFee,
+            matchedAt: prev.matchedAt ?? ((ride.status === 'driver_arriving' || ride.status === 'matched') ? new Date().toISOString() : prev.matchedAt),
+            trackingStartedAt: enteredTrip ? Date.now() : prev.trackingStartedAt,
+            actualDistanceKm: prev.actualDistanceKm ?? 0,
+            currentFare: ride.status === 'completed' ? (prev.currentFare ?? prev.fare) : prev.currentFare,
+            finalFare: ride.status === 'completed' ? (prev.currentFare ?? prev.fare) : prev.finalFare,
+          };
+        });
+      }));
+    return () => subscriptions.forEach((unsubscribe) => unsubscribe());
+  }, [activeRideKeys, selectedRideId, updateActiveRide]);
+
+  // Update fare from the rider's actual GPS movement while any ride is in progress.
+  const inProgressRideKeys = activeRides.filter((ride) => ride.status === 'in_progress').map((ride) => ride.id).join('|');
+  useEffect(() => {
+    if (!inProgressRideKeys) return;
+    let subscription: ExpoLocation.LocationSubscription | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
+        if (status !== 'granted' || cancelled) return;
+        subscription = await ExpoLocation.watchPositionAsync(
+          { accuracy: ExpoLocation.Accuracy.Balanced, timeInterval: 5000, distanceInterval: 10 },
+          (location) => {
+            const point = { lat: location.coords.latitude, lng: location.coords.longitude };
+            setUserLocation([point.lat, point.lng]);
+            updateActiveRide((prev) => {
+              if (prev.status !== 'in_progress') return prev;
+              const last = prev.lastRiderLocation;
+              const incremental = last ? calculateDistance(last.lat, last.lng, point.lat, point.lng) : 0;
+              const actualDistanceKm = (prev.actualDistanceKm ?? 0) + incremental;
+              const trackingStartedAt = prev.trackingStartedAt ?? Date.now();
+              const elapsedMinutes = Math.max(0, (Date.now() - trackingStartedAt) / 60000);
+              const breakdown = calculateDynamicFare(prev.categoryId, {
+                startTime: trackingStartedAt,
+                actualDistanceKm,
+                elapsedMinutes,
+                waitingMinutes: 0,
+                surgeMultiplier: prev.surgeMultiplier ?? 1,
+              });
+              if (prev.id === selectedRideId) {
+                setRideMetrics({ startTime: trackingStartedAt, actualDistanceKm, elapsedMinutes, waitingMinutes: 0, surgeMultiplier: prev.surgeMultiplier ?? 1 });
+                setCurrentDynamicFare(breakdown.total);
+                setTotalDistanceTraveled(actualDistanceKm);
+              }
+              return { ...prev, lastRiderLocation: point, actualDistanceKm, trackingStartedAt, currentFare: breakdown.total };
+            });
+          },
+        );
+      } catch {
+        // Location can be unavailable in web preview or if permission is declined.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      subscription?.remove();
+    };
+  }, [inProgressRideKeys, selectedRideId, updateActiveRide]);
 
   // ETA countdown timer — ticks every second when driver is assigned
   useEffect(() => {
     if (!activeRide || !['matched', 'driver_arriving'].includes(activeRide.status)) return;
     const interval = setInterval(() => {
-      setActiveRide(prev => {
+      updateActiveRide(prev => {
         if (!prev || !prev.etaSeconds || prev.etaSeconds <= 0) return prev;
         return { ...prev, etaSeconds: prev.etaSeconds - 1 };
       });
@@ -580,7 +678,7 @@ export default function HomeScreen() {
           ? "No drivers are currently online in your area. Please try again shortly."
           : "Drivers are online, but all are currently busy. Please try again in a few minutes."
       );
-      setActiveRide(null);
+      removeActiveRide(activeRide?.id);
     }, 6 * 60 * 1000);
 
     return () => {
@@ -726,13 +824,14 @@ export default function HomeScreen() {
           console.error('Firestore ride creation failed, continuing with local state:', err);
         }
       }
-              setActiveRide({
+              addActiveRide({
           id: firestoreId ?? `ride_${Date.now()}`,
           firestoreId,
           category: selectedCategory.name,
           categoryId: selectedCategory.id,
           destination,
-          pickup: 'Current Location',
+          pickup: recipientAddress || pickupAddress || 'Current Location',
+          pickupLocation: { lat: userLocation[0], lng: userLocation[1], name: recipientAddress || pickupAddress || 'Current Location', address: recipientAddress || pickupAddress || 'Current Location' },
           distance,
           duration,
           fare: surgedFare,
@@ -807,7 +906,7 @@ export default function HomeScreen() {
       } catch (e) { /* silent */ }
     }
     setShowCancelModal(false);
-    setActiveRide(null);
+    removeActiveRide(activeRide?.id);
     resetBookingState();
     setCancelReason("");
   };
@@ -933,7 +1032,7 @@ export default function HomeScreen() {
     // Settle wallet payment: deduct fare from rider, credit driver
     if (activeRide?.status === 'completed' && isWalletPayment(activeRide) && user) {
       try {
-        const fare = activeRide.fare + (activeRide.waitingFee || 0);
+        const fare = (activeRide.currentFare ?? activeRide.fare) + (activeRide.waitingFee || 0);
         const driverId = (activeRide as any).driverId || (activeRide as any).driver_id || '';
         const apiBase = getApiBaseUrl();
         await fetch(`${apiBase}/api/trpc/wallet.settleRide`, {
@@ -960,7 +1059,7 @@ export default function HomeScreen() {
       const newTotal = (riderProfile?.total_rides ?? 0) + 1;
       updateProfile({ total_rides: newTotal }).catch(() => {});
     }
-    setActiveRide(null);
+    removeActiveRide(activeRide?.id);
     resetBookingState();
   };
 
@@ -970,8 +1069,35 @@ export default function HomeScreen() {
     const isSearching = activeRide.status === "searching";
     const hasDriver = ["matched", "driver_arriving", "driver_arrived", "in_progress"].includes(activeRide.status);
 
+    const liveFare = activeRide.currentFare ?? activeRide.fare;
     return (
       <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
+        {activeRides.length > 1 && (
+          <View style={{ marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Text style={{ color: TEXT, fontSize: 14, fontWeight: '800' }}>Your active rides ({countActiveRides(activeRides)})</Text>
+              <TouchableOpacity onPress={() => { resetBookingState(); setSearchOpen(true); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <MaterialIcons name="add-circle-outline" size={17} color={GOLD} />
+                <Text style={{ color: GOLD, fontSize: 12, fontWeight: '700' }}>Book another</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {activeRides.map((ride) => (
+                <TouchableOpacity key={ride.id} onPress={() => setSelectedRideId(ride.id)} style={{ backgroundColor: ride.id === activeRide.id ? `${GOLD}22` : CARD, borderColor: ride.id === activeRide.id ? GOLD : BORDER, borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, minWidth: 118 }}>
+                  <Text style={{ color: ride.id === activeRide.id ? GOLD : TEXT, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>{ride.category}</Text>
+                  <Text style={{ color: MUTED, fontSize: 10, marginTop: 2 }} numberOfLines={1}>{ride.destination.name}</Text>
+                  <Text style={{ color: ride.currentFare ? GOLD : MUTED, fontSize: 10, marginTop: 3 }}>GH₵{(ride.currentFare ?? ride.fare).toFixed(2)}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+        {activeRides.length === 1 && (
+          <TouchableOpacity onPress={() => { resetBookingState(); setSearchOpen(true); }} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: `${GOLD}14`, borderColor: `${GOLD}44`, borderWidth: 1, borderRadius: 11, paddingVertical: 10, marginBottom: 12 }}>
+            <MaterialIcons name="add" size={17} color={GOLD} />
+            <Text style={{ color: GOLD, fontSize: 13, fontWeight: '700' }}>Book another ride</Text>
+          </TouchableOpacity>
+        )}
         {isSearching && (
           <View style={{ alignItems: "center", paddingVertical: 24 }}>
             <ActivityIndicator size="large" color={GOLD} style={{ marginBottom: 16 }} />
@@ -1139,6 +1265,20 @@ export default function HomeScreen() {
               </View>
             )}
 
+            {activeRide.status === 'in_progress' && (
+              <View style={{ backgroundColor: `${GOLD}12`, borderColor: `${GOLD}44`, borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text style={{ color: GOLD, fontSize: 13, fontWeight: '800' }}>Live trip fare</Text>
+                  <Text style={{ color: GOLD, fontSize: 18, fontWeight: '900' }}>GH₵{liveFare.toFixed(2)}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: MUTED, fontSize: 11 }}>Actual distance</Text>
+                  <Text style={{ color: TEXT, fontSize: 11, fontWeight: '700' }}>{(activeRide.actualDistanceKm ?? 0).toFixed(2)} km</Text>
+                </View>
+                <Text style={{ color: MUTED, fontSize: 10, marginTop: 5 }}>Updates from GPS movement; the booking estimate is not charged as travelled distance.</Text>
+              </View>
+            )}
+
             {/* Trip Route */}
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, padding: 14, backgroundColor: `${CARD}`, borderRadius: 14, marginBottom: 10, borderWidth: 0.5, borderColor: BORDER, borderLeftWidth: 3, borderLeftColor: GOLD }}>
               <View style={{ alignItems: "center", gap: 4, marginTop: 2 }}>
@@ -1157,7 +1297,7 @@ export default function HomeScreen() {
                 </View>
               </View>
               <View style={{ alignItems: "flex-end" }}>
-                <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 16 }}>GH₵{activeRide.fare.toFixed(2)}</Text>
+                <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 16 }}>GH₵{liveFare.toFixed(2)}</Text>
                 {activeRide.splitData && (
                   <Text style={{ color: GREEN, fontSize: 10 }}>÷{activeRide.splitData.totalPeople}</Text>
                 )}
@@ -1230,7 +1370,7 @@ export default function HomeScreen() {
             <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>Thank you for riding with HY3N</Text>
 
             <View style={{ backgroundColor: CARD, borderRadius: 14, padding: 14, width: "100%", marginBottom: 16, borderWidth: 0.5, borderColor: BORDER }}>
-              <Row label="Base Fare" value={`GH₵${activeRide.fare.toFixed(2)}`} />
+              <Row label="Base Fare" value={`GH₵${liveFare.toFixed(2)}`} />
               {activeRide.waitingFee && activeRide.waitingFee > 0 && (
                 <Row label="Waiting Fee" value={`+GH₵${activeRide.waitingFee.toFixed(2)}`} valueColor={RED} />
               )}
@@ -1240,7 +1380,7 @@ export default function HomeScreen() {
               <View style={{ borderTopWidth: 0.5, borderTopColor: BORDER, marginTop: 8, paddingTop: 8 }}>
                 <Row
                   label="Total"
-                  value={`GH₵${(activeRide.fare + (activeRide.waitingFee || 0) + (tipAmount || 0)).toFixed(2)}`}
+                  value={`GH₵${(liveFare + (activeRide.waitingFee || 0) + (tipAmount || 0)).toFixed(2)}`}
                   valueColor={GOLD}
                   bold
                 />
@@ -1269,7 +1409,7 @@ export default function HomeScreen() {
                   rideId: activeRide.firestoreId || activeRide.id,
                   driverName: activeRide.driverName || 'Driver',
                   driverRating: activeRide.driverRating || 4.8,
-                  fare: activeRide.fare,
+                  fare: liveFare,
                   tip: tipAmount || 0,
                   distance: activeRide.distance,
                   duration: activeRide.duration,
@@ -1836,10 +1976,11 @@ export default function HomeScreen() {
         userLocation={userLocation}
         destination={destination ? [destination.lat, destination.lng] : null}
         driverLocation={
-          activeRide && (activeRide.status === "matched" || activeRide.status === "driver_arriving")
-            ? [userLocation[0] + 0.008, userLocation[1] - 0.005]
+          activeRide?.driverLocation
+            ? [activeRide.driverLocation.lat, activeRide.driverLocation.lng]
             : null
         }
+        driverBearing={activeRide?.driverBearing ?? null}
         nearbyDrivers={nearbyDrivers}
       />
 
@@ -2257,7 +2398,7 @@ export default function HomeScreen() {
               <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: `${GREEN}1A`, alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
                 <MaterialIcons name="check-circle" size={32} color={GREEN} />
               </View>
-              <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 22 }}>GH₵{activeRide ? (activeRide.fare + (activeRide.waitingFee || 0) + (tipAmount || 0)).toFixed(2) : "0.00"}</Text>
+              <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 22 }}>GH₵{activeRide ? ((activeRide.currentFare ?? activeRide.fare) + (activeRide.waitingFee || 0) + (tipAmount || 0)).toFixed(2) : "0.00"}</Text>
               <Text style={{ color: MUTED, fontSize: 13, marginTop: 4 }}>Total Charged</Text>
             </View>
             {/* Trip Info */}
@@ -2282,7 +2423,7 @@ export default function HomeScreen() {
                 <Row label="Tip" value={`+GH₵${tipAmount.toFixed(2)}`} valueColor={GREEN} />
               )}
               <View style={{ borderTopWidth: 0.5, borderTopColor: BORDER, marginTop: 8, paddingTop: 8 }}>
-                <Row label="Total" value={`GH₵${activeRide ? (activeRide.fare + (activeRide.waitingFee || 0) + (tipAmount || 0)).toFixed(2) : "0.00"}`} valueColor={GOLD} bold />
+                <Row label="Total" value={`GH₵${activeRide ? ((activeRide.currentFare ?? activeRide.fare) + (activeRide.waitingFee || 0) + (tipAmount || 0)).toFixed(2) : "0.00"}`} valueColor={GOLD} bold />
               </View>
             </View>
             {/* Driver Info */}
@@ -2297,7 +2438,7 @@ export default function HomeScreen() {
             )}
             <TouchableOpacity
               onPress={async () => {
-                const receiptText = `HY3N Trip Receipt\nDate: ${new Date().toLocaleDateString('en-GH')}\nDestination: ${activeRide?.destination.name}\nFare: GH₵${activeRide?.fare.toFixed(2)}\nTotal: GH₵${activeRide ? (activeRide.fare + (activeRide.waitingFee || 0) + (tipAmount || 0)).toFixed(2) : '0.00'}\nDriver: ${activeRide?.driverName || 'N/A'}\n\nThank you for riding with HY3N!`;
+                const receiptText = `HY3N Trip Receipt\nDate: ${new Date().toLocaleDateString('en-GH')}\nDestination: ${activeRide?.destination.name}\nFare: GH₵${(activeRide?.currentFare ?? activeRide?.fare ?? 0).toFixed(2)}\nTotal: GH₵${activeRide ? ((activeRide.currentFare ?? activeRide.fare) + (activeRide.waitingFee || 0) + (tipAmount || 0)).toFixed(2) : '0.00'}\nDriver: ${activeRide?.driverName || 'N/A'}\n\nThank you for riding with HY3N!`;
                 try { await Share.share({ message: receiptText, title: 'HY3N Trip Receipt' }); } catch {}
               }}
               style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 16 }}

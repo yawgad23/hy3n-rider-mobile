@@ -153,7 +153,7 @@ export default function LoginScreen() {
             source={require('@/assets/images/icon.png')}
             style={{ width: 180, height: 180, resizeMode: 'contain' }}
           />
-          <Text style={styles.tagline}>Ghana's premium ride-hailing app</Text>
+          <Text style={styles.tagline}>Ghana&apos;s premium ride-hailing app</Text>
         </View>
         <Text style={styles.title}>Akwaaba Ba Hy3n</Text>
         <Text style={styles.subtitle}>Welcome to Hy3n</Text>
