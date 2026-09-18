@@ -13,6 +13,8 @@ import {
   Share,
   Linking,
 } from "react-native";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 import { ScreenContainer } from "@/components/screen-container";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
@@ -86,6 +88,16 @@ function Row({ label, value, valueColor, bold }: { label: string; value: string;
   );
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[character] || character));
+}
+
 export default function ActivityScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -141,6 +153,33 @@ export default function ActivityScreen() {
     await loadRides();
     setRefreshing(false);
   }, [loadRides]);
+
+  const downloadInvoice = async (ride: Ride) => {
+    const total = ride.fare + (ride.tip || 0) + (ride.waiting_fee || 0) - (ride.discount || 0);
+    const date = new Date(ride.created_date).toLocaleString("en-GH", { dateStyle: "medium", timeStyle: "short" });
+    const row = (label: string, value: string) => `<tr><td class="label">${escapeHtml(label)}</td><td class="value">${escapeHtml(value)}</td></tr>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+      *{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111827;padding:32px;background:#fff}
+      .header{background:#0A0A0A;color:#D4AF37;padding:24px;border-radius:12px 12px 0 0}.brand{font-size:28px;font-weight:800;letter-spacing:2px}.subtitle{color:#D1D5DB;margin-top:5px;font-size:13px}
+      .content{border:1px solid #E5E7EB;border-top:0;padding:24px;border-radius:0 0 12px 12px}.total{text-align:center;background:#F9FAFB;border-radius:10px;padding:18px;margin-bottom:22px}.total-label{color:#6B7280;font-size:11px;text-transform:uppercase;letter-spacing:1px}.amount{color:#B8860B;font-size:30px;font-weight:800;margin-top:5px}
+      h2{font-size:14px;text-transform:uppercase;letter-spacing:.8px;color:#6B7280;margin:22px 0 8px;border-bottom:1px solid #E5E7EB;padding-bottom:8px}.route{padding:12px 0;border-bottom:1px solid #E5E7EB}.route-label{font-size:10px;color:#9CA3AF;text-transform:uppercase}.route-value{font-size:14px;font-weight:600;margin-top:4px}.details{width:100%;border-collapse:collapse}.details td{padding:7px 0;font-size:13px}.label{color:#6B7280}.value{text-align:right;font-weight:600}.footer{text-align:center;color:#9CA3AF;font-size:11px;margin-top:28px}
+    </style></head><body><div class="header"><div class="brand">HY3N</div><div class="subtitle">Official trip invoice</div></div><div class="content">
+      <div class="total"><div class="total-label">Total paid</div><div class="amount">GH₵${total.toFixed(2)}</div></div>
+      <h2>Trip route</h2><div class="route"><div class="route-label">Pickup</div><div class="route-value">${escapeHtml(ride.pickup_address)}</div></div><div class="route"><div class="route-label">Destination</div><div class="route-value">${escapeHtml(ride.destination_address)}</div></div>
+      <h2>Trip details</h2><table class="details">${row("Date", date)}${row("Category", ride.category)}${row("Distance", `${ride.distance.toFixed(1)} km`)}${row("Duration", `${ride.duration} min`)}${row("Payment", ride.payment)}${row("Trip ID", ride.id)}</table>
+      <h2>Fare breakdown</h2><table class="details">${row(`${ride.category} fare`, `GH₵${ride.fare.toFixed(2)}`)}${ride.discount ? row(`Promo (${ride.promo_code || "discount"})`, `-GH₵${ride.discount.toFixed(2)}`) : ""}${ride.waiting_fee ? row("Waiting fee", `+GH₵${ride.waiting_fee.toFixed(2)}`) : ""}${ride.tip ? row("Tip", `+GH₵${ride.tip.toFixed(2)}`) : ""}${row("Total paid", `GH₵${total.toFixed(2)}`)}</table>
+      <div class="footer">Thank you for riding with HY3N.<br/>Questions? hello@ridehy3n.com</div></div></body></html>`;
+    try {
+      const { uri } = await Print.printToFileAsync({ html });
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert("Invoice ready", `The PDF was created at ${uri}`);
+        return;
+      }
+      await Sharing.shareAsync(uri, { mimeType: "application/pdf", dialogTitle: "Download HY3N invoice", UTI: "com.adobe.pdf" });
+    } catch {
+      Alert.alert("Unable to create invoice", "Please try again in a moment.");
+    }
+  };
 
   const handleSubmitReport = async () => {
     if (!selectedIssue) { Alert.alert("Required", "Please select an issue type"); return; }
@@ -476,6 +515,13 @@ export default function ActivityScreen() {
                   >
                     <MaterialIcons name="share" size={18} color={GOLD} />
                     <Text style={{ color: GOLD, fontWeight: "600", fontSize: 15 }}>Share Receipt</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => downloadInvoice(selectedRide)}
+                    style={{ backgroundColor: GOLD, borderRadius: 14, paddingVertical: 14, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8 }}
+                  >
+                    <MaterialIcons name="picture-as-pdf" size={18} color="#000" />
+                    <Text style={{ color: "#000", fontWeight: "bold", fontSize: 15 }}>Download PDF Invoice</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => {
