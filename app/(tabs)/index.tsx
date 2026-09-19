@@ -1277,27 +1277,7 @@ export default function HomeScreen() {
                       <Text style={{ color: MUTED, fontSize: 11, marginLeft: 4 }}>· {activeRide.driverTotalTrips} trips</Text>
                     )}
                   </View>
-                  {/* Vehicle + colour swatch */}
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Text style={{ color: MUTED, fontSize: 12 }}>{activeRide.driverVehicle}</Text>
-                    {activeRide.driverColour && (
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                        <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: activeRide.driverColourHex || '#888', borderWidth: 1, borderColor: BORDER }} />
-                        <Text style={{ color: MUTED, fontSize: 11 }}>{activeRide.driverColour}</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-                {/* Plate badge */}
-                <View style={{ alignItems: "center", gap: 4 }}>
-                  <View style={{ backgroundColor: `${GOLD}22`, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: `${GOLD}55` }}>
-                    <Text style={{ color: GOLD, fontWeight: "800", fontSize: 13, letterSpacing: 1 }}>{activeRide.driverPlate}</Text>
-                  </View>
-                  {activeRide.etaSeconds !== undefined && activeRide.etaSeconds > 0 && (
-                    <Text style={{ color: GREEN, fontSize: 11, fontWeight: "600" }}>
-                      {Math.floor(activeRide.etaSeconds / 60)}:{String(activeRide.etaSeconds % 60).padStart(2, '0')}
-                    </Text>
-                  )}
+                  <Text style={{ color: MUTED, fontSize: 12 }}>Your assigned driver</Text>
                 </View>
               </View>
               {/* Ride PIN row */}
@@ -1359,6 +1339,41 @@ export default function HomeScreen() {
                   <MaterialIcons name="chat" size={18} color={GOLD} />
                   <Text style={{ color: GOLD, fontWeight: "700", fontSize: 14 }}>Message</Text>
                 </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Vehicle Details — kept separate so the rider can quickly verify the car */}
+            <View style={{ backgroundColor: CARD, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 0.5, borderColor: BORDER }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <MaterialIcons name="directions-car" size={18} color={GOLD} />
+                <Text style={{ color: TEXT, fontWeight: "800", fontSize: 14 }}>Vehicle details</Text>
+                {activeRide.etaSeconds !== undefined && activeRide.etaSeconds > 0 && (
+                  <Text style={{ color: GREEN, fontSize: 11, fontWeight: "700", marginLeft: "auto" }}>
+                    Arrives in {Math.floor(activeRide.etaSeconds / 60)}:{String(activeRide.etaSeconds % 60).padStart(2, '0')}
+                  </Text>
+                )}
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: activeRide.driverColourHex || `${GOLD}22`, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: `${GOLD}66` }}>
+                  <MaterialIcons name="directions-car" size={28} color={activeRide.driverColourHex?.toLowerCase() === "#f5f5f5" ? "#111" : "#fff"} />
+                </View>
+                <View style={{ flex: 1, gap: 6 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+                    <Text style={{ color: MUTED, fontSize: 12 }}>Car model</Text>
+                    <Text style={{ color: TEXT, fontSize: 13, fontWeight: "700", flex: 1, textAlign: "right" }} numberOfLines={1}>{activeRide.driverVehicle || "Not available"}</Text>
+                  </View>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+                    <Text style={{ color: MUTED, fontSize: 12 }}>Plate number</Text>
+                    <Text style={{ color: GOLD, fontSize: 13, fontWeight: "800", letterSpacing: 1 }}>{activeRide.driverPlate || "Not available"}</Text>
+                  </View>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+                    <Text style={{ color: MUTED, fontSize: 12 }}>Colour</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: activeRide.driverColourHex || "#888", borderWidth: 1, borderColor: BORDER }} />
+                      <Text style={{ color: TEXT, fontSize: 13, fontWeight: "700" }}>{activeRide.driverColour || "Not available"}</Text>
+                    </View>
+                  </View>
+                </View>
               </View>
             </View>
 
