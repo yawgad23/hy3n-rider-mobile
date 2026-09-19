@@ -2,7 +2,7 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-source = Image.open(ROOT / 'assets/images/icon.png').convert('RGBA')
+source = Image.open(ROOT / 'assets/images/hy3n-logo-fixed.png').convert('RGBA')
 pixels = source.load()
 # Turn the black square backdrop transparent while preserving the colored logo.
 for y in range(source.height):
@@ -26,7 +26,8 @@ def padded_square(size: int, target_fraction: float) -> Image.Image:
 
 assets = ROOT / 'assets/images'
 # Splash: a generous transparent safe area against the configured black background.
-padded_square(1248, 0.82).save(assets / 'rider-splash-logo.png')
+splash = padded_square(1248, 0.82)
+splash.save(assets / 'rider-splash-logo.png')
 # Adaptive foreground: smaller still because Android applies a circular/squircle mask.
 padded_square(1248, 0.56).save(assets / 'rider-adaptive-foreground.png')
 # Android themed icons use the alpha channel as the mask; keep the same safe area
@@ -39,7 +40,19 @@ for y in range(monochrome.height):
         mono_pixels[x, y] = (255, 255, 255, alpha)
 monochrome.save(assets / 'rider-adaptive-monochrome.png')
 # Solid black adaptive background replaces the default Expo placeholder artwork.
-Image.new('RGBA', (512, 512), (10, 10, 10, 255)).save(assets / 'rider-adaptive-background.png')
+background = Image.new('RGBA', (512, 512), (10, 10, 10, 255))
+background.save(assets / 'rider-adaptive-background.png')
+
+# Keep the legacy Expo asset names aligned too, so no platform or web target can
+# accidentally fall back to the old car logo.
+for filename, size in [('icon.png', 1248), ('favicon.png', 1248), ('icon-120.png', 120),
+                       ('icon-152.png', 152), ('icon-180.png', 180), ('icon-192.png', 192),
+                       ('icon-512.png', 512), ('icon-76.png', 76)]:
+    source.resize((size, size), Image.Resampling.LANCZOS).save(assets / filename)
+splash.save(assets / 'splash-icon.png')
+padded_square(1248, 0.56).save(assets / 'android-icon-foreground.png')
+background.save(assets / 'android-icon-background.png')
+monochrome.save(assets / 'android-icon-monochrome.png')
 print('created rider-splash-logo.png, rider-adaptive-foreground.png, rider-adaptive-monochrome.png, rider-adaptive-background.png')
 print('source artwork bbox:', bbox)
 print('splash dimensions:', (1248, 1248), 'adaptive foreground dimensions:', (1248, 1248))
