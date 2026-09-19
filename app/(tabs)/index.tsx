@@ -104,6 +104,7 @@ interface ActiveRide {
   driverBearing?: number;
   driverTotalTrips?: number;
   driverPhone?: string;
+  driverId?: string;
   ridePin?: string;
   surgeMultiplier?: number;
   eta?: number;
@@ -525,6 +526,7 @@ export default function HomeScreen() {
             ...prev,
             status: ride.status as ActiveRide['status'],
             driverName: driver?.name ?? prev.driverName,
+            driverId: driver?.id ?? (ride as any).driver_id ?? prev.driverId,
             driverRating: driver?.rating ?? prev.driverRating,
             driverVehicle: driver ? `${driver.vehicle_make} ${driver.vehicle_model}` : prev.driverVehicle,
             driverPlate: driver?.plate ?? prev.driverPlate,
@@ -550,6 +552,33 @@ export default function HomeScreen() {
       }));
     return () => subscriptions.forEach((unsubscribe) => unsubscribe());
   }, [activeRideKeys, selectedRideId, updateActiveRide]);
+
+  // Driver presence is updated by the standalone backend on the driver's
+  // profile document. Subscribe to that document as well as the ride itself,
+  // so the rider sees movement from acceptance through the live trip.
+  useEffect(() => {
+    const ride = activeRides.find((item) => item.id === selectedRideId) || activeRides[0];
+    const driverId = ride?.driverId;
+    if (!driverId || !ride || !['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(ride.status)) return;
+
+    return firestoreDB.subscribeDoc(COLLECTIONS.DRIVER_PROFILES, driverId, (profile: any) => {
+      const current = profile?.current_location || profile?.location;
+      const lat = Number(current?.latitude ?? current?.lat);
+      const lng = Number(current?.longitude ?? current?.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const point = { lat, lng };
+      updateActiveRide((prev) => {
+        if (prev.id !== ride.id) return prev;
+        const bearing = Number.isFinite(Number(current?.heading))
+          ? Number(current.heading)
+          : prev.driverLocation
+            ? calculateBearing(prev.driverLocation.lat, prev.driverLocation.lng, lat, lng)
+            : prev.driverBearing;
+        return { ...prev, driverLocation: point, driverBearing: bearing };
+      });
+      if (ride.id === selectedRideId) setDriverLocation(point);
+    });
+  }, [activeRides[0]?.id, activeRides[0]?.driverId, activeRides[0]?.status, selectedRideId, updateActiveRide]);
 
   // Update fare from the rider's actual GPS movement while any ride is in progress.
   const inProgressRideKeys = activeRides.filter((ride) => ride.status === 'in_progress').map((ride) => ride.id).join('|');
@@ -2054,6 +2083,14 @@ export default function HomeScreen() {
             : null
         }
         driverBearing={activeRide?.driverBearing ?? null}
+        driverColourHex={activeRide?.driverColourHex ?? null}
+        driverVehicle={activeRide?.driverVehicle ?? null}
+        driverTracking={Boolean(activeRide && ['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(activeRide.status) && activeRide.driverLocation)}
+        driverTrackingTarget={activeRide
+          ? (activeRide.status === 'in_progress'
+            ? [activeRide.destination.lat, activeRide.destination.lng] as [number, number]
+            : [activeRide.pickupLocation.lat, activeRide.pickupLocation.lng] as [number, number])
+          : null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
         nearbyDrivers={nearbyDrivers}
       />

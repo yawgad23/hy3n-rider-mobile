@@ -16,6 +16,10 @@ interface LeafletMapProps {
   destination?: [number, number] | null;
   driverLocation?: [number, number] | null;
   driverBearing?: number | null;
+  driverColourHex?: string | null;
+  driverVehicle?: string | null;
+  driverTracking?: boolean;
+  driverTrackingTarget?: [number, number] | null;
   safetySignal?: "clear" | "route_deviation" | "long_stop";
   nearbyDrivers?: NearbyDriver[];
 }
@@ -34,6 +38,10 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     destination = null,
     driverLocation = null,
     driverBearing = null,
+    driverColourHex = null,
+    driverVehicle = null,
+    driverTracking = false,
+    driverTrackingTarget = null,
     safetySignal = "clear",
     nearbyDrivers = [],
   },
@@ -58,6 +66,9 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   const driverLat = driverLocation ? driverLocation[0] : null;
   const driverLng = driverLocation ? driverLocation[1] : null;
   const bearing = typeof driverBearing === "number" ? driverBearing : 0;
+  const vehicleColour = /^#[0-9a-fA-F]{6}$/.test(driverColourHex || "") ? driverColourHex : "#CE1126";
+  const vehicleLabel = (driverVehicle || "Driver vehicle").replace(/[<>&"']/g, "");
+  const trackingTarget = driverTrackingTarget || (destination || userLocation || center);
   const safetyBanner = safetySignal === "route_deviation"
     ? '<div class="safety-banner danger">Route check: your driver appears to be off the planned route.</div>'
     : safetySignal === "long_stop"
@@ -136,14 +147,22 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     ` : ""}
 
     ${driverLat !== null ? `
-    // Driver marker (car icon)
+    // Assigned driver marker: a vehicle-shaped marker using the driver's actual colour.
     var driverIcon = L.divIcon({
-      html: '<div style="width:30px;height:30px;border-radius:50%;background:#CE1126;border:3px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(206,17,38,.55);transition:transform .9s linear;transform:rotate(${bearing}deg);"><div style="color:#fff;font-size:16px;line-height:1;transform:translateY(-1px);">➤</div></div>',
-      iconSize: [30, 30],
-      iconAnchor: [15, 15],
+      html: '<div title="${vehicleLabel}" style="width:42px;height:42px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 2px 5px rgba(0,0,0,.55));transform:rotate(${bearing}deg);transition:transform .9s linear;"><div style="position:relative;width:30px;height:20px;border-radius:9px 9px 6px 6px;background:${vehicleColour};border:2px solid #fff;"><div style="position:absolute;left:5px;right:5px;top:3px;height:7px;border-radius:4px 4px 2px 2px;background:rgba(255,255,255,.82);border:1px solid rgba(0,0,0,.25);"></div><div style="position:absolute;left:-4px;bottom:1px;width:7px;height:7px;border-radius:50%;background:#111;border:1px solid #fff;box-shadow:27px 0 0 #111,27px 0 0 1px #fff;"></div></div></div>',
+      iconSize: [42, 42],
+      iconAnchor: [21, 21],
       className: '',
     });
     var driverMarker = L.marker([${driverLat}, ${driverLng}], { icon: driverIcon }).addTo(map);
+    ${driverTracking ? `
+    // Tracking line shows the driver's live approach to the rider/destination.
+    var trackingTarget = [${trackingTarget[0]}, ${trackingTarget[1]}];
+    var trackingLine = L.polyline([[${driverLat}, ${driverLng}], trackingTarget], {
+      color: '${vehicleColour}', weight: 4, opacity: 0.72, dashArray: '10, 8',
+    }).addTo(map);
+    map.fitBounds([[${userLat}, ${userLng}], [${driverLat}, ${driverLng}], trackingTarget], { padding: [70, 70] });
+    ` : ""}
     ` : `
     // Nearby available driver dots (only shown when no active driver is assigned)
     var nearbyIcon = L.divIcon({
