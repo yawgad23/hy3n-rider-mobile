@@ -1985,16 +1985,6 @@ export default function HomeScreen() {
       </View>
       {/* Divider line */}
       <View style={{ width: 1, height: 10, backgroundColor: BORDER, marginLeft: 8, marginBottom: 4 }} />
-      {/* Nearby cars indicator */}
-      {nearbyDrivers.length > 0 && (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10, paddingHorizontal: 2 }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: GREEN }} />
-          <Text style={{ color: GREEN, fontSize: 13, fontWeight: '600' }}>
-            {nearbyDrivers.length} car{nearbyDrivers.length !== 1 ? 's' : ''} nearby
-          </Text>
-          <Text style={{ color: MUTED, fontSize: 12 }}>· HY3N is available in your area</Text>
-        </View>
-      )}
       {/* Destination search */}
       <TouchableOpacity
         onPress={() => setSearchOpen(true)}
@@ -2107,7 +2097,6 @@ export default function HomeScreen() {
             : [activeRide.pickupLocation.lat, activeRide.pickupLocation.lng] as [number, number])
           : null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
-        nearbyDrivers={nearbyDrivers}
       />
 
       {/* Header */}
