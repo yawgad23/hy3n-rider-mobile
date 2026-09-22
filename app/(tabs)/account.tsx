@@ -19,6 +19,7 @@ import { useAuth } from "@/lib/auth-context";
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Notifications } from '@/lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useThemeContext } from '@/lib/theme-provider';
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -72,6 +73,7 @@ const SAVED_PLACES_DEFAULT = [
 export default function AccountScreen() {
   const router = useRouter();
   const { user, riderProfile, signOut, deleteAccount, updateProfile } = useAuth();
+  const { colorScheme, setColorScheme } = useThemeContext();
   const userPoints = riderProfile?.loyalty_points ?? 0;
 
   const [showEditProfile, setShowEditProfile] = useState(false);
@@ -105,7 +107,6 @@ export default function AccountScreen() {
 
   const [notifications, setNotifications] = useState(true);
   const [locationSharing, setLocationSharing] = useState(true);
-  const [darkMode, setDarkMode] = useState(true); // HY3N is always dark — this is a visual toggle for future light mode
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
 
@@ -325,6 +326,34 @@ export default function AccountScreen() {
         {/* Settings */}
         <View style={{ marginHorizontal: 16, marginBottom: 12, backgroundColor: CARD, borderRadius: 16, overflow: "hidden", borderWidth: 0.5, borderColor: BORDER }}>
           <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "700", paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>Settings</Text>
+          <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5, borderBottomColor: BORDER }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 10 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: `${GOLD}1A`, alignItems: "center", justifyContent: "center" }}>
+                <MaterialIcons name={colorScheme === 'dark' ? "dark-mode" : "light-mode"} size={18} color={GOLD} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: TEXT, fontSize: 14, fontWeight: "500" }}>Appearance</Text>
+                <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>Choose Light or Dark mode</Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {(['light', 'dark'] as const).map((scheme) => {
+                const selected = colorScheme === scheme;
+                return (
+                  <TouchableOpacity
+                    key={scheme}
+                    onPress={() => setColorScheme(scheme)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    style={{ flex: 1, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, backgroundColor: selected ? GOLD : SURFACE, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
+                  >
+                    <MaterialIcons name={scheme === 'light' ? "light-mode" : "dark-mode"} size={17} color={selected ? '#000' : MUTED} />
+                    <Text style={{ color: selected ? '#000' : TEXT, fontSize: 13, fontWeight: "700" }}>{scheme === 'light' ? 'Light' : 'Dark'}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 0.5, borderBottomColor: BORDER }}>
             <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: `${GOLD}1A`, alignItems: "center", justifyContent: "center" }}>
               <MaterialIcons name="notifications" size={18} color={GOLD} />

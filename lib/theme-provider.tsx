@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Appearance, View, useColorScheme as useSystemColorScheme } from "react-native";
 import { colorScheme as nativewindColorScheme, vars } from "nativewind";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { SchemeColors, type ColorScheme } from "@/constants/theme";
 
@@ -10,6 +11,7 @@ type ThemeContextValue = {
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
+const THEME_PREFERENCE_KEY = "hy3n_rider_theme_preference";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const systemScheme = useSystemColorScheme() ?? "light";
@@ -32,11 +34,23 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const setColorScheme = useCallback((scheme: ColorScheme) => {
     setColorSchemeState(scheme);
     applyScheme(scheme);
+    AsyncStorage.setItem(THEME_PREFERENCE_KEY, scheme).catch(() => {});
   }, [applyScheme]);
 
   useEffect(() => {
-    applyScheme(colorScheme);
-  }, [applyScheme, colorScheme]);
+    AsyncStorage.getItem(THEME_PREFERENCE_KEY)
+      .then((saved) => {
+        if (saved === "light" || saved === "dark") {
+          setColorSchemeState(saved);
+          applyScheme(saved);
+          return;
+        }
+        applyScheme(colorScheme);
+      })
+      .catch(() => applyScheme(colorScheme));
+  // Apply the stored preference once when the provider mounts.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyScheme]);
 
   const themeVariables = useMemo(
     () =>
