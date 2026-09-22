@@ -2,7 +2,14 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-source = Image.open(ROOT / 'assets/images/hy3n-logo-no-tagline.png').convert('RGBA')
+brand = Image.open(ROOT / 'assets/images/hy3n-logo-no-tagline.png').convert('RGBA')
+
+# iOS app icons must be fully opaque. Keep the black HY3N brand backdrop for
+# them instead of reusing the transparent splash/adaptive foreground artwork.
+def opaque_brand_icon(size: int) -> Image.Image:
+    return brand.resize((size, size), Image.Resampling.LANCZOS).convert('RGB')
+
+source = brand.copy()
 pixels = source.load()
 # Turn the black square backdrop transparent while preserving the colored logo.
 for y in range(source.height):
@@ -43,12 +50,13 @@ monochrome.save(assets / 'rider-adaptive-monochrome.png')
 background = Image.new('RGBA', (512, 512), (10, 10, 10, 255))
 background.save(assets / 'rider-adaptive-background.png')
 
-# Keep the legacy Expo asset names aligned too, so no platform or web target can
-# accidentally fall back to the old car logo.
+# iOS and web icons retain the opaque black backdrop. The transparent source is
+# used only where Expo/Android provides a separate background layer.
+opaque_brand_icon(1024).save(assets / 'rider-ios-icon.png')
 for filename, size in [('icon.png', 1248), ('favicon.png', 1248), ('icon-120.png', 120),
                        ('icon-152.png', 152), ('icon-180.png', 180), ('icon-192.png', 192),
                        ('icon-512.png', 512), ('icon-76.png', 76)]:
-    source.resize((size, size), Image.Resampling.LANCZOS).save(assets / filename)
+    opaque_brand_icon(size).save(assets / filename)
 splash.save(assets / 'splash-icon.png')
 padded_square(1248, 0.56).save(assets / 'android-icon-foreground.png')
 background.save(assets / 'android-icon-background.png')

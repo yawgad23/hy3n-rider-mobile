@@ -49,14 +49,14 @@ const config: ExpoConfig = {
     }
   },
   orientation: "portrait",
-  icon: "./assets/images/icon.png",
+  icon: "./assets/images/rider-ios-icon.png",
   scheme: env.scheme,
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    buildNumber: "32",
+    buildNumber: "33",
     "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
