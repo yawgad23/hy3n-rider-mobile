@@ -2,7 +2,7 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-source = Image.open(ROOT / 'assets/images/hy3n-logo-fixed.png').convert('RGBA')
+source = Image.open(ROOT / 'assets/images/hy3n-logo-no-tagline.png').convert('RGBA')
 pixels = source.load()
 # Turn the black square backdrop transparent while preserving the colored logo.
 for y in range(source.height):
