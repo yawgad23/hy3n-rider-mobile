@@ -136,16 +136,16 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="support"
+        name="wallet"
         options={{
-          title: "Support",
+          title: "Wallet",
           tabBarIcon: ({ color, focused }) => (
-            <TabBarIcon name="support-agent" color={color} focused={focused} />
+            <TabBarIcon name="account-balance-wallet" color={color} focused={focused} />
           ),
         }}
       />
+      <Tabs.Screen name="support" options={{ href: null }} />
       <Tabs.Screen name="activity" options={{ href: null }} />
-      <Tabs.Screen name="wallet" options={{ href: null }} />
       <Tabs.Screen name="account" options={{ href: null }} />
     </Tabs>
   );

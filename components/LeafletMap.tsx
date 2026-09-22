@@ -87,7 +87,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       }))
   );
 
-  // Dark tile layer — CartoDB Dark Matter (no API key needed)
+  // Key-free OpenStreetMap tiles. Carto's public tile endpoint now requires an API key.
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -115,8 +115,8 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       attributionControl: false,
     });
 
-    // Dark tile layer — CartoDB Dark Matter
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    // OpenStreetMap tiles work without a provider API key.
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
     }).addTo(map);
 
