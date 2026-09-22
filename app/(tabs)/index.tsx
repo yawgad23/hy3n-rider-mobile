@@ -139,6 +139,9 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function RiderHomeScreen() {
   const { colorScheme } = useThemeContext();
+  const isDarkMode = colorScheme !== "light";
+  const greetingColor = isDarkMode ? GOLD : "#005C36";
+  const greetingSubtitleColor = isDarkMode ? "rgba(212,175,55,0.82)" : "#234E3D";
   const { user, riderProfile, updateProfile } = useAuth();
   const insets = useSafeAreaInsets();
   const safeTop = insets.top > 0 ? insets.top : (Constants.statusBarHeight ?? 44);
@@ -1910,10 +1913,10 @@ export default function RiderHomeScreen() {
             source={require('@/assets/images/icon.png')}
             style={{ width: 80, height: 40, resizeMode: 'contain' }}
           />
-          <Text style={{ color: GOLD, fontSize: 20, fontWeight: '800', letterSpacing: 0.3, marginTop: 3, textShadowColor: 'rgba(212,175,55,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 }}>
+          <Text style={{ color: greetingColor, fontSize: 20, fontWeight: '800', letterSpacing: 0.3, marginTop: 3, textShadowColor: isDarkMode ? 'rgba(212,175,55,0.4)' : 'rgba(255,255,255,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 }}>
             Akwaaba{riderProfile?.full_name ? `, ${riderProfile.full_name.split(' ')[0]}` : ''}! 👋
           </Text>
-          <Text style={{ color: 'rgba(212,175,55,0.75)', fontSize: 13, fontWeight: '500', fontStyle: 'italic', marginTop: 1 }}>
+          <Text style={{ color: greetingSubtitleColor, fontSize: 13, fontWeight: '600', fontStyle: 'italic', marginTop: 1 }}>
             Wo ho te sɛn?
           </Text>
         </View>
