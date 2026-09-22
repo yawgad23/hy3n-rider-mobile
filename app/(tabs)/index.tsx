@@ -23,8 +23,8 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/lib/auth-context";
 import { useThemeContext } from "@/lib/theme-provider";
-import { firestoreDB, COLLECTIONS } from "@/lib/firebase";
-import { dispatchService, generateRidePin, calculateETA, VEHICLE_COLOURS, type RideRequest as DispatchRide } from "@/lib/dispatch";
+import { auth, firestoreDB, COLLECTIONS } from "@/lib/firebase";
+import { dispatchService, calculateETA, VEHICLE_COLOURS, type RideRequest as DispatchRide } from "@/lib/dispatch";
 import * as ExpoLocation from "expo-location";
 import * as Haptics from "expo-haptics";
 import {
@@ -815,7 +815,6 @@ export default function RiderHomeScreen() {
     }
 
     setBookingLoading(true);
-    const pin = generateRidePin();
     const surgedFare = Math.round(finalFare * surge.multiplier * 100) / 100;
     try {
       if (selectedPayment.id === "wallet") {
@@ -831,9 +830,12 @@ export default function RiderHomeScreen() {
         // after a completed ride through wallet.settleRide.
       }
 
-      // A booking exists only after Firestore has accepted it. This guarantees
-      // that the Driver app can receive the same request the Rider sees.
-      const firestoreId = await dispatchService.createRide({
+      // Ride writes and driver selection happen on Railway. This uses the
+      // signed-in Firebase ID token, avoids client Firestore-rule failures,
+      // and writes the assigned `matched` record that the Driver app hears.
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error("Your session has expired. Please sign in again.");
+      const requestBody = {
         riderId: user.uid,
         riderName: bookForSomeone ? recipientName : (riderProfile?.full_name || user.displayName || 'Rider'),
         riderPhone: bookForSomeone ? recipientPhone : (riderProfile?.phone || user.phoneNumber || ''),
@@ -851,7 +853,24 @@ export default function RiderHomeScreen() {
         promoCode: appliedPromo ?? undefined,
         discount: appliedPromo ? Math.round((finalFare - surgedFare) * 100) / 100 : undefined,
         rideOptions,
+      };
+      const response = await fetch(`${getApiBaseUrl()}/api/rides/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify(requestBody),
       });
+      const result = await response.json().catch(() => null) as {
+        success?: boolean;
+        message?: string;
+        ride?: Record<string, any>;
+      } | null;
+      if (!response.ok || !result?.success || !result.ride?.id) {
+        throw new Error(result?.message || "We could not send your request to drivers.");
+      }
+      const createdRide = result.ride;
+      const matchedDriver = createdRide.driver as Record<string, any> | null;
+      const rideStatus: ActiveRide['status'] = createdRide.status === 'matched' ? 'matched' : 'searching';
+      const firestoreId = String(createdRide.id);
       addActiveRide({
           id: firestoreId,
           firestoreId,
@@ -865,22 +884,32 @@ export default function RiderHomeScreen() {
           fare: surgedFare,
           payment: selectedPayment.name,
           paymentId: selectedPayment.id,
-          status: 'searching',
+          status: rideStatus,
           scheduled: isScheduled ? scheduledFor : null,
-          ridePin: pin,
+          ridePin: String(createdRide.pickup_code || createdRide.ride_pin || ''),
           rideOptions,
           surgeMultiplier: surge.multiplier,
+          driverId: matchedDriver?.id || createdRide.driver_id || undefined,
+          driverName: matchedDriver?.name || undefined,
+          driverRating: Number.isFinite(Number(matchedDriver?.rating)) ? Number(matchedDriver?.rating) : undefined,
+          driverVehicle: matchedDriver ? `${matchedDriver.vehicle_make || ''} ${matchedDriver.vehicle_model || ''}`.trim() : undefined,
+          driverPlate: matchedDriver?.plate || undefined,
+          driverColour: matchedDriver?.vehicle_colour || undefined,
+          driverColourHex: matchedDriver?.vehicle_colour_hex || undefined,
+          driverPhone: matchedDriver?.phone || undefined,
+          driverLocation: matchedDriver?.location || undefined,
+          matchedAt: createdRide.matched_at || undefined,
         });
         if (isScheduled) {
           setShowScheduledToast(true);
           if (scheduledToastTimerRef.current) clearTimeout(scheduledToastTimerRef.current);
           scheduledToastTimerRef.current = setTimeout(() => setShowScheduledToast(false), 3200);
         }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Rider] Ride request failed:', error);
       Alert.alert(
         "Request not sent",
-        "We could not send your ride request to drivers. Check your connection and try again.",
+        error?.message || "We could not send your ride request to drivers. Check your connection and try again.",
       );
     } finally {
       setBookingLoading(false);
