@@ -5,7 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
-import { Platform, View, Image, Animated } from "react-native";
+import { Platform } from "react-native";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { AuthProvider } from "@/lib/auth-context";
@@ -28,116 +28,11 @@ export const unstable_settings = {
   anchor: "(tabs)",
 };
 
-function SplashScreen({ onComplete }: { onComplete: () => void }) {
-  const opacity = useState(new Animated.Value(1))[0];
-  const logoScale = useState(new Animated.Value(0.8))[0];
-  const logoOpacity = useState(new Animated.Value(0))[0];
-  const barWidth = useState(new Animated.Value(0))[0];
-
-  useEffect(() => {
-    // Logo animation
-    Animated.parallel([
-      Animated.timing(logoOpacity, { toValue: 1, duration: 1000, useNativeDriver: true }),
-      Animated.spring(logoScale, { toValue: 1, tension: 60, friction: 8, useNativeDriver: true }),
-    ]).start();
-
-    // Loading bar starts after 1s
-    setTimeout(() => {
-      Animated.timing(barWidth, { toValue: 1, duration: 1400, useNativeDriver: false }).start();
-    }, 1100);
-
-    // Fade out after 2.5s
-    setTimeout(() => {
-      Animated.timing(opacity, { toValue: 0, duration: 600, useNativeDriver: true }).start(() => {
-        onComplete();
-      });
-    }, 2500);
-  }, []);
-
-  return (
-    <Animated.View
-      style={{
-        position: "absolute",
-        inset: 0,
-        zIndex: 9999,
-        backgroundColor: "#000000",
-        alignItems: "center",
-        justifyContent: "center",
-        opacity,
-      }}
-    >
-      {/* Radial glow */}
-      <View
-        style={{
-          position: "absolute",
-          width: 320,
-          height: 320,
-          borderRadius: 160,
-          backgroundColor: "rgba(212,175,55,0.06)",
-        }}
-      />
-      {/* Logo */}
-      <Animated.View
-        style={{
-          width: 256,
-          height: 256,
-          alignItems: "center",
-          justifyContent: "center",
-          opacity: logoOpacity,
-          transform: [{ scale: logoScale }],
-        }}
-      >
-        <Image
-          source={require("@/assets/images/icon.png")}
-          style={{ width: 256, height: 256, resizeMode: "contain" }}
-        />
-      </Animated.View>
-      {/* Akwaaba subtitle */}
-      <Animated.Text
-        style={{
-          color: "#D4AF37",
-          fontSize: 20,
-          fontWeight: "700",
-          letterSpacing: 4,
-          textTransform: "uppercase",
-          marginTop: 16,
-          opacity: logoOpacity,
-        }}
-      >
-        Akwaaba
-      </Animated.Text>
-
-      {/* Loading bar */}
-      <View
-        style={{
-          position: "absolute",
-          bottom: 64,
-          width: 64,
-          height: 2,
-          backgroundColor: "rgba(255,255,255,0.1)",
-          borderRadius: 1,
-          overflow: "hidden",
-        }}
-      >
-        <Animated.View
-          style={{
-            height: "100%",
-            backgroundColor: "#D4AF37",
-            borderRadius: 1,
-            width: barWidth.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }),
-          }}
-        />
-      </View>
-    </Animated.View>
-  );
-}
-
 export default function RootLayout() {
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
   const initialFrame = initialWindowMetrics?.frame ?? DEFAULT_WEB_FRAME;
   const [insets, setInsets] = useState<EdgeInsets>(initialInsets);
   const [frame, setFrame] = useState<Rect>(initialFrame);
-  const [splashDone, setSplashDone] = useState(false);
   const notificationListener = useRef<EventSubscription | null>(null);
   const responseListener = useRef<EventSubscription | null>(null);
 
@@ -223,7 +118,6 @@ export default function RootLayout() {
 
             </Stack>
             <StatusBar style="light" />
-            {!splashDone && <SplashScreen onComplete={() => setSplashDone(true)} />}
           </AuthProvider>
         </QueryClientProvider>
       </trpc.Provider>

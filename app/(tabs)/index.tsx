@@ -783,7 +783,15 @@ export default function RiderHomeScreen() {
   };
 
   const handleBook = async () => {
-    if (!destination) return;
+    if (!destination) {
+      setSearchOpen(true);
+      return;
+    }
+
+    if (!user) {
+      Alert.alert("Sign in required", "Please sign in before requesting a HY3N ride.");
+      return;
+    }
 
     if (selectedPayment.id === "mobile_money") {
       const normalized = momoNumber.replace(/\D/g, "");
@@ -807,7 +815,7 @@ export default function RiderHomeScreen() {
     const pin = generateRidePin();
     const surgedFare = Math.round(finalFare * surge.multiplier * 100) / 100;
     try {
-      if (selectedPayment.id === "wallet" && user?.uid) {
+      if (selectedPayment.id === "wallet") {
         const wallet = await firestoreDB.get(COLLECTIONS.WALLET, user.uid);
         const balance = Number(wallet?.balance ?? 0);
         if (balance < surgedFare) {
@@ -815,45 +823,34 @@ export default function RiderHomeScreen() {
           setBookingLoading(false);
           return;
         }
-        await firestoreDB.create(COLLECTIONS.PAYMENTS, {
-          rider_id: user.uid,
-          amount: surgedFare,
-          method: "wallet",
-          status: "authorized",
-          type: "ride_hold",
-          created_at: new Date().toISOString(),
-        });
+        // The rider client may read a wallet but cannot create payments under
+        // the Firestore security rules. The backend settles the wallet safely
+        // after a completed ride through wallet.settleRide.
       }
 
-      // Create real Firestore ride request
-      let firestoreId: string | undefined;
-      if (user) {
-        try {
-          firestoreId = await dispatchService.createRide({
-            riderId: user.uid,
-            riderName: bookForSomeone ? recipientName : (riderProfile?.full_name || user.displayName || 'Rider'),
-            riderPhone: bookForSomeone ? recipientPhone : (riderProfile?.phone || user.phoneNumber || ''),
-            riderEmail: riderProfile?.email || user.email || '',
-            category: selectedCategory.id,
-            pickup: { lat: userLocation[0], lng: userLocation[1], name: recipientAddress || 'Current Location', address: recipientAddress || 'Current Location' },
-            destination: { lat: destination.lat, lng: destination.lng, name: destination.name, address: destination.address || destination.name },
-            stops: stops.filter(Boolean).map(s => ({ lat: s!.lat, lng: s!.lng, name: s!.name, address: s!.address || s!.name })),
-            payment: selectedPayment.id,
-            fare: surgedFare,
-            baseFare: finalFare,
-            surgeMultiplier: surge.multiplier,
-            distance,
-            duration,
-            promoCode: appliedPromo ?? undefined,
-            discount: appliedPromo ? Math.round((finalFare - surgedFare) * 100) / 100 : undefined,
-            rideOptions,
-          });
-        } catch (err) {
-          console.error('Firestore ride creation failed, continuing with local state:', err);
-        }
-      }
-              addActiveRide({
-          id: firestoreId ?? `ride_${Date.now()}`,
+      // A booking exists only after Firestore has accepted it. This guarantees
+      // that the Driver app can receive the same request the Rider sees.
+      const firestoreId = await dispatchService.createRide({
+        riderId: user.uid,
+        riderName: bookForSomeone ? recipientName : (riderProfile?.full_name || user.displayName || 'Rider'),
+        riderPhone: bookForSomeone ? recipientPhone : (riderProfile?.phone || user.phoneNumber || ''),
+        riderEmail: riderProfile?.email || user.email || '',
+        category: selectedCategory.id,
+        pickup: { lat: userLocation[0], lng: userLocation[1], name: recipientAddress || 'Current Location', address: recipientAddress || 'Current Location' },
+        destination: { lat: destination.lat, lng: destination.lng, name: destination.name, address: destination.address || destination.name },
+        stops: stops.filter(Boolean).map(s => ({ lat: s!.lat, lng: s!.lng, name: s!.name, address: s!.address || s!.name })),
+        payment: selectedPayment.id,
+        fare: surgedFare,
+        baseFare: finalFare,
+        surgeMultiplier: surge.multiplier,
+        distance,
+        duration,
+        promoCode: appliedPromo ?? undefined,
+        discount: appliedPromo ? Math.round((finalFare - surgedFare) * 100) / 100 : undefined,
+        rideOptions,
+      });
+      addActiveRide({
+          id: firestoreId,
           firestoreId,
           category: selectedCategory.name,
           categoryId: selectedCategory.id,
@@ -876,7 +873,12 @@ export default function RiderHomeScreen() {
           if (scheduledToastTimerRef.current) clearTimeout(scheduledToastTimerRef.current);
           scheduledToastTimerRef.current = setTimeout(() => setShowScheduledToast(false), 3200);
         }
-
+    } catch (error) {
+      console.error('[Rider] Ride request failed:', error);
+      Alert.alert(
+        "Request not sent",
+        "We could not send your ride request to drivers. Check your connection and try again.",
+      );
     } finally {
       setBookingLoading(false);
       setRideRated(false);
@@ -1952,7 +1954,11 @@ export default function RiderHomeScreen() {
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         paddingBottom: insets.bottom + 16,
-        maxHeight: sheetHeight,
+        // A fixed height gives the booking ScrollView a real viewport. The
+        // request action therefore stays visible below the scrolling options
+        // instead of being pushed off-screen after a destination is selected.
+        height: sheetHeight,
+        overflow: "hidden",
         borderTopWidth: 1,
         borderTopColor: BORDER,
         zIndex: 10,

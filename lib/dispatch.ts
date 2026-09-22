@@ -332,9 +332,11 @@ export const dispatchService = {
       setTimeout(() => dispatchService.matchDriver(docRef.id, params.category), 3000);
       return docRef.id;
     } catch (err) {
-      // Offline fallback: return a local ID
-      console.warn('[Dispatch] Firestore unavailable, using local simulation');
-      return `local_${Date.now()}`;
+      // A local placeholder cannot be seen by a Driver app, so it must never
+      // be presented as a real request. Let the Rider screen show a retryable
+      // error instead.
+      console.error('[Dispatch] Firestore ride creation failed:', err);
+      throw err;
     }
   },
 
