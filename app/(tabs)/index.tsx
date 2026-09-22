@@ -2095,8 +2095,20 @@ export default function HomeScreen() {
           ? (activeRide.status === 'in_progress'
             ? [activeRide.destination.lat, activeRide.destination.lng] as [number, number]
             : [activeRide.pickupLocation.lat, activeRide.pickupLocation.lng] as [number, number])
-          : null}
+            : null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
+        nearbyDrivers={(!activeRide || activeRide.status === "searching")
+          ? nearbyDrivers
+              .filter((driver) => driver.current_lat != null && driver.current_lng != null)
+              .slice(0, 8)
+              .map((driver) => ({
+                ...driver,
+                etaMinutes: calculateETA(
+                  { lat: driver.current_lat as number, lng: driver.current_lng as number },
+                  { lat: userLocation[0], lng: userLocation[1] },
+                ),
+              }))
+          : []}
       />
 
       {/* Header */}

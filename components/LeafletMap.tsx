@@ -2,6 +2,13 @@ import React, { useRef, forwardRef, useImperativeHandle } from "react";
 import { View, Platform } from "react-native";
 import { WebView } from "react-native-webview";
 
+interface NearbyDriver {
+  id: string;
+  current_lat?: number;
+  current_lng?: number;
+  etaMinutes?: number;
+}
+
 interface LeafletMapProps {
   style?: object;
   center?: [number, number]; // [lat, lng]
@@ -15,6 +22,7 @@ interface LeafletMapProps {
   driverTracking?: boolean;
   driverTrackingTarget?: [number, number] | null;
   safetySignal?: "clear" | "route_deviation" | "long_stop";
+  nearbyDrivers?: NearbyDriver[];
 }
 
 export interface LeafletMapRef {
@@ -36,6 +44,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     driverTracking = false,
     driverTrackingTarget = null,
     safetySignal = "clear",
+    nearbyDrivers = [],
   },
   ref
 ) {
@@ -66,6 +75,17 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     : safetySignal === "long_stop"
     ? '<div class="safety-banner warning">Trip check: your driver has been stationary for several minutes.</div>'
     : '';
+  const nearbyDriversJson = JSON.stringify(
+    nearbyDrivers
+      .filter((driver) => driver.current_lat != null && driver.current_lng != null)
+      .slice(0, 8)
+      .map((driver) => ({
+        id: driver.id,
+        lat: driver.current_lat,
+        lng: driver.current_lng,
+        eta: Math.max(1, Math.round(driver.etaMinutes || 1)),
+      }))
+  );
 
   // Dark tile layer — CartoDB Dark Matter (no API key needed)
   const html = `<!DOCTYPE html>
@@ -150,7 +170,19 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     }).addTo(map);
     map.fitBounds([[${userLat}, ${userLng}], [${driverLat}, ${driverLng}], trackingTarget], { padding: [70, 70] });
     ` : ""}
-    ` : ""}
+    ` : `
+    // Show a small number of available cars with their estimated pickup time.
+    var nearbyDrivers = ${nearbyDriversJson};
+    nearbyDrivers.forEach(function(d) {
+      var icon = L.divIcon({
+        html: '<div style="display:flex;align-items:center;gap:4px;background:#006B3F;border:2px solid #fff;border-radius:14px;padding:3px 6px 3px 4px;color:#fff;font:700 10px -apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 2px 7px rgba(0,0,0,.45);white-space:nowrap;"><span style="width:11px;height:11px;border-radius:50%;background:#D4AF37;border:1px solid #fff;display:block;"></span><span>~' + d.eta + ' min</span></div>',
+        iconSize: [58, 24],
+        iconAnchor: [29, 12],
+        className: '',
+      });
+      L.marker([d.lat, d.lng], { icon: icon }).addTo(map);
+    });
+    `}
   </script>
 </body>
 </html>`;
