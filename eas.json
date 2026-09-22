@@ -23,7 +23,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://api-yvurtipaxq-ew.a.run.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://skillful-imagination-production-6b46.up.railway.app"
       }
     },
     "production": {
@@ -34,7 +34,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://api-yvurtipaxq-ew.a.run.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://skillful-imagination-production-6b46.up.railway.app"
       }
     }
   },
