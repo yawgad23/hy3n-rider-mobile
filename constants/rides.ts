@@ -49,11 +49,11 @@ export const RIDE_CATEGORIES: RideCategory[] = [
     id: "kantanka",
     name: "Kantanka",
     description: "Proudly Ghanaian-made mini SUVs",
-    // Benchmark: approximately GH₵95 for the 10.8 km / 43 min route,
-    // positioned as a compelling local SUV alternative to Bolt Comfort.
-    basePrice: 15.00,
-    pricePerKm: 4.70,
-    pricePerMin: 0.62,
+    // Always mirrors Comfort: riders choose the Ghanaian-made vehicle
+    // without receiving a different price for the same route.
+    basePrice: 16.20,
+    pricePerKm: 4.95,
+    pricePerMin: 0.65,
     waitingFeePerMin: 0.88,
     minFare: 27.50,
     seats: 4,

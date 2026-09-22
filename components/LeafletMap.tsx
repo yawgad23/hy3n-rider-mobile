@@ -89,10 +89,10 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       }))
   );
   const isDark = colorScheme === "dark";
-  const mapBackground = isDark ? "#101820" : "#f3f4f6";
-  const tileFilter = isDark
-    ? "filter: brightness(.62) invert(.88) hue-rotate(180deg) saturate(.7) contrast(1.08);"
-    : "";
+  const mapBackground = isDark ? "#2f3742" : "#e9edf2";
+  const tileUrl = isDark
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
 
   // Key-free OpenStreetMap tiles. A tile-only CSS treatment creates a dark map
   // without requiring a third-party map API key; markers remain true-to-colour.
@@ -105,7 +105,8 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body, #map { width: 100%; height: 100%; background: ${mapBackground}; }
-    .leaflet-tile-pane { ${tileFilter} }
+    /* Calm, low-contrast tiles keep live vehicle movement easy to follow. */
+    .leaflet-tile-pane { filter: saturate(.68) contrast(.93) brightness(1.04); }
     .leaflet-control-zoom { display: none; }
     .leaflet-control-attribution { display: none; }
     .safety-banner { position: absolute; top: 14px; left: 14px; right: 14px; z-index: 1000; padding: 10px 12px; border-radius: 12px; color: #fff; font: 600 12px -apple-system, BlinkMacSystemFont, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
@@ -124,10 +125,20 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       attributionControl: false,
     });
 
-    // OpenStreetMap tiles work without a provider API key.
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // Carto's restrained basemap keeps routes, live cars and ETAs readable.
+    // If the provider is unavailable, fall back to OpenStreetMap rather than
+    // leaving the rider with a blank map.
+    var baseTiles = L.tileLayer('${tileUrl}', {
       maxZoom: 19,
+      subdomains: 'abcd',
     }).addTo(map);
+    var usedFallback = false;
+    baseTiles.on('tileerror', function() {
+      if (usedFallback) return;
+      usedFallback = true;
+      map.removeLayer(baseTiles);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    });
 
     // User location marker (green dot)
     var userIcon = L.divIcon({
@@ -180,13 +191,13 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     map.fitBounds([[${userLat}, ${userLng}], [${driverLat}, ${driverLng}], trackingTarget], { padding: [70, 70] });
     ` : ""}
     ` : `
-    // Show a small number of available cars with their estimated pickup time.
+    // Show a small number of real, available cars with their pickup-time labels.
     var nearbyDrivers = ${nearbyDriversJson};
     nearbyDrivers.forEach(function(d) {
       var icon = L.divIcon({
-        html: '<div style="display:flex;align-items:center;gap:4px;background:#006B3F;border:2px solid #fff;border-radius:14px;padding:3px 6px 3px 4px;color:#fff;font:700 10px -apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 2px 7px rgba(0,0,0,.45);white-space:nowrap;"><span style="width:11px;height:11px;border-radius:50%;background:#D4AF37;border:1px solid #fff;display:block;"></span><span>~' + d.eta + ' min</span></div>',
-        iconSize: [58, 24],
-        iconAnchor: [29, 12],
+        html: '<div style="display:flex;align-items:center;gap:5px;background:#006B3F;border:2px solid #fff;border-radius:15px;padding:3px 7px 3px 4px;color:#fff;font:700 10px -apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 2px 7px rgba(0,0,0,.45);white-space:nowrap;"><span style="position:relative;display:block;width:17px;height:11px;border-radius:5px 5px 3px 3px;background:#D4AF37;border:1px solid rgba(255,255,255,.95);"><i style="position:absolute;left:3px;right:3px;top:2px;height:3px;border-radius:2px;background:rgba(255,255,255,.9);"></i><b style="position:absolute;left:1px;bottom:-3px;width:4px;height:4px;border-radius:50%;background:#111;border:1px solid #fff;box-shadow:10px 0 0 #111,10px 0 0 1px #fff;"></b></span><span>~' + d.eta + ' min</span></div>',
+        iconSize: [64, 26],
+        iconAnchor: [32, 13],
         className: '',
       });
       L.marker([d.lat, d.lng], { icon: icon }).addTo(map);

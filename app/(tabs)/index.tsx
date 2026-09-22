@@ -23,7 +23,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/lib/auth-context";
 import { useThemeContext } from "@/lib/theme-provider";
 import { firestoreDB, COLLECTIONS } from "@/lib/firebase";
-import { dispatchService, getSurgeMultiplier, generateRidePin, calculateETA, VEHICLE_COLOURS, type RideRequest as DispatchRide } from "@/lib/dispatch";
+import { dispatchService, generateRidePin, calculateETA, VEHICLE_COLOURS, type RideRequest as DispatchRide } from "@/lib/dispatch";
 import * as ExpoLocation from "expo-location";
 import * as Haptics from "expo-haptics";
 import {
@@ -137,55 +137,6 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Ride Cancelled",
 };
 
-// Surge multiplier computed once per session
-const SURGE = getSurgeMultiplier();
-
-// Peak hours for surge pricing (Ghana time)
-const PEAK_HOURS = [
-  { start: 7, end: 9, label: "Morning Rush" },    // 7-9 AM
-  { start: 12, end: 13, label: "Lunch Time" },     // 12-1 PM
-  { start: 17, end: 20, label: "Evening Rush" },   // 5-8 PM
-];
-
-// Calculate current surge period and time until surge ends
-function getSurgePeriodInfo() {
-  const now = new Date();
-  const currentHour = now.getHours();
-  
-  for (const period of PEAK_HOURS) {
-    if (currentHour >= period.start && currentHour < period.end) {
-      // We're in a surge period
-      const endTime = new Date();
-      endTime.setHours(period.end, 0, 0, 0);
-      const minutesUntilEnd = Math.ceil((endTime.getTime() - now.getTime()) / 60000);
-      return {
-        isActive: true,
-        label: period.label,
-        minutesRemaining: minutesUntilEnd,
-        endTime: endTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-      };
-    }
-  }
-  
-  // Find next surge period
-  let nextPeriod = PEAK_HOURS.find(p => p.start > currentHour);
-  if (!nextPeriod) nextPeriod = PEAK_HOURS[0]; // Next day morning
-  
-  const nextStart = new Date();
-  if (nextPeriod.start <= currentHour) {
-    nextStart.setDate(nextStart.getDate() + 1); // Tomorrow
-  }
-  nextStart.setHours(nextPeriod.start, 0, 0, 0);
-  const minutesUntilNext = Math.ceil((nextStart.getTime() - now.getTime()) / 60000);
-  
-  return {
-    isActive: false,
-    label: nextPeriod.label,
-    minutesUntilNext,
-    startTime: nextStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-  };
-}
-
 export default function RiderHomeScreen() {
   const { colorScheme } = useThemeContext();
   const { user, riderProfile, updateProfile } = useAuth();
@@ -193,6 +144,30 @@ export default function RiderHomeScreen() {
   const safeTop = insets.top > 0 ? insets.top : (Constants.statusBarHeight ?? 44);
   const [userLocation, setUserLocation] = useState<[number, number]>(DEFAULT_LOCATION);
   const [pickupAddress, setPickupAddress] = useState<string>("Getting your location...");
+  const [surge, setSurge] = useState({ multiplier: 1, active: false, reason: null as string | null });
+
+  // Time of day never creates a surcharge. Only the administrator-controlled
+  // backend setting can enable a temporary, clearly labelled multiplier.
+  useEffect(() => {
+    let disposed = false;
+    const loadSurge = async () => {
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/api/trpc/surge.get`);
+        const payload = await response.json();
+        const data = payload?.result?.data?.json ?? payload?.result?.data;
+        const multiplier = Number(data?.multiplier);
+        if (!disposed && Number.isFinite(multiplier) && multiplier >= 1) {
+          setSurge({ multiplier, active: data?.active === true && multiplier > 1, reason: data?.reason || null });
+        }
+      } catch {
+        // Safe default: no surcharge when the configuration cannot be loaded.
+        if (!disposed) setSurge({ multiplier: 1, active: false, reason: null });
+      }
+    };
+    loadSurge();
+    const interval = setInterval(loadSurge, 60_000);
+    return () => { disposed = true; clearInterval(interval); };
+  }, []);
 
   // Request GPS and center map on user's real position
   useEffect(() => {
@@ -827,7 +802,7 @@ export default function RiderHomeScreen() {
 
     setBookingLoading(true);
     const pin = generateRidePin();
-    const surgedFare = Math.round(finalFare * SURGE * 100) / 100;
+    const surgedFare = Math.round(finalFare * surge.multiplier * 100) / 100;
     try {
       if (selectedPayment.id === "wallet" && user?.uid) {
         const wallet = await firestoreDB.get(COLLECTIONS.WALLET, user.uid);
@@ -863,7 +838,7 @@ export default function RiderHomeScreen() {
             payment: selectedPayment.id,
             fare: surgedFare,
             baseFare: finalFare,
-            surgeMultiplier: SURGE,
+            surgeMultiplier: surge.multiplier,
             distance,
             duration,
             promoCode: appliedPromo ?? undefined,
@@ -891,7 +866,7 @@ export default function RiderHomeScreen() {
           scheduled: isScheduled ? scheduledFor : null,
           ridePin: pin,
           rideOptions,
-          surgeMultiplier: SURGE,
+          surgeMultiplier: surge.multiplier,
         });
         if (isScheduled) {
           setShowScheduledToast(true);
@@ -1307,22 +1282,12 @@ export default function RiderHomeScreen() {
                 </View>
               )}
               {/* Surge badge if applicable */}
-              {activeRide.surgeMultiplier && activeRide.surgeMultiplier > 1 && (() => {
-                const surgeInfo = getSurgePeriodInfo();
-                return (
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: "#F59E0B18", borderTopWidth: 0.5, borderTopColor: "#F59E0B40" }}>
-                    <MaterialIcons name="bolt" size={14} color="#F59E0B" />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: "#F59E0B", fontSize: 12, fontWeight: "600" }}>Fare includes high-demand pricing</Text>
-                      {surgeInfo.isActive && (
-                        <Text style={{ color: "#F59E0B", fontSize: 10, opacity: 0.8, marginTop: 2 }}>
-                          {surgeInfo.label} • Ends at {surgeInfo.endTime}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                );
-              })()}
+              {activeRide.surgeMultiplier && activeRide.surgeMultiplier > 1 && (
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: "#F59E0B18", borderTopWidth: 0.5, borderTopColor: "#F59E0B40" }}>
+                  <MaterialIcons name="bolt" size={14} color="#F59E0B" />
+                  <Text style={{ color: "#F59E0B", fontSize: 12, fontWeight: "600" }}>Fare includes administrator-approved high-demand pricing</Text>
+                </View>
+              )}
               {/* Divider */}
               <View style={{ height: 0.5, backgroundColor: BORDER, marginHorizontal: 14 }} />
               {/* Bottom: call + message buttons */}
@@ -1666,35 +1631,15 @@ export default function RiderHomeScreen() {
       </View>
 
       {/* Surge banner — Uber/Bolt style: plain language, no multiplier */}
-      {SURGE > 1 && (() => {
-        const surgeInfo = getSurgePeriodInfo();
-        return (
-          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "#F59E0B18", borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: "#F59E0B40" }}>
-            <MaterialIcons name="bolt" size={18} color="#F59E0B" style={{ marginTop: 1 }} />
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <Text style={{ color: "#F59E0B", fontWeight: "700", fontSize: 13 }}>High Demand</Text>
-                {surgeInfo.isActive && (
-                  <View style={{ backgroundColor: "#F59E0B33", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
-                    <Text style={{ color: "#F59E0B", fontSize: 10, fontWeight: "600" }}>
-                      {surgeInfo.label}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <Text style={{ color: "#F59E0B", fontSize: 12, lineHeight: 17, opacity: 0.85, marginBottom: 6 }}>More people are requesting rides than there are available drivers.</Text>
-              {surgeInfo.isActive && (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <MaterialIcons name="schedule" size={14} color="#F59E0B" />
-                  <Text style={{ color: "#F59E0B", fontSize: 11, fontWeight: "600" }}>
-                    High demand until {surgeInfo.endTime}
-                  </Text>
-                </View>
-              )}
-            </View>
+      {surge.active && (
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "#F59E0B18", borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: "#F59E0B40" }}>
+          <MaterialIcons name="bolt" size={18} color="#F59E0B" style={{ marginTop: 1 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: "#F59E0B", fontWeight: "700", fontSize: 13, marginBottom: 4 }}>High Demand</Text>
+            <Text style={{ color: "#F59E0B", fontSize: 12, lineHeight: 17, opacity: 0.85 }}>{surge.reason || "Temporary high-demand pricing is active."}</Text>
           </View>
-        );
-      })()}
+        </View>
+      )}
       {/* Ride Categories */}
       <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Choose Ride</Text>
       {RIDE_CATEGORIES.map((cat) => {
