@@ -1571,8 +1571,44 @@ export default function RiderHomeScreen() {
     );
   };
 
+  const renderRequestAction = () => (
+    <TouchableOpacity
+      onPress={handleBook}
+      disabled={bookingLoading || (isScheduled && !scheduledFor)}
+      accessibilityRole="button"
+      accessibilityLabel={isScheduled ? "Schedule trip" : `Request HY3N for ${finalFare.toFixed(2)} Ghana cedis`}
+      style={{
+        backgroundColor: GREEN,
+        borderRadius: 14,
+        paddingVertical: 16,
+        alignItems: "center",
+        flexDirection: "row",
+        justifyContent: "center",
+        gap: 8,
+        opacity: (isScheduled && !scheduledFor) ? 0.5 : 1,
+      }}
+    >
+      {bookingLoading ? (
+        <ActivityIndicator color="#fff" size="small" />
+      ) : (
+        <>
+          <MaterialIcons name={isScheduled ? "event" : "navigation"} size={20} color="#fff" />
+          <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>
+            {isScheduled ? "Schedule Trip" : `Request HY3N · GH₵${finalFare.toFixed(2)}`}
+          </Text>
+        </>
+      )}
+    </TouchableOpacity>
+  );
+
   const renderBookingSheet = () => (
-    <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 12 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
       {/* Destination header */}
       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}>
         <TouchableOpacity
@@ -1813,42 +1849,11 @@ export default function RiderHomeScreen() {
         <MaterialIcons name="chevron-right" size={20} color={MUTED} />
       </TouchableOpacity>
 
-      {/* Compact fare summary — detailed breakdown is shown after matching */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingVertical: 8, marginBottom: 4 }}>
-        <Text style={{ color: MUTED, fontSize: 13 }}>Estimated fare</Text>
-        <Text style={{ color: GOLD, fontWeight: "800", fontSize: 18 }}>
-          GH₵{Math.max(0, finalFare * 0.92).toFixed(2)}–{(finalFare * 1.12).toFixed(2)}
-        </Text>
+      </ScrollView>
+      <View style={{ borderTopWidth: 1, borderTopColor: BORDER, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 2, backgroundColor: SURFACE }}>
+        {renderRequestAction()}
       </View>
-
-      {/* Book Button */}
-      <TouchableOpacity
-        onPress={handleBook}
-        disabled={bookingLoading || (isScheduled && !scheduledFor)}
-        style={{
-          backgroundColor: GREEN,
-          borderRadius: 14,
-          paddingVertical: 16,
-          alignItems: "center",
-          flexDirection: "row",
-          justifyContent: "center",
-          gap: 8,
-          marginBottom: 8,
-          opacity: (isScheduled && !scheduledFor) ? 0.5 : 1,
-        }}
-      >
-        {bookingLoading ? (
-          <ActivityIndicator color="#fff" size="small" />
-        ) : (
-          <>
-            <MaterialIcons name={isScheduled ? "event" : "navigation"} size={20} color="#fff" />
-            <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>
-              {isScheduled ? "Schedule Trip" : `Request HY3N · GH₵${finalFare.toFixed(2)}`}
-            </Text>
-          </>
-        )}
-      </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 
   const renderDefaultSheet = () => (

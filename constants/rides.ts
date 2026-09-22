@@ -45,11 +45,13 @@ export const RIDE_CATEGORIES: RideCategory[] = [
     id: "kantanka",
     name: "Kantanka",
     description: "Proudly Ghanaian-made mini SUVs",
-    basePrice: 13.20,
-    pricePerKm: 4.62,
-    pricePerMin: 0.55,
-    waitingFeePerMin: 0.66,
-    minFare: 22.00,
+    // Kantanka is deliberately priced exactly the same as Comfort so riders
+    // can choose the Ghanaian-made vehicle category without a fare penalty.
+    basePrice: 16.50,
+    pricePerKm: 5.06,
+    pricePerMin: 0.66,
+    waitingFeePerMin: 0.88,
+    minFare: 27.50,
     seats: 4,
     icon: "directions-car",
   },
