@@ -5,9 +5,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = Path('/home/ubuntu/rider-build27-recovery/extracted/Payload/HY3N.app/assets/assets/images/icon.png')
 ASSETS = ROOT / 'assets/images'
 
-# Preserve the original HY3N and AKWAABA pixels from the recovered app, but
-# remove the nearly-black circular field behind them. This is a color-key
-# operation only: no text or logo artwork is generated or redrawn.
+# Preserve the original HY3N and AKWAABA pixels, but blend every near-black
+# pixel into the same pure black as the native splash background. The recovered
+# image contains a subtly lighter circular/rectangular field; normalising that
+# field removes the visible cut-and-paste edge without redrawing the artwork.
 source = Image.open(SOURCE).convert('RGBA')
 artwork = source.copy()
 pixels = artwork.load()
@@ -15,10 +16,8 @@ pixels = artwork.load()
 for y in range(artwork.height):
     for x in range(artwork.width):
         r, g, b, a = pixels[x, y]
-        # The unwanted circle and the surrounding square are near-black;
-        # retain the metallic, Ghana-flag, and gold AKWAABA artwork.
-        if max(r, g, b) < 36:
-            pixels[x, y] = (r, g, b, 0)
+        if max(r, g, b) < 92:
+            pixels[x, y] = (0, 0, 0, 255)
 
 bbox = artwork.getbbox()
 if not bbox:

@@ -1805,7 +1805,8 @@ export default function RiderHomeScreen() {
   );
 
   const renderDefaultSheet = () => (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
+    <View style={{ flex: 1 }}>
+    <ScrollView style={{ maxHeight: SCREEN_HEIGHT * 0.23 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
       {/* Pickup row */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8, paddingHorizontal: 4 }}>
         <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: GREEN, borderWidth: 2, borderColor: '#00FF88' }} />
@@ -1859,6 +1860,19 @@ export default function RiderHomeScreen() {
       </ScrollView>
 
     </ScrollView>
+    <View style={{ borderTopWidth: 1, borderTopColor: BORDER, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 2, backgroundColor: SURFACE }}>
+      <TouchableOpacity
+        onPress={() => setSearchOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Choose a destination to request HY3N"
+        style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 15, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }}
+      >
+        <MaterialIcons name="navigation" size={20} color="#fff" />
+        <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>Request HY3N</Text>
+      </TouchableOpacity>
+      <Text style={{ color: MUTED, fontSize: 11, textAlign: "center", marginTop: 6 }}>Choose your destination to continue</Text>
+    </View>
+    </View>
   );
 
   const sheetHeight = activeRide

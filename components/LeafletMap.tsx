@@ -89,10 +89,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       }))
   );
   const isDark = colorScheme === "dark";
-  const mapBackground = isDark ? "#2f3742" : "#e9edf2";
-  const tileUrl = isDark
-    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-    : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+  const mapBackground = isDark ? "#303841" : "#edf0f3";
 
   // Key-free OpenStreetMap tiles. A tile-only CSS treatment creates a dark map
   // without requiring a third-party map API key; markers remain true-to-colour.
@@ -106,7 +103,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body, #map { width: 100%; height: 100%; background: ${mapBackground}; }
     /* Calm, low-contrast tiles keep live vehicle movement easy to follow. */
-    .leaflet-tile-pane { filter: saturate(.68) contrast(.93) brightness(1.04); }
+    .leaflet-tile-pane { filter: ${isDark ? 'grayscale(.82) invert(.83) hue-rotate(180deg) brightness(.72) contrast(.76)' : 'grayscale(.72) saturate(.42) brightness(1.10) contrast(.72)'}; }
     .leaflet-control-zoom { display: none; }
     .leaflet-control-attribution { display: none; }
     .safety-banner { position: absolute; top: 14px; left: 14px; right: 14px; z-index: 1000; padding: 10px 12px; border-radius: 12px; color: #fff; font: 600 12px -apple-system, BlinkMacSystemFont, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
@@ -125,20 +122,11 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       attributionControl: false,
     });
 
-    // Carto's restrained basemap keeps routes, live cars and ETAs readable.
-    // If the provider is unavailable, fall back to OpenStreetMap rather than
-    // leaving the rider with a blank map.
-    var baseTiles = L.tileLayer('${tileUrl}', {
+    // OpenStreetMap does not require an API key. The CSS treatment above keeps
+    // it calm while routes, live cars, pickup and ETA remain the focus.
+    var baseTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      subdomains: 'abcd',
     }).addTo(map);
-    var usedFallback = false;
-    baseTiles.on('tileerror', function() {
-      if (usedFallback) return;
-      usedFallback = true;
-      map.removeLayer(baseTiles);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-    });
 
     // User location marker (green dot)
     var userIcon = L.divIcon({
