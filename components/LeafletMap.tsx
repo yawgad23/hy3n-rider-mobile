@@ -11,6 +11,7 @@ interface NearbyDriver {
 
 interface LeafletMapProps {
   style?: object;
+  colorScheme?: "light" | "dark";
   center?: [number, number]; // [lat, lng]
   zoom?: number;
   userLocation?: [number, number];
@@ -33,6 +34,7 @@ export interface LeafletMapRef {
 const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMap(
   {
     style,
+    colorScheme = "dark",
     center = [5.6037, -0.187],
     zoom = 14,
     userLocation,
@@ -86,8 +88,14 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         eta: Math.max(1, Math.round(driver.etaMinutes || 1)),
       }))
   );
+  const isDark = colorScheme === "dark";
+  const mapBackground = isDark ? "#101820" : "#f3f4f6";
+  const tileFilter = isDark
+    ? "filter: brightness(.62) invert(.88) hue-rotate(180deg) saturate(.7) contrast(1.08);"
+    : "";
 
-  // Key-free OpenStreetMap tiles. Carto's public tile endpoint now requires an API key.
+  // Key-free OpenStreetMap tiles. A tile-only CSS treatment creates a dark map
+  // without requiring a third-party map API key; markers remain true-to-colour.
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -96,7 +104,8 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body, #map { width: 100%; height: 100%; background: #0D1117; }
+    html, body, #map { width: 100%; height: 100%; background: ${mapBackground}; }
+    .leaflet-tile-pane { ${tileFilter} }
     .leaflet-control-zoom { display: none; }
     .leaflet-control-attribution { display: none; }
     .safety-banner { position: absolute; top: 14px; left: 14px; right: 14px; z-index: 1000; padding: 10px 12px; border-radius: 12px; color: #fff; font: 600 12px -apple-system, BlinkMacSystemFont, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
@@ -205,7 +214,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       <WebView
         ref={webViewRef}
         source={{ html }}
-        style={{ flex: 1, backgroundColor: "#0D1117" }}
+        style={{ flex: 1, backgroundColor: mapBackground }}
         scrollEnabled={false}
         bounces={false}
         showsHorizontalScrollIndicator={false}

@@ -30,11 +30,18 @@ export function createTRPCClient() {
           return token ? { Authorization: `Bearer ${token}` } : {};
         },
         // Custom fetch to include credentials for cookie-based auth
-        fetch(url, options) {
-          return fetch(url, {
+        async fetch(url, options) {
+          const response = await fetch(url, {
             ...options,
             credentials: "include",
           });
+          const contentType = response.headers.get("content-type") || "";
+          if (!contentType.includes("application/json")) {
+            throw new Error(
+              "HY3N services are temporarily unavailable. Please try again in a few minutes."
+            );
+          }
+          return response;
         },
       }),
     ],

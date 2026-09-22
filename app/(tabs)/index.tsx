@@ -21,6 +21,7 @@ import Constants from "expo-constants";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/lib/auth-context";
+import { useThemeContext } from "@/lib/theme-provider";
 import { firestoreDB, COLLECTIONS } from "@/lib/firebase";
 import { dispatchService, getSurgeMultiplier, generateRidePin, calculateETA, VEHICLE_COLOURS, type RideRequest as DispatchRide } from "@/lib/dispatch";
 import * as ExpoLocation from "expo-location";
@@ -185,7 +186,8 @@ function getSurgePeriodInfo() {
   };
 }
 
-export default function HomeScreen() {
+export default function RiderHomeScreen() {
+  const { colorScheme } = useThemeContext();
   const { user, riderProfile, updateProfile } = useAuth();
   const insets = useSafeAreaInsets();
   const safeTop = insets.top > 0 ? insets.top : (Constants.statusBarHeight ?? 44);
@@ -1917,6 +1919,7 @@ export default function HomeScreen() {
       {/* Real map using Leaflet + OpenStreetMap dark tiles — works on Expo Go, web, and production */}
       <LeafletMap
         style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+        colorScheme={colorScheme}
         center={userLocation}
         zoom={14}
         userLocation={userLocation}
