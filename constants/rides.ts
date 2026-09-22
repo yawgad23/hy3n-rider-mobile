@@ -21,9 +21,11 @@ export const RIDE_CATEGORIES: RideCategory[] = [
     id: "standard",
     name: "Standard",
     description: "Affordable everyday rides",
-    basePrice: 11.00,
-    pricePerKm: 4.18,
-    pricePerMin: 0.44,
+    // Benchmark: GH₵80.00 for a 10.8 km / 43 min high-demand comparison
+    // route, keeping HY3N Standard below the GH₵83 Bolt quote.
+    basePrice: 11.80,
+    pricePerKm: 4.25,
+    pricePerMin: 0.46,
     waitingFeePerMin: 0.55,
     minFare: 16.50,
     seats: 4,
@@ -33,9 +35,11 @@ export const RIDE_CATEGORIES: RideCategory[] = [
     id: "comfort",
     name: "Comfort",
     description: "Comfortable rides with extra amenities",
-    basePrice: 16.50,
-    pricePerKm: 5.06,
-    pricePerMin: 0.66,
+    // Benchmark: approximately GH₵100 for the 10.8 km / 43 min route,
+    // below Uber Comfort's GH₵102 comparison quote.
+    basePrice: 16.20,
+    pricePerKm: 4.95,
+    pricePerMin: 0.65,
     waitingFeePerMin: 0.88,
     minFare: 27.50,
     seats: 4,
@@ -45,11 +49,11 @@ export const RIDE_CATEGORIES: RideCategory[] = [
     id: "kantanka",
     name: "Kantanka",
     description: "Proudly Ghanaian-made mini SUVs",
-    // Kantanka is deliberately priced exactly the same as Comfort so riders
-    // can choose the Ghanaian-made vehicle category without a fare penalty.
-    basePrice: 16.50,
-    pricePerKm: 5.06,
-    pricePerMin: 0.66,
+    // Benchmark: approximately GH₵95 for the 10.8 km / 43 min route,
+    // positioned as a compelling local SUV alternative to Bolt Comfort.
+    basePrice: 15.00,
+    pricePerKm: 4.70,
+    pricePerMin: 0.62,
     waitingFeePerMin: 0.88,
     minFare: 27.50,
     seats: 4,
