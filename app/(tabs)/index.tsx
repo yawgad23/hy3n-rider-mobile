@@ -1811,136 +1811,12 @@ export default function HomeScreen() {
         <MaterialIcons name="chevron-right" size={20} color={MUTED} />
       </TouchableOpacity>
 
-      {/* Tip Selector */}
-      <View style={{ marginBottom: 12 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <Text style={{ color: MUTED, fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 }}>Add a tip</Text>
-          {preTipAmount > 0 && <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 13 }}>GH₵{preTipAmount.toFixed(2)}</Text>}
-        </View>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {[10, 15, 20].map((percent) => (
-            <TouchableOpacity
-              key={percent}
-              onPress={() => { setSelectedTipPercent(percent); setCustomTip(""); }}
-              style={{
-                flex: 1,
-                paddingVertical: 10,
-                borderRadius: 10,
-                backgroundColor: selectedTipPercent === percent ? GOLD : CARD,
-                borderWidth: 1,
-                borderColor: selectedTipPercent === percent ? GOLD : BORDER,
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ color: selectedTipPercent === percent ? "#000" : TEXT, fontWeight: "600", fontSize: 13 }}>{percent}%</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-          <TextInput
-            value={customTip}
-            onChangeText={(t) => { setCustomTip(t); setSelectedTipPercent(null); }}
-            placeholder="Custom amount"
-            placeholderTextColor="#4A4A4A"
-            keyboardType="decimal-pad"
-            style={{ flex: 1, backgroundColor: CARD, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: TEXT, fontSize: 13, borderWidth: 1, borderColor: BORDER }}
-          />
-          <TouchableOpacity
-            onPress={() => { setSelectedTipPercent(null); setCustomTip(""); }}
-            style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center" }}
-          >
-            <MaterialIcons name="close" size={18} color={MUTED} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Promo Code */}
-      {appliedPromo ? (
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: `${GREEN}1A`, borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: `${GREEN}4D` }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <MaterialIcons name="local-offer" size={16} color={GREEN} />
-            <Text style={{ color: GREEN, fontSize: 13, fontWeight: "600" }}>{appliedPromo} applied</Text>
-            <Text style={{ color: GOLD, fontSize: 13, fontWeight: "bold" }}>-GH₵{discount.toFixed(2)}</Text>
-          </View>
-          <TouchableOpacity onPress={() => { setAppliedPromo(null); setPromoInput(""); }}>
-            <MaterialIcons name="close" size={16} color={MUTED} />
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={{ marginBottom: 10 }}>
-          <TouchableOpacity
-            onPress={() => setPromoExpanded(!promoExpanded)}
-            style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}
-          >
-            <MaterialIcons name="local-offer" size={16} color={MUTED} />
-            <Text style={{ color: MUTED, fontSize: 13, fontWeight: "500", flex: 1 }}>Add promo code</Text>
-            <MaterialIcons name={promoExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"} size={18} color={MUTED} />
-          </TouchableOpacity>
-          {promoExpanded && (
-            <View style={{ marginTop: 8, flexDirection: "row", gap: 8 }}>
-              <TextInput
-                value={promoInput}
-                onChangeText={(t) => { setPromoInput(t); setPromoError(""); }}
-                placeholder="Enter code"
-                placeholderTextColor="#4A4A4A"
-                autoCapitalize="characters"
-                style={{ flex: 1, backgroundColor: CARD, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: TEXT, fontSize: 13, borderWidth: 1, borderColor: promoError ? RED : BORDER }}
-                returnKeyType="done"
-                onSubmitEditing={handleApplyPromo}
-              />
-              <TouchableOpacity
-                onPress={handleApplyPromo}
-                style={{ backgroundColor: GOLD, borderRadius: 10, paddingHorizontal: 16, alignItems: "center", justifyContent: "center" }}
-              >
-                <Text style={{ color: "#000", fontWeight: "bold", fontSize: 13 }}>Apply</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          {promoError ? <Text style={{ color: RED, fontSize: 11, marginTop: 4, marginLeft: 4 }}>{promoError}</Text> : null}
-        </View>
-      )}
-
-
-      {/* Fare Summary */}
-      <View style={{ backgroundColor: CARD, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 0.5, borderColor: BORDER }}>
-        {/* Surge indicator — plain language, no multiplier */}
-        {SURGE > 1 && (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#F59E0B18", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, marginBottom: 10 }}>
-            <MaterialIcons name="bolt" size={14} color="#F59E0B" />
-            <Text style={{ color: "#F59E0B", fontSize: 12, fontWeight: "600" }}>Prices are higher due to demand</Text>
-          </View>
-        )}
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <View>
-            <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "700", marginBottom: 4 }}>
-              Estimated Fare
-            </Text>
-            {discount > 0 && (
-              <Text style={{ color: MUTED, fontSize: 11, textDecorationLine: "line-through" }}>GH₵{baseFare.toFixed(2)}</Text>
-            )}
-          </View>
-          <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 24 }}>
-            GH₵{Math.max(0, finalFare * 0.92).toFixed(2)}–{(finalFare * 1.12).toFixed(2)}
-          </Text>
-        </View>
-        {/* Fare breakdown with booking fee */}
-        <View style={{ borderTopWidth: 0.5, borderTopColor: BORDER, paddingTop: 10 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-            <Text style={{ color: MUTED, fontSize: 11 }}>Base fare + distance</Text>
-            <Text style={{ color: TEXT, fontSize: 11, fontWeight: "600" }}>GH₵{(finalFare * 0.85).toFixed(2)}</Text>
-          </View>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-            <Text style={{ color: MUTED, fontSize: 11 }}>Booking fee</Text>
-            <Text style={{ color: TEXT, fontSize: 11, fontWeight: "600" }}>GH₵2.50</Text>
-          </View>
-          {preTipAmount > 0 && (
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingBottom: 8, borderBottomWidth: 0.5, borderBottomColor: BORDER }}>
-              <Text style={{ color: MUTED, fontSize: 11 }}>Tip</Text>
-              <Text style={{ color: GOLD, fontSize: 11, fontWeight: "600" }}>GH₵{preTipAmount.toFixed(2)}</Text>
-            </View>
-          )}
-        </View>
-        <Text style={{ color: MUTED, fontSize: 10, marginTop: 4 }}>Estimated range based on live traffic, pickup timing, and waiting time</Text>
+      {/* Compact fare summary — detailed breakdown is shown after matching */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4, paddingVertical: 8, marginBottom: 4 }}>
+        <Text style={{ color: MUTED, fontSize: 13 }}>Estimated fare</Text>
+        <Text style={{ color: GOLD, fontWeight: "800", fontSize: 18 }}>
+          GH₵{Math.max(0, finalFare * 0.92).toFixed(2)}–{(finalFare * 1.12).toFixed(2)}
+        </Text>
       </View>
 
       {/* Book Button */}
@@ -2027,50 +1903,13 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
-      {/* Promotions Banner */}
-      <View style={{ marginTop: 14 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <Text style={{ color: TEXT, fontWeight: "700", fontSize: 14 }}>Promotions</Text>
-          <Text style={{ color: GOLD, fontSize: 12 }}>Tap to apply</Text>
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            {[
-              { code: "FIRSTRIDE", label: "First Ride Free", desc: "100% off your first ride", color: GREEN },
-              { code: "HY3N10", label: "10% Off", desc: "10% off any ride", color: GOLD },
-              { code: "WEEKEND", label: "Weekend Deal", desc: "GH₵5 off weekends", color: "#7C3AED" },
-              { code: "FREERIDE", label: "Free Ride", desc: "One free ride on us", color: "#0EA5E9" },
-              { code: "WELCOME", label: "Welcome Bonus", desc: "GH₵10 credit", color: "#F59E0B" },
-            ].map((promo) => (
-              <TouchableOpacity
-                key={promo.code}
-                onPress={() => {
-                  setPromoInput(promo.code);
-                  setPromoExpanded(true);
-                  setDestination({ name: destination?.name || "", address: destination?.address || "", lat: destination?.lat || 5.6037, lng: destination?.lng || -0.187 });
-                }}
-                style={{ width: 160, backgroundColor: `${promo.color}18`, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: `${promo.color}44` }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                  <MaterialIcons name="local-offer" size={16} color={promo.color} />
-                  <View style={{ backgroundColor: `${promo.color}22`, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
-                    <Text style={{ color: promo.color, fontSize: 10, fontWeight: "700" }}>{promo.code}</Text>
-                  </View>
-                </View>
-                <Text style={{ color: TEXT, fontWeight: "700", fontSize: 13 }}>{promo.label}</Text>
-                <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{promo.desc}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-      </View>
     </ScrollView>
   );
 
   const sheetHeight = activeRide
     ? (activeRide.status === "completed" ? SCREEN_HEIGHT * 0.75 : SCREEN_HEIGHT * 0.65)
     : destination
-    ? SCREEN_HEIGHT * 0.72
+    ? SCREEN_HEIGHT * 0.84
     : SCREEN_HEIGHT * 0.38;
 
   return (
