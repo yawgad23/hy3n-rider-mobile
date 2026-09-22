@@ -14,6 +14,7 @@ import {
   Share,
   Linking,
   Image,
+  PanResponder,
 } from "react-native";
 import LeafletMap from "@/components/LeafletMap";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -225,6 +226,7 @@ export default function RiderHomeScreen() {
   const [destination, setDestination] = useState<Location | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [bookingSheetCollapsed, setBookingSheetCollapsed] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(RIDE_CATEGORIES[0]);
   const [selectedPayment, setSelectedPayment] = useState(PAYMENT_METHODS[0]);
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([
@@ -775,6 +777,7 @@ export default function RiderHomeScreen() {
 
   const handleSelectDestination = async (loc: Location) => {
     setDestination(loc);
+    setBookingSheetCollapsed(false);
     setSearchOpen(false);
     setSearchQuery("");
     const updated = [loc, ...searchHistory.filter((h) => h.name !== loc.name)].slice(0, 5);
@@ -932,6 +935,7 @@ export default function RiderHomeScreen() {
 
   const handleCancelBooking = () => {
     setSelectedCategory(RIDE_CATEGORIES[0]);
+    setBookingSheetCollapsed(false);
     resetBookingState();
   };
 
@@ -1877,10 +1881,21 @@ export default function RiderHomeScreen() {
     </View>
   );
 
+  const bookingSheetPanResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: (_event, gesture) =>
+      Boolean(destination) && !activeRide && Math.abs(gesture.dy) > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onPanResponderRelease: (_event, gesture) => {
+      if (!destination || activeRide) return;
+      if (gesture.dy > 30) setBookingSheetCollapsed(true);
+      if (gesture.dy < -30) setBookingSheetCollapsed(false);
+    },
+    onPanResponderTerminationRequest: () => true,
+  });
+
   const sheetHeight = activeRide
     ? (activeRide.status === "completed" ? SCREEN_HEIGHT * 0.75 : SCREEN_HEIGHT * 0.65)
     : destination
-    ? SCREEN_HEIGHT * 0.84
+    ? (bookingSheetCollapsed ? SCREEN_HEIGHT * 0.25 : SCREEN_HEIGHT * 0.70)
     : SCREEN_HEIGHT * 0.38;
 
   return (
@@ -1964,10 +1979,39 @@ export default function RiderHomeScreen() {
         zIndex: 10,
       }}>
         {/* Drag handle */}
-        <View style={{ alignItems: "center", paddingTop: 10, paddingBottom: 4 }}>
+        <View
+          {...bookingSheetPanResponder.panHandlers}
+          style={{ alignItems: "center", paddingTop: 10, paddingBottom: 4 }}
+          accessibilityRole="adjustable"
+          accessibilityLabel="Booking sheet"
+          accessibilityHint="Swipe down to see more of the map and swipe up to expand booking options"
+        >
           <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: BORDER }} />
         </View>
-        {activeRide ? renderActiveRide() : destination ? renderBookingSheet() : renderDefaultSheet()}
+        {activeRide ? renderActiveRide() : destination ? (
+          bookingSheetCollapsed ? (
+            <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 6 }}>
+              <TouchableOpacity
+                onPress={() => setBookingSheetCollapsed(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Continue booking"
+                style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 }}
+              >
+                <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${GOLD}26`, alignItems: "center", justifyContent: "center" }}>
+                  <MaterialIcons name="directions-car" size={18} color={GOLD} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: TEXT, fontSize: 14, fontWeight: "700" }} numberOfLines={1}>{destination.name}</Text>
+                  <Text style={{ color: MUTED, fontSize: 11 }}>Swipe up or tap to choose ride and payment</Text>
+                </View>
+                <MaterialIcons name="keyboard-arrow-up" size={24} color={GOLD} />
+              </TouchableOpacity>
+              <View style={{ borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 8 }}>
+                {renderRequestAction()}
+              </View>
+            </View>
+          ) : renderBookingSheet()
+        ) : renderDefaultSheet()}
       </View>
 
       {/* Search Modal */}
