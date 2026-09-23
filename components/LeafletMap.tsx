@@ -93,9 +93,10 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   );
   const isDark = colorScheme === "dark";
   const mapBackground = isDark ? "#1f2937" : "#f5f6f7";
-  const tileUrl = isDark
-    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-    : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+  // Carto's basemap endpoint now returns "API KEY REQUIRED" in the mobile
+  // WebView. OSM is key-free and reliable; dark mode is handled by the map
+  // surface and high-contrast neutral vehicle marker.
+  const tileUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 
   // Key-free OpenStreetMap tiles. A tile-only CSS treatment creates a dark map
   // without requiring a third-party map API key; markers remain true-to-colour.
@@ -128,7 +129,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       attributionControl: false,
     });
 
-    // Carto's key-free tiles stay crisp in both system appearances.
+    // Key-free OpenStreetMap tiles stay available in both system appearances.
     var baseTiles = L.tileLayer('${tileUrl}', {
       maxZoom: 19,
     }).addTo(map);
