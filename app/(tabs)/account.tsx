@@ -20,6 +20,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { Notifications } from '@/lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeContext } from '@/lib/theme-provider';
+import { useColors } from '@/hooks/use-colors';
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -74,6 +75,13 @@ export default function AccountScreen() {
   const router = useRouter();
   const { user, riderProfile, signOut, deleteAccount, updateProfile } = useAuth();
   const { colorScheme, setColorScheme } = useThemeContext();
+  const colors = useColors();
+  const BG = colors.background;
+  const SURFACE = colors.surface;
+  const CARD = colors.card;
+  const BORDER = colors.border;
+  const TEXT = colors.foreground;
+  const MUTED = colors.muted;
   const userPoints = riderProfile?.loyalty_points ?? 0;
 
   const [showEditProfile, setShowEditProfile] = useState(false);
@@ -247,7 +255,7 @@ export default function AccountScreen() {
   );
 
   return (
-    <ScreenContainer containerClassName="bg-[#0A0A0A]" safeAreaClassName="bg-[#0A0A0A]">
+    <ScreenContainer style={{ backgroundColor: BG }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
         <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 }}>
           <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 22 }}>Account</Text>

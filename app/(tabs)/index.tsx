@@ -23,6 +23,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/lib/auth-context";
 import { useThemeContext } from "@/lib/theme-provider";
+import { useColors } from "@/hooks/use-colors";
 import { auth, firestoreDB, COLLECTIONS } from "@/lib/firebase";
 import { dispatchService, calculateETA, VEHICLE_COLOURS, type RideRequest as DispatchRide } from "@/lib/dispatch";
 import * as ExpoLocation from "expo-location";
@@ -141,6 +142,13 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function RiderHomeScreen() {
   const { colorScheme } = useThemeContext();
+  const colors = useColors();
+  const BG = colors.background;
+  const SURFACE = colors.surface;
+  const CARD = colors.card;
+  const BORDER = colors.border;
+  const TEXT = colors.foreground;
+  const MUTED = colors.muted;
   const isDarkMode = colorScheme !== "light";
   const greetingColor = isDarkMode ? GOLD : "#005C36";
   const greetingSubtitleColor = isDarkMode ? "rgba(212,175,55,0.82)" : "#234E3D";
@@ -1992,11 +2000,11 @@ export default function RiderHomeScreen() {
 
   const bookingSheetPanResponder = PanResponder.create({
     onMoveShouldSetPanResponder: (_event, gesture) =>
-      Boolean(destination) && !activeRide && Math.abs(gesture.dy) > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+      Boolean(destination) && !activeRide && Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
     onPanResponderRelease: (_event, gesture) => {
       if (!destination || activeRide) return;
-      if (gesture.dy > 30) setBookingSheetCollapsed(true);
-      if (gesture.dy < -30) setBookingSheetCollapsed(false);
+      if (gesture.dy > 12) setBookingSheetCollapsed(true);
+      if (gesture.dy < -12) setBookingSheetCollapsed(false);
     },
     onPanResponderTerminationRequest: () => true,
   });
@@ -2004,8 +2012,8 @@ export default function RiderHomeScreen() {
   const sheetHeight = activeRide
     ? (activeRide.status === "completed" ? SCREEN_HEIGHT * 0.75 : SCREEN_HEIGHT * 0.65)
     : destination
-    ? (bookingSheetCollapsed ? SCREEN_HEIGHT * 0.25 : SCREEN_HEIGHT * 0.70)
-    : SCREEN_HEIGHT * 0.38;
+    ? (bookingSheetCollapsed ? SCREEN_HEIGHT * 0.18 : SCREEN_HEIGHT * 0.54)
+    : SCREEN_HEIGHT * 0.33;
 
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
@@ -2088,23 +2096,32 @@ export default function RiderHomeScreen() {
         zIndex: 10,
       }}>
         {/* Drag handle */}
-        <View
+        <TouchableOpacity
           {...bookingSheetPanResponder.panHandlers}
-          style={{ alignItems: "center", paddingTop: 10, paddingBottom: 4 }}
-          accessibilityRole="adjustable"
+          onPress={() => {
+            if (destination && !activeRide) setBookingSheetCollapsed((collapsed) => !collapsed);
+          }}
+          activeOpacity={0.75}
+          style={{ alignItems: "center", paddingTop: 8, paddingBottom: 7 }}
+          accessibilityRole="button"
           accessibilityLabel="Booking sheet"
-          accessibilityHint="Swipe down to see more of the map and swipe up to expand booking options"
+          accessibilityHint="Tap, swipe down to minimize, or swipe up to expand booking options"
         >
           <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: BORDER }} />
-        </View>
+          {destination && !activeRide && (
+            <Text style={{ color: MUTED, fontSize: 10, marginTop: 4 }}>
+              {bookingSheetCollapsed ? "Tap or swipe up to expand" : "Tap or swipe down to minimize"}
+            </Text>
+          )}
+        </TouchableOpacity>
         {activeRide ? renderActiveRide() : destination ? (
           bookingSheetCollapsed ? (
-            <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 6 }}>
+            <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 4 }}>
               <TouchableOpacity
                 onPress={() => setBookingSheetCollapsed(false)}
                 accessibilityRole="button"
                 accessibilityLabel="Continue booking"
-                style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 3 }}
               >
                 <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${GOLD}26`, alignItems: "center", justifyContent: "center" }}>
                   <MaterialIcons name="directions-car" size={18} color={GOLD} />

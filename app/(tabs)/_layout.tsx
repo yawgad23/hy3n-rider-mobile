@@ -86,14 +86,14 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: "#D4AF37",
-        tabBarInactiveTintColor: "#9CA3AF",
+        tabBarInactiveTintColor: colors.muted,
         headerShown: false,
         tabBarStyle: {
           paddingTop: 10,
           paddingBottom: bottomPadding,
           height: tabBarHeight,
-          backgroundColor: "#111111",
-          borderTopColor: "#2A2A2A",
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
           borderTopWidth: 0.5,
         },
         tabBarLabelStyle: {
@@ -111,7 +111,7 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarBadge: activeRideCount > 0 ? activeRideCount : undefined,
-          tabBarBadgeStyle: { backgroundColor: "#D4AF37", color: "#0A0A0A", fontWeight: "700" },
+          tabBarBadgeStyle: { backgroundColor: "#D4AF37", color: colors.background, fontWeight: "700" },
           tabBarIcon: ({ color, focused }) => (
             <TabBarIcon name="home" color={color} focused={focused} />
           ),

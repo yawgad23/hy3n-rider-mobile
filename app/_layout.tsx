@@ -117,7 +117,7 @@ export default function RootLayout() {
               <Stack.Screen name="support" options={{ presentation: "modal" }} />
 
             </Stack>
-            <StatusBar style="light" />
+            <StatusBar style="auto" />
           </AuthProvider>
         </QueryClientProvider>
       </trpc.Provider>

@@ -16,6 +16,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useAuth } from "@/lib/auth-context";
 import { firestoreDB, COLLECTIONS } from "@/lib/firebase";
 import { trpc } from "@/lib/trpc";
+import { useColors } from "@/hooks/use-colors";
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -59,6 +60,13 @@ type TopUpStage = "idle" | "processing" | "ussd_sent" | "success" | "failed";
 
 export default function WalletScreen() {
   const { user, riderProfile } = useAuth();
+  const colors = useColors();
+  const BG = colors.background;
+  const SURFACE = colors.surface;
+  const CARD = colors.card;
+  const BORDER = colors.border;
+  const TEXT = colors.foreground;
+  const MUTED = colors.muted;
   const [balance, setBalance] = useState(0);
   const [balanceLoading, setBalanceLoading] = useState(true);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -207,7 +215,7 @@ export default function WalletScreen() {
     t.type === "credit" ? "add-circle" : t.type === "refund" ? "replay" : "remove-circle";
 
   return (
-    <ScreenContainer containerClassName="bg-[#0A0A0A]" safeAreaClassName="bg-[#0A0A0A]">
+    <ScreenContainer style={{ backgroundColor: BG }}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GOLD} />}
