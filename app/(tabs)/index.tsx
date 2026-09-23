@@ -72,6 +72,7 @@ interface Location {
   address: string;
   lat: number;
   lng: number;
+  placeId?: string;
 }
 
 interface SavedPlace {
@@ -226,6 +227,7 @@ export default function RiderHomeScreen() {
   const [destination, setDestination] = useState<Location | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [locationSearchMode, setLocationSearchMode] = useState<"pickup" | "destination">("destination");
   const [bookingSheetCollapsed, setBookingSheetCollapsed] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(RIDE_CATEGORIES[0]);
   const [selectedPayment, setSelectedPayment] = useState(PAYMENT_METHODS[0]);
@@ -775,19 +777,67 @@ export default function RiderHomeScreen() {
         )
     : POPULAR_DESTINATIONS;
 
-  const handleSelectDestination = async (loc: Location) => {
-    setDestination(loc);
+  const openLocationSearch = (mode: "pickup" | "destination") => {
+    setLocationSearchMode(mode);
+    setSearchQuery("");
+    setSearchOpen(true);
+  };
+
+  const resolvePlaceLocation = async (loc: Location): Promise<Location> => {
+    if (!loc.placeId) return loc;
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/places/details?place_id=${encodeURIComponent(loc.placeId)}`);
+      const payload = await response.json() as { result?: any };
+      const result = payload?.result;
+      const latitude = Number(result?.geometry?.location?.lat);
+      const longitude = Number(result?.geometry?.location?.lng);
+      if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+        return {
+          name: result?.name || loc.name,
+          address: result?.formatted_address || loc.address || loc.name,
+          lat: latitude,
+          lng: longitude,
+        };
+      }
+    } catch {
+      // A typed popular place remains a usable fallback. Google details are
+      // only needed for autocomplete items, whose coordinates start blank.
+    }
+    return loc;
+  };
+
+  const handleSelectLocation = async (loc: Location, selectedMode = locationSearchMode) => {
+    const resolved = await resolvePlaceLocation(loc);
+    if (!Number.isFinite(resolved.lat) || !Number.isFinite(resolved.lng) || (resolved.lat === 0 && resolved.lng === 0)) {
+      Alert.alert("Location unavailable", "We could not get coordinates for that place. Please choose another result.");
+      return;
+    }
+
+    if (selectedMode === "pickup") {
+      setUserLocation([resolved.lat, resolved.lng]);
+      setPickupAddress(resolved.address || resolved.name || "Selected pickup");
+      setSearchOpen(false);
+      setSearchQuery("");
+      return;
+    }
+
+    setDestination(resolved);
     setBookingSheetCollapsed(false);
     setSearchOpen(false);
     setSearchQuery("");
-    const updated = [loc, ...searchHistory.filter((h) => h.name !== loc.name)].slice(0, 5);
+    const updated = [resolved, ...searchHistory.filter((h) => h.name !== resolved.name)].slice(0, 5);
     setSearchHistory(updated);
     await AsyncStorage.setItem("searchHistory", JSON.stringify(updated));
   };
 
+  const handleSelectDestination = (loc: Location) => {
+    setLocationSearchMode("destination");
+    return handleSelectLocation(loc, "destination");
+  };
+
   const handleBook = async () => {
     if (!destination) {
-      setSearchOpen(true);
+      openLocationSearch("destination");
       return;
     }
 
@@ -835,13 +885,14 @@ export default function RiderHomeScreen() {
       // and writes the assigned `matched` record that the Driver app hears.
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) throw new Error("Your session has expired. Please sign in again.");
+      const selectedPickupAddress = recipientAddress || pickupAddress || 'Current Location';
       const requestBody = {
         riderId: user.uid,
         riderName: bookForSomeone ? recipientName : (riderProfile?.full_name || user.displayName || 'Rider'),
         riderPhone: bookForSomeone ? recipientPhone : (riderProfile?.phone || user.phoneNumber || ''),
         riderEmail: riderProfile?.email || user.email || '',
         category: selectedCategory.id,
-        pickup: { lat: userLocation[0], lng: userLocation[1], name: recipientAddress || 'Current Location', address: recipientAddress || 'Current Location' },
+        pickup: { lat: userLocation[0], lng: userLocation[1], name: selectedPickupAddress, address: selectedPickupAddress },
         destination: { lat: destination.lat, lng: destination.lng, name: destination.name, address: destination.address || destination.name },
         stops: stops.filter(Boolean).map(s => ({ lat: s!.lat, lng: s!.lng, name: s!.name, address: s!.address || s!.name })),
         payment: selectedPayment.id,
@@ -969,7 +1020,7 @@ export default function RiderHomeScreen() {
   };
 
   const handleQuickPlace = (place: SavedPlace) => {
-    if (!place.lat || !place.lng) { setSearchOpen(true); return; }
+    if (!place.lat || !place.lng) { openLocationSearch("destination"); return; }
     handleSelectDestination({ name: place.name, address: place.address, lat: place.lat, lng: place.lng });
   };
 
@@ -1191,7 +1242,7 @@ export default function RiderHomeScreen() {
           <View style={{ marginBottom: 12 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <Text style={{ color: TEXT, fontSize: 14, fontWeight: '800' }}>Your active rides ({countActiveRides(activeRides)})</Text>
-              <TouchableOpacity onPress={() => { resetBookingState(); setSearchOpen(true); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <TouchableOpacity onPress={() => { resetBookingState(); openLocationSearch("destination"); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <MaterialIcons name="add-circle-outline" size={17} color={GOLD} />
                 <Text style={{ color: GOLD, fontSize: 12, fontWeight: '700' }}>Book another</Text>
               </TouchableOpacity>
@@ -1208,7 +1259,7 @@ export default function RiderHomeScreen() {
           </View>
         )}
         {activeRides.length === 1 && (
-          <TouchableOpacity onPress={() => { resetBookingState(); setSearchOpen(true); }} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: `${GOLD}14`, borderColor: `${GOLD}44`, borderWidth: 1, borderRadius: 11, paddingVertical: 10, marginBottom: 12 }}>
+          <TouchableOpacity onPress={() => { resetBookingState(); openLocationSearch("destination"); }} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: `${GOLD}14`, borderColor: `${GOLD}44`, borderWidth: 1, borderRadius: 11, paddingVertical: 10, marginBottom: 12 }}>
             <MaterialIcons name="add" size={17} color={GOLD} />
             <Text style={{ color: GOLD, fontSize: 13, fontWeight: '700' }}>Book another ride</Text>
           </TouchableOpacity>
@@ -1612,19 +1663,96 @@ export default function RiderHomeScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-      {/* Destination header */}
-      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}>
+      {/* Web-parity booking header and editable route card */}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14, paddingHorizontal: 2 }}>
+        <Text style={{ color: TEXT, fontWeight: "800", fontSize: 22 }}>Choose your ride</Text>
         <TouchableOpacity
           onPress={handleCancelBooking}
-          style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: CARD, alignItems: "center", justifyContent: "center", marginRight: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel="Close ride selection"
+          style={{ width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" }}
         >
-          <MaterialIcons name="arrow-back" size={18} color={TEXT} />
+          <MaterialIcons name="close" size={26} color={MUTED} />
         </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>To</Text>
-          <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 15 }} numberOfLines={1}>{destination?.name}</Text>
-          <Text style={{ color: MUTED, fontSize: 11 }}>{distance.toFixed(1)} km · ~{duration} min</Text>
+      </View>
+
+      <View style={{ backgroundColor: CARD, borderRadius: 18, padding: 14, marginBottom: 12, flexDirection: "row", gap: 12 }}>
+        <View style={{ alignItems: "center", width: 20, paddingTop: 11 }}>
+          <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 3, borderColor: GREEN }} />
+          <View style={{ width: 2, height: 36, backgroundColor: BORDER, marginVertical: 4 }} />
+          <MaterialIcons name="location-on" size={21} color={GOLD} />
         </View>
+        <View style={{ flex: 1, gap: 14 }}>
+          <TouchableOpacity
+            onPress={() => openLocationSearch("pickup")}
+            accessibilityRole="button"
+            accessibilityLabel="Change pickup location"
+            style={{ flex: 1 }}
+          >
+            <Text style={{ color: MUTED, fontSize: 12, marginBottom: 3 }}>Pickup</Text>
+            <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }} numberOfLines={1}>{pickupAddress || "Current Location"}</Text>
+            <Text style={{ color: GOLD, fontSize: 12, marginTop: 3 }}>Tap to change pickup</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => openLocationSearch("destination")}
+            accessibilityRole="button"
+            accessibilityLabel="Change destination"
+            style={{ flex: 1 }}
+          >
+            <Text style={{ color: MUTED, fontSize: 12, marginBottom: 3 }}>Destination</Text>
+            <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }} numberOfLines={1}>{destination?.name || "Selected destination"}</Text>
+            <Text style={{ color: GOLD, fontSize: 12, marginTop: 3 }}>Tap to change destination</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={{ minWidth: 66, alignItems: "flex-end", justifyContent: "center" }}>
+          <Text style={{ color: TEXT, fontSize: 16, fontWeight: "800" }}>{distance.toFixed(1)} km</Text>
+          <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>~{duration} min trip</Text>
+        </View>
+      </View>
+
+      {/* Web-parity passenger switch */}
+      <View style={{ backgroundColor: CARD, borderRadius: 18, borderWidth: 1, borderColor: BORDER, marginBottom: 14, overflow: "hidden" }}>
+        <TouchableOpacity
+          onPress={() => setBookForSomeone(!bookForSomeone)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: bookForSomeone }}
+          style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 15 }}
+        >
+          <MaterialIcons name="person-outline" size={25} color={GOLD} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }}>Book for someone else</Text>
+            <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>Booking for {bookForSomeone ? "another person" : "yourself"}</Text>
+          </View>
+          <MaterialIcons name={bookForSomeone ? "keyboard-arrow-up" : "chevron-right"} size={24} color={MUTED} />
+        </TouchableOpacity>
+        {bookForSomeone && (
+          <View style={{ borderTopWidth: 1, borderTopColor: BORDER, padding: 12, gap: 10 }}>
+            <TextInput
+              value={recipientName}
+              onChangeText={setRecipientName}
+              placeholder="Passenger name"
+              placeholderTextColor={MUTED}
+              style={{ backgroundColor: BG, borderRadius: 10, padding: 11, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }}
+            />
+            <TextInput
+              value={recipientPhone}
+              onChangeText={setRecipientPhone}
+              placeholder="Phone number (e.g., 0501234567)"
+              placeholderTextColor={MUTED}
+              keyboardType="phone-pad"
+              style={{ backgroundColor: BG, borderRadius: 10, padding: 11, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }}
+            />
+            <TextInput
+              value={recipientAddress}
+              onChangeText={setRecipientAddress}
+              placeholder="Passenger pickup address (optional)"
+              placeholderTextColor={MUTED}
+              multiline
+              numberOfLines={2}
+              style={{ backgroundColor: BG, borderRadius: 10, padding: 11, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }}
+            />
+          </View>
+        )}
       </View>
 
       {/* Stops / Waypoints */}
@@ -1645,23 +1773,7 @@ export default function RiderHomeScreen() {
               <Text style={{ color: TEXT, fontSize: 13, fontWeight: "600" }} numberOfLines={1}>{stop?.name}</Text>
               <Text style={{ color: MUTED, fontSize: 11 }} numberOfLines={1}>{stop?.address}</Text>
             </View>
-            <TouchableOpacity
-              disabled={idx === 0}
-              onPress={() => moveStop(idx, -1)}
-              accessibilityLabel={idx === 0 ? "First stop cannot move up" : "Move stop up"}
-              accessibilityHint={idx === 0 ? "This is already the first stop" : "Moves this stop earlier in the route"}
-            >
-              <MaterialIcons name="arrow-upward" size={16} color={idx === 0 ? BORDER : MUTED} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              disabled={idx === stops.length - 1}
-              onPress={() => moveStop(idx, 1)}
-              accessibilityLabel={idx === stops.length - 1 ? "Last stop cannot move down" : "Move stop down"}
-              accessibilityHint={idx === stops.length - 1 ? "This is already the last stop" : "Moves this stop later in the route"}
-            >
-              <MaterialIcons name="arrow-downward" size={16} color={idx === stops.length - 1 ? BORDER : MUTED} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setStops((prev) => prev.filter((_, i) => i !== idx))}>
+            <TouchableOpacity onPress={() => setStops((prev) => prev.filter((_, i) => i !== idx))} accessibilityLabel="Remove stop">
               <MaterialIcons name="close" size={16} color={RED} />
             </TouchableOpacity>
           </View>
@@ -1761,60 +1873,6 @@ export default function RiderHomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Book for Someone */}
-      <TouchableOpacity
-        onPress={() => setBookForSomeone(!bookForSomeone)}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 10,
-          padding: 12,
-          borderRadius: 12,
-          backgroundColor: bookForSomeone ? `${GOLD}1A` : CARD,
-          borderWidth: 1,
-          borderColor: bookForSomeone ? GOLD : BORDER,
-          marginBottom: bookForSomeone ? 12 : 10,
-        }}
-      >
-        <MaterialIcons name="person-add" size={18} color={bookForSomeone ? GOLD : MUTED} />
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: bookForSomeone ? GOLD : MUTED, fontSize: 13, fontWeight: "600" }}>Book for Someone</Text>
-          <Text style={{ color: MUTED, fontSize: 11 }}>Book a ride for another person</Text>
-        </View>
-        <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: bookForSomeone ? GOLD : BORDER, alignItems: "center", justifyContent: "center" }}>
-          {bookForSomeone && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: GOLD }} />}
-        </View>
-      </TouchableOpacity>
-
-      {bookForSomeone && (
-        <View style={{ backgroundColor: CARD, borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: BORDER, gap: 10 }}>
-          <TextInput
-            value={recipientName}
-            onChangeText={setRecipientName}
-            placeholder="Recipient's name"
-            placeholderTextColor={MUTED}
-            style={{ backgroundColor: BG, borderRadius: 8, padding: 10, color: TEXT, fontSize: 13, borderWidth: 1, borderColor: BORDER }}
-          />
-          <TextInput
-            value={recipientPhone}
-            onChangeText={setRecipientPhone}
-            placeholder="Phone number (e.g., 0501234567)"
-            placeholderTextColor={MUTED}
-            keyboardType="phone-pad"
-            style={{ backgroundColor: BG, borderRadius: 8, padding: 10, color: TEXT, fontSize: 13, borderWidth: 1, borderColor: BORDER }}
-          />
-          <TextInput
-            value={recipientAddress}
-            onChangeText={setRecipientAddress}
-            placeholder="Pickup address (optional)"
-            placeholderTextColor={MUTED}
-            multiline
-            numberOfLines={2}
-            style={{ backgroundColor: BG, borderRadius: 8, padding: 10, color: TEXT, fontSize: 13, borderWidth: 1, borderColor: BORDER }}
-          />
-        </View>
-      )}
-
       {/* Ride Preferences */}
       <TouchableOpacity
         onPress={() => setShowRideOptions(true)}
@@ -1833,8 +1891,30 @@ export default function RiderHomeScreen() {
       </TouchableOpacity>
 
       </ScrollView>
-      <View style={{ borderTopWidth: 1, borderTopColor: BORDER, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 2, backgroundColor: SURFACE }}>
-        {renderRequestAction()}
+      <View style={{ borderTopWidth: 1, borderTopColor: BORDER, paddingHorizontal: 16, paddingTop: 11, paddingBottom: 4, backgroundColor: SURFACE }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 11 }}>
+          <View>
+            <Text style={{ color: MUTED, fontSize: 11, fontWeight: "800", letterSpacing: 0.9 }}>ESTIMATED FARE</Text>
+            <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>{distance.toFixed(1)} km · ~{duration} min</Text>
+          </View>
+          <Text style={{ color: GOLD, fontSize: 30, fontWeight: "900", letterSpacing: -0.5 }}>GH₵{finalFare.toFixed(2)}</Text>
+        </View>
+        <TouchableOpacity
+          onPress={handleBook}
+          disabled={bookingLoading || (isScheduled && !scheduledFor)}
+          accessibilityRole="button"
+          accessibilityLabel={isScheduled ? "Schedule trip" : "Request HY3N"}
+          style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 16, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: (isScheduled && !scheduledFor) ? 0.5 : 1 }}
+        >
+          {bookingLoading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <>
+              <MaterialIcons name={isScheduled ? "event" : "navigation"} size={21} color="#fff" />
+              <Text style={{ color: "#fff", fontWeight: "800", fontSize: 18 }}>{isScheduled ? "Schedule Trip" : "Request HY3N"}</Text>
+            </>
+          )}
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -1854,7 +1934,7 @@ export default function RiderHomeScreen() {
       <View style={{ width: 1, height: 10, backgroundColor: BORDER, marginLeft: 8, marginBottom: 4 }} />
       {/* Destination search */}
       <TouchableOpacity
-        onPress={() => setSearchOpen(true)}
+        onPress={() => openLocationSearch("destination")}
         style={{ flexDirection: "row", alignItems: "center", gap: 14, backgroundColor: CARD, borderRadius: 16, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: BORDER }}
       >
         <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
@@ -1885,7 +1965,7 @@ export default function RiderHomeScreen() {
             );
           })}
           <TouchableOpacity
-            onPress={() => setSearchOpen(true)}
+            onPress={() => openLocationSearch("destination")}
             style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: `${CARD}80`, borderRadius: 12, borderWidth: 1, borderColor: BORDER }}
           >
             <MaterialIcons name="add" size={16} color={MUTED} />
@@ -1897,7 +1977,7 @@ export default function RiderHomeScreen() {
     </ScrollView>
     <View style={{ borderTopWidth: 1, borderTopColor: BORDER, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 2, backgroundColor: SURFACE }}>
       <TouchableOpacity
-        onPress={() => setSearchOpen(true)}
+        onPress={() => openLocationSearch("destination")}
         accessibilityRole="button"
         accessibilityLabel="Choose a destination to request HY3N"
         style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 15, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }}
@@ -2056,7 +2136,7 @@ export default function RiderHomeScreen() {
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Where are you going?"
+              placeholder={locationSearchMode === "pickup" ? "Choose pickup location" : "Where are you going?"}
               placeholderTextColor={MUTED}
               autoFocus
               style={{ flex: 1, color: TEXT, fontSize: 16, paddingVertical: 8 }}
@@ -2100,7 +2180,7 @@ export default function RiderHomeScreen() {
             }
             renderItem={({ item }) => (
               <TouchableOpacity
-                onPress={() => handleSelectDestination(item)}
+                onPress={() => handleSelectLocation(item)}
                 style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5, borderBottomColor: BORDER }}
               >
                 <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: CARD, alignItems: "center", justifyContent: "center" }}>

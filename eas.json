@@ -23,7 +23,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://skillful-imagination-production-6b46.up.railway.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://europe-west1-hy3n26.cloudfunctions.net/api"
       }
     },
     "production": {
@@ -34,7 +34,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://skillful-imagination-production-6b46.up.railway.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://europe-west1-hy3n26.cloudfunctions.net/api"
       }
     }
   },
