@@ -168,12 +168,12 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     ` : ""}
 
     ${driverLat !== null ? `
-    // Assigned driver marker: a neutral, high-contrast vehicle pin. This is
-    // deliberately independent of the vehicle's recorded paint colour.
+    // Assigned driver marker: a clean Uber/Bolt-style vehicle silhouette. It
+    // has no circular emoji background and rotates with the live heading.
     var driverIcon = L.divIcon({
-      html: '<div title="${vehicleLabel}" style="width:40px;height:40px;border-radius:20px;background:#fff;border:2px solid #111827;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.38);"><div style="position:relative;width:23px;height:15px;border-radius:7px 7px 4px 4px;background:#111827;transform:rotate(${bearing}deg);transition:transform .9s linear;"><div style="position:absolute;left:4px;right:4px;top:2px;height:5px;border-radius:3px 3px 1px 1px;background:#dbeafe;"></div><div style="position:absolute;left:2px;bottom:-3px;width:5px;height:5px;border-radius:50%;background:#111827;border:1px solid #fff;box-shadow:14px 0 0 #111827,14px 0 0 1px #fff;"></div></div></div>',
-      iconSize: [42, 42],
-      iconAnchor: [21, 21],
+      html: '<div title="${vehicleLabel}" style="width:52px;height:40px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55));transform:rotate(${bearing}deg);transition:transform .9s linear;"><svg width="50" height="38" viewBox="0 0 50 38" aria-label="car"><path d="M9 23 L13 12 Q14 9 18 8 L32 8 Q36 9 37 12 L41 23 Q45 24 45 28 L45 31 L5 31 L5 28 Q5 24 9 23Z" fill="#111827" stroke="#ffffff" stroke-width="1.6"/><path d="M17 11 L33 11 L36 19 L14 19Z" fill="#bfdbfe" stroke="#ffffff" stroke-width="1"/><path d="M9 23 L41 23" stroke="#ffffff" stroke-width="1.2" opacity=".8"/><circle cx="13" cy="30" r="4" fill="#111827" stroke="#ffffff" stroke-width="1.5"/><circle cx="37" cy="30" r="4" fill="#111827" stroke="#ffffff" stroke-width="1.5"/><circle cx="7" cy="25" r="1.4" fill="#facc15"/><circle cx="43" cy="25" r="1.4" fill="#ef4444"/></svg></div>',
+      iconSize: [52, 40],
+      iconAnchor: [26, 20],
       className: '',
     });
     var driverMarker = L.marker([${driverLat}, ${driverLng}], { icon: driverIcon }).addTo(map);
@@ -190,9 +190,9 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     var nearbyDrivers = ${nearbyDriversJson};
     nearbyDrivers.forEach(function(d) {
       var icon = L.divIcon({
-        html: '<div style="display:flex;align-items:center;gap:5px;background:#006B3F;border:2px solid #fff;border-radius:15px;padding:3px 7px 3px 4px;color:#fff;font:700 10px -apple-system,BlinkMacSystemFont,sans-serif;box-shadow:0 2px 7px rgba(0,0,0,.45);white-space:nowrap;"><span style="position:relative;display:block;width:17px;height:11px;border-radius:5px 5px 3px 3px;background:#D4AF37;border:1px solid rgba(255,255,255,.95);"><i style="position:absolute;left:3px;right:3px;top:2px;height:3px;border-radius:2px;background:rgba(255,255,255,.9);"></i><b style="position:absolute;left:1px;bottom:-3px;width:4px;height:4px;border-radius:50%;background:#111;border:1px solid #fff;box-shadow:10px 0 0 #111,10px 0 0 1px #fff;"></b></span><span>~' + d.eta + ' min</span></div>',
-        iconSize: [64, 26],
-        iconAnchor: [32, 13],
+        html: '<div style="display:flex;align-items:center;gap:4px;color:#fff;font:700 10px -apple-system,BlinkMacSystemFont,sans-serif;white-space:nowrap;filter:drop-shadow(0 1px 2px #000);"><svg width="28" height="22" viewBox="0 0 50 38"><path d="M9 23 L13 12 Q14 9 18 8 L32 8 Q36 9 37 12 L41 23 L45 26 L45 31 L5 31 L5 26Z" fill="#D4AF37" stroke="#fff" stroke-width="2"/><path d="M17 11 L33 11 L36 19 L14 19Z" fill="#bfdbfe"/><circle cx="13" cy="30" r="4" fill="#111"/><circle cx="37" cy="30" r="4" fill="#111"/></svg><span>~' + d.eta + ' min</span></div>',
+        iconSize: [86, 26],
+        iconAnchor: [43, 13],
         className: '',
       });
       L.marker([d.lat, d.lng], { icon: icon }).addTo(map);
