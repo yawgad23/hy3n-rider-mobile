@@ -57,11 +57,22 @@ service cloud.firestore {
         request.resource.data.sender_id == request.auth.uid &&
         (get(/databases/$(database)/documents/rides/$(request.resource.data.ride_id)).data.rider_id == request.auth.uid ||
          get(/databases/$(database)/documents/rides/$(request.resource.data.ride_id)).data.driver_id == request.auth.uid);
-      // markMessagesAsRead flips `read` on the OTHER participant's messages.
+      // A participant can mark only the OTHER participant's messages as read.
+      // Client writes also stamp updated_date, so that field is allowed here.
       allow update: if request.auth != null &&
         (get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.rider_id == request.auth.uid ||
          get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.driver_id == request.auth.uid) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read_by_rider', 'read_by_driver', 'updated_date']) &&
+        (
+          (get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.rider_id == request.auth.uid &&
+           resource.data.sender_id != request.auth.uid &&
+           request.resource.data.read_by_rider == true &&
+           request.resource.data.read_by_driver == resource.data.read_by_driver) ||
+          (get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.driver_id == request.auth.uid &&
+           resource.data.sender_id != request.auth.uid &&
+           request.resource.data.read_by_driver == true &&
+           request.resource.data.read_by_rider == resource.data.read_by_rider)
+        );
     }
 
     // Driver directory — riders need to see available drivers to be matched.

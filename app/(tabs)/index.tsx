@@ -1608,7 +1608,9 @@ export default function RiderHomeScreen() {
               style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 12, backgroundColor: `${GOLD}0D`, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: `${GOLD}33` }}
             >
               <MaterialIcons name="chat-bubble-outline" size={16} color={GOLD} />
-              <Text style={{ color: GOLD, fontSize: 13, fontWeight: "600" }}>Message Driver</Text>
+              <Text style={{ color: GOLD, fontSize: 13, fontWeight: "600" }}>
+                {unreadChatCount > 0 ? `Message Driver · ${unreadChatCount} new` : 'Message Driver'}
+              </Text>
             </TouchableOpacity>
 
             {activeRide.status !== "in_progress" && (
