@@ -52,7 +52,7 @@ export function getCancellationPolicy(
   return {
     isFree: false,
     fee: cancellationFee,
-    message: `A GH₵${cancellationFee.toFixed(2)} cancellation fee may apply because your driver has been waiting.`,
+    message: `A GH₵${cancellationFee.toFixed(2)} cancellation fee applies after the 2-minute free cancellation window.`,
   };
 }
 

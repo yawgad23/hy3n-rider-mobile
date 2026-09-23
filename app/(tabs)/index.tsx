@@ -1277,14 +1277,25 @@ export default function RiderHomeScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ color: TEXT, fontSize: 15, fontWeight: "800" }}>{statusLabel}</Text>
             <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
-              {hasDriver ? `${activeRide.driverName || "Your driver"} · ${activeRide.driverVehicle || "Vehicle details"}` : activeRide.destination.name}
+              {activeRide.status === "driver_arrived"
+                ? riderWaitSeconds < riderFreeWaitSecs
+                  ? `Free wait: ${Math.floor((riderFreeWaitSecs - riderWaitSeconds) / 60)}:${String((riderFreeWaitSecs - riderWaitSeconds) % 60).padStart(2, "0")} remaining`
+                  : `Paid wait time · GH₵${riderCurrentWaitingFee.toFixed(2)}`
+                : hasDriver ? `${activeRide.driverName || "Your driver"} · ${activeRide.driverVehicle || "Vehicle details"}` : activeRide.destination.name}
             </Text>
           </View>
-          {unreadChatCount > 0 ? (
-            <View style={{ minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 11, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
-              <Text style={{ color: "#111", fontSize: 11, fontWeight: "900" }}>{unreadChatCount}</Text>
+          <View style={{ alignItems: "flex-end", gap: 4 }}>
+            {activeRide.status === "driver_arrived" && (
+              <Text style={{ color: riderWaitSeconds < riderFreeWaitSecs ? GREEN : GOLD, fontSize: 12, fontWeight: "900" }}>
+                {riderWaitSeconds < riderFreeWaitSecs ? "FREE" : `GH₵${riderCurrentWaitingFee.toFixed(2)}`}
+              </Text>
+            )}
+            {unreadChatCount > 0 ? (
+              <View style={{ minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 11, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ color: "#111", fontSize: 11, fontWeight: "900" }}>{unreadChatCount}</Text>
+              </View>
+            ) : activeRide.status !== "driver_arrived" && hasDriver && activeRide.eta ? <Text style={{ color: GOLD, fontSize: 16, fontWeight: "900" }}>{activeRide.eta} min</Text> : activeRide.status !== "driver_arrived" ? <MaterialIcons name="keyboard-arrow-up" size={23} color={MUTED} /> : null}
             </View>
-          ) : hasDriver && activeRide.eta ? <Text style={{ color: GOLD, fontSize: 16, fontWeight: "900" }}>{activeRide.eta} min</Text> : <MaterialIcons name="keyboard-arrow-up" size={23} color={MUTED} />}
         </TouchableOpacity>
       );
     }
@@ -1487,18 +1498,26 @@ export default function RiderHomeScreen() {
 
             {/* Waiting Timer — shown when driver is at pickup */}
             {activeRide.status === 'driver_arrived' && (
-              <View style={{ backgroundColor: riderWaitSeconds >= riderFreeWaitSecs ? '#1A0A00' : '#0A1A0A', borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: riderWaitSeconds >= riderFreeWaitSecs ? GOLD : GREEN, alignItems: 'center' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <MaterialIcons name="access-time" size={16} color={riderWaitSeconds >= riderFreeWaitSecs ? GOLD : GREEN} />
-                  <Text style={{ color: riderWaitSeconds >= riderFreeWaitSecs ? GOLD : GREEN, fontSize: 13, fontWeight: '600' }}>
-                    {riderWaitSeconds < riderFreeWaitSecs
-                      ? `Driver waiting — ${Math.floor((riderFreeWaitSecs - riderWaitSeconds) / 60)}m ${(riderFreeWaitSecs - riderWaitSeconds) % 60}s free remaining`
-                      : `Waiting fee: GH\u20b5${riderCurrentWaitingFee.toFixed(2)} (${Math.floor((riderWaitSeconds - riderFreeWaitSecs) / 60)}m ${(riderWaitSeconds - riderFreeWaitSecs) % 60}s)`
-                    }
-                  </Text>
+              <View style={{ backgroundColor: riderWaitSeconds >= riderFreeWaitSecs ? `${GOLD}18` : `${GREEN}18`, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: riderWaitSeconds >= riderFreeWaitSecs ? `${GOLD}88` : `${GREEN}88` }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: riderWaitSeconds >= riderFreeWaitSecs ? `${GOLD}2C` : `${GREEN}2C`, alignItems: 'center', justifyContent: 'center' }}>
+                    <MaterialIcons name="access-time" size={18} color={riderWaitSeconds >= riderFreeWaitSecs ? GOLD : GREEN} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: riderWaitSeconds >= riderFreeWaitSecs ? GOLD : GREEN, fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      {riderWaitSeconds < riderFreeWaitSecs ? 'Driver is waiting · complimentary time' : 'Paid waiting time'}
+                    </Text>
+                    <Text style={{ color: TEXT, fontSize: 13, fontWeight: '700', marginTop: 2 }}>
+                      {riderWaitSeconds < riderFreeWaitSecs
+                        ? `${Math.floor((riderFreeWaitSecs - riderWaitSeconds) / 60)}:${String((riderFreeWaitSecs - riderWaitSeconds) % 60).padStart(2, '0')} free time remaining`
+                        : `GH₵${riderCurrentWaitingFee.toFixed(2)} added so far`}
+                    </Text>
+                  </View>
                 </View>
-                <Text style={{ color: MUTED, fontSize: 11 }}>
-                  {`Your driver has been waiting ${Math.floor(riderWaitSeconds / 60)}m ${riderWaitSeconds % 60}s · 3 min free`}
+                <Text style={{ color: MUTED, fontSize: 11, lineHeight: 16, marginTop: 10 }}>
+                  {riderWaitSeconds < riderFreeWaitSecs
+                    ? `Paid wait time begins after ${FREE_WAITING_MINUTES} minutes at GH₵${riderWaitingFeePerMin.toFixed(2)} per minute.`
+                    : `Your driver arrived ${Math.floor(riderWaitSeconds / 60)}m ${String(riderWaitSeconds % 60).padStart(2, '0')}s ago. The charge stops when the trip starts.`}
                 </Text>
               </View>
             )}
@@ -1802,6 +1821,34 @@ export default function RiderHomeScreen() {
         </View>
       </View>
 
+      {/* Vehicle choices stay immediately visible instead of being pushed below
+          optional passenger, stop, and payment controls. */}
+      <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Choose your ride</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9, paddingBottom: 14 }}>
+        {RIDE_CATEGORIES.map((cat) => {
+          const fare = calculateFare(cat.id, distance, duration);
+          const isSelected = selectedCategory.id === cat.id;
+          return (
+            <TouchableOpacity
+              key={cat.id}
+              onPress={() => setSelectedCategory(cat)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected }}
+              style={{ width: 154, padding: 12, borderRadius: 14, backgroundColor: isSelected ? `${GOLD}1A` : CARD, borderWidth: 1.5, borderColor: isSelected ? GOLD : BORDER }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 7 }}>
+                <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: isSelected ? `${GOLD}33` : `${MUTED}18`, alignItems: "center", justifyContent: "center" }}>
+                  <MaterialIcons name={cat.icon as any} size={17} color={isSelected ? GOLD : MUTED} />
+                </View>
+                <Text style={{ flex: 1, color: TEXT, fontSize: 13, fontWeight: "800" }} numberOfLines={1}>{cat.name}</Text>
+              </View>
+              <Text style={{ color: MUTED, fontSize: 10, minHeight: 26 }} numberOfLines={2}>{cat.description}</Text>
+              <Text style={{ color: isSelected ? GOLD : TEXT, fontSize: 14, fontWeight: "900", marginTop: 7 }}>GH₵{fare.toFixed(2)}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
       {/* Web-parity passenger switch */}
       <View style={{ backgroundColor: CARD, borderRadius: 18, borderWidth: 1, borderColor: BORDER, marginBottom: 14, overflow: "hidden" }}>
         <TouchableOpacity
@@ -1882,40 +1929,6 @@ export default function RiderHomeScreen() {
           </View>
         </View>
       )}
-      {/* Ride Categories */}
-      <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Choose Ride</Text>
-      {RIDE_CATEGORIES.map((cat) => {
-        const fare = calculateFare(cat.id, distance, duration);
-        const isSelected = selectedCategory.id === cat.id;
-        return (
-          <TouchableOpacity
-            key={cat.id}
-            onPress={() => setSelectedCategory(cat)}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
-              padding: 12,
-              borderRadius: 14,
-              marginBottom: 8,
-              backgroundColor: isSelected ? `${GOLD}1A` : CARD,
-              borderWidth: 1.5,
-              borderColor: isSelected ? GOLD : BORDER,
-            }}
-          >
-            <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: isSelected ? `${GOLD}33` : "#222", alignItems: "center", justifyContent: "center" }}>
-              <MaterialIcons name={cat.icon as any} size={20} color={isSelected ? GOLD : MUTED} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 13 }}>{cat.name}</Text>
-              <Text style={{ color: MUTED, fontSize: 11, marginTop: 1 }}>{cat.description}</Text>
-              {cat.seats > 0 && <Text style={{ color: MUTED, fontSize: 10 }}>{cat.seats} seats</Text>}
-            </View>
-            <Text style={{ color: isSelected ? GOLD : TEXT, fontWeight: "bold", fontSize: 15 }}>GH₵{fare.toFixed(2)}</Text>
-          </TouchableOpacity>
-        );
-      })}
-
       {/* Payment Method */}
       <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8, marginTop: 4 }}>Payment Method</Text>
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
@@ -2683,7 +2696,7 @@ export default function RiderHomeScreen() {
                 <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>{policy.message} Select a reason for cancelling:</Text>
               ) : (
                 <View style={{ backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 10, padding: 10, marginBottom: 12 }}>
-                  <Text style={{ color: RED, fontSize: 13, fontWeight: '600' }}>⚠️ GH₵{policy.fee.toFixed(2)} cancellation fee may apply</Text>
+                  <Text style={{ color: RED, fontSize: 13, fontWeight: '700' }}>Cancellation fee · GH₵{policy.fee.toFixed(2)}</Text>
                   <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>{policy.message}</Text>
                 </View>
               );
@@ -2711,7 +2724,11 @@ export default function RiderHomeScreen() {
                 onPress={confirmCancelRide}
                 style={{ flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: RED, alignItems: "center" }}
               >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>Cancel Ride</Text>
+                <Text style={{ color: "#fff", fontWeight: "700" }}>
+                  {activeRide && !getCancellationPolicy(activeRide.status, activeRide.matchedAt).isFree
+                    ? `Cancel · GH₵${getCancellationPolicy(activeRide.status, activeRide.matchedAt).fee.toFixed(2)}`
+                    : 'Cancel Ride'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
