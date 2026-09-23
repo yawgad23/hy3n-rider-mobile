@@ -69,6 +69,9 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   const driverLat = driverLocation ? driverLocation[0] : null;
   const driverLng = driverLocation ? driverLocation[1] : null;
   const bearing = typeof driverBearing === "number" ? driverBearing : 0;
+  // The actual vehicle colour belongs in the vehicle-details card. A live map
+  // marker must remain instantly recognisable in every lighting condition, so
+  // it intentionally uses a neutral car symbol rather than the driver's paint.
   const vehicleColour = /^#[0-9a-fA-F]{6}$/.test(driverColourHex || "") ? driverColourHex : "#CE1126";
   const vehicleLabel = (driverVehicle || "Driver vehicle").replace(/[<>&"']/g, "");
   const trackingTarget = driverTrackingTarget || (destination || userLocation || center);
@@ -89,7 +92,10 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       }))
   );
   const isDark = colorScheme === "dark";
-  const mapBackground = isDark ? "#303841" : "#edf0f3";
+  const mapBackground = isDark ? "#1f2937" : "#f5f6f7";
+  const tileUrl = isDark
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
 
   // Key-free OpenStreetMap tiles. A tile-only CSS treatment creates a dark map
   // without requiring a third-party map API key; markers remain true-to-colour.
@@ -102,8 +108,8 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body, #map { width: 100%; height: 100%; background: ${mapBackground}; }
-    /* Calm, low-contrast tiles keep live vehicle movement easy to follow. */
-    .leaflet-tile-pane { filter: ${isDark ? 'grayscale(.82) invert(.83) hue-rotate(180deg) brightness(.72) contrast(.76)' : 'grayscale(.72) saturate(.42) brightness(1.10) contrast(.72)'}; }
+    /* Use native light/dark Carto tiles rather than a dimmed CSS filter. */
+    .leaflet-tile-pane { filter: none; }
     .leaflet-control-zoom { display: none; }
     .leaflet-control-attribution { display: none; }
     .safety-banner { position: absolute; top: 14px; left: 14px; right: 14px; z-index: 1000; padding: 10px 12px; border-radius: 12px; color: #fff; font: 600 12px -apple-system, BlinkMacSystemFont, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
@@ -122,9 +128,8 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       attributionControl: false,
     });
 
-    // OpenStreetMap does not require an API key. The CSS treatment above keeps
-    // it calm while routes, live cars, pickup and ETA remain the focus.
-    var baseTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // Carto's key-free tiles stay crisp in both system appearances.
+    var baseTiles = L.tileLayer('${tileUrl}', {
       maxZoom: 19,
     }).addTo(map);
 
@@ -162,9 +167,10 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     ` : ""}
 
     ${driverLat !== null ? `
-    // Assigned driver marker: a vehicle-shaped marker using the driver's actual colour.
+    // Assigned driver marker: a neutral, high-contrast vehicle pin. This is
+    // deliberately independent of the vehicle's recorded paint colour.
     var driverIcon = L.divIcon({
-      html: '<div title="${vehicleLabel}" style="width:42px;height:42px;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 2px 5px rgba(0,0,0,.55));transform:rotate(${bearing}deg);transition:transform .9s linear;"><div style="position:relative;width:30px;height:20px;border-radius:9px 9px 6px 6px;background:${vehicleColour};border:2px solid #fff;"><div style="position:absolute;left:5px;right:5px;top:3px;height:7px;border-radius:4px 4px 2px 2px;background:rgba(255,255,255,.82);border:1px solid rgba(0,0,0,.25);"></div><div style="position:absolute;left:-4px;bottom:1px;width:7px;height:7px;border-radius:50%;background:#111;border:1px solid #fff;box-shadow:27px 0 0 #111,27px 0 0 1px #fff;"></div></div></div>',
+      html: '<div title="${vehicleLabel}" style="width:40px;height:40px;border-radius:20px;background:#fff;border:2px solid #111827;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.38);"><div style="position:relative;width:23px;height:15px;border-radius:7px 7px 4px 4px;background:#111827;transform:rotate(${bearing}deg);transition:transform .9s linear;"><div style="position:absolute;left:4px;right:4px;top:2px;height:5px;border-radius:3px 3px 1px 1px;background:#dbeafe;"></div><div style="position:absolute;left:2px;bottom:-3px;width:5px;height:5px;border-radius:50%;background:#111827;border:1px solid #fff;box-shadow:14px 0 0 #111827,14px 0 0 1px #fff;"></div></div></div>',
       iconSize: [42, 42],
       iconAnchor: [21, 21],
       className: '',
@@ -174,7 +180,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     // Tracking line shows the driver's live approach to the rider/destination.
     var trackingTarget = [${trackingTarget[0]}, ${trackingTarget[1]}];
     var trackingLine = L.polyline([[${driverLat}, ${driverLng}], trackingTarget], {
-      color: '${vehicleColour}', weight: 4, opacity: 0.72, dashArray: '10, 8',
+      color: '#006B3F', weight: 4, opacity: 0.78, dashArray: '10, 8',
     }).addTo(map);
     map.fitBounds([[${userLat}, ${userLng}], [${driverLat}, ${driverLng}], trackingTarget], { padding: [70, 70] });
     ` : ""}

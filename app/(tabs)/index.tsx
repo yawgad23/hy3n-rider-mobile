@@ -44,7 +44,7 @@ import {
   notifyTripCompleted,
 } from "@/lib/notifications";
 import { getApiBaseUrl } from "@/constants/oauth";
-import { RideChatModal } from "@/components/ride-chat-modal";
+import { RideChatModal, useUnreadChatCount } from "@/components/ride-chat-modal";
 import { useVoiceCall } from "@/hooks/use-voice-call";
 import { InCallScreen, IncomingCallModal } from "@/components/in-call-screen";
 import { PostRideModal } from "@/components/post-ride-modal";
@@ -247,13 +247,14 @@ export default function RiderHomeScreen() {
   const [activeRides, setActiveRides] = useState<ActiveRide[]>([]);
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const activeRide = activeRides.find((ride) => ride.id === selectedRideId) ?? activeRides[0] ?? null;
+  const unreadChatCount = useUnreadChatCount(activeRide?.firestoreId || activeRide?.id || null, user?.uid || '', 'rider');
   const [bookingLoading, setBookingLoading] = useState(false);
 
   // Keep the map open while a request is searching. The expanded trip card is
-  // useful once a Driver accepts, but it should never cover the map while the
-  // Rider is choosing between nearby available vehicles.
+  // is one tap away, but it should never cover the map when the rider needs
+  // to follow the driver or see nearby vehicles.
   useEffect(() => {
-    setActiveRideSheetCollapsed(activeRide?.status === "searching");
+    setActiveRideSheetCollapsed(Boolean(activeRide && activeRide.status !== "completed"));
   }, [activeRide?.id, activeRide?.status]);
 
   const addActiveRide = useCallback((ride: ActiveRide) => {
@@ -1252,6 +1253,41 @@ export default function RiderHomeScreen() {
     const hasDriver = ["matched", "driver_arriving", "driver_arrived", "in_progress"].includes(activeRide.status);
 
     const liveFare = activeRide.currentFare ?? activeRide.fare;
+
+    // Keep the map useful while a ride is active. The expanded details remain
+    // one tap away, but the default minimized state shows only live status.
+    if (activeRideSheetCollapsed && !isCompleted) {
+      const statusLabel = isSearching
+        ? "Searching for a driver"
+        : activeRide.status === "in_progress"
+          ? "Trip in progress"
+          : activeRide.status === "driver_arrived"
+            ? "Driver has arrived"
+            : "Driver arriving";
+      return (
+        <TouchableOpacity
+          onPress={() => setActiveRideSheetCollapsed(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Open active ride details"
+          style={{ flexDirection: "row", alignItems: "center", gap: 11, paddingHorizontal: 16, paddingBottom: 7 }}
+        >
+          <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: isSearching ? `${GOLD}24` : `${GREEN}22`, alignItems: "center", justifyContent: "center" }}>
+            {isSearching ? <ActivityIndicator size="small" color={GOLD} /> : <MaterialIcons name="directions-car" size={21} color={GREEN} />}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: TEXT, fontSize: 15, fontWeight: "800" }}>{statusLabel}</Text>
+            <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+              {hasDriver ? `${activeRide.driverName || "Your driver"} · ${activeRide.driverVehicle || "Vehicle details"}` : activeRide.destination.name}
+            </Text>
+          </View>
+          {unreadChatCount > 0 ? (
+            <View style={{ minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 11, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
+              <Text style={{ color: "#111", fontSize: 11, fontWeight: "900" }}>{unreadChatCount}</Text>
+            </View>
+          ) : hasDriver && activeRide.eta ? <Text style={{ color: GOLD, fontSize: 16, fontWeight: "900" }}>{activeRide.eta} min</Text> : <MaterialIcons name="keyboard-arrow-up" size={23} color={MUTED} />}
+        </TouchableOpacity>
+      );
+    }
     return (
       <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
         {activeRides.length > 1 && (
@@ -1406,10 +1442,10 @@ export default function RiderHomeScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setShowChat(true)}
-                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 11, borderRadius: 12, backgroundColor: `${GOLD}22`, borderWidth: 1, borderColor: `${GOLD}55` }}
+                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 11, borderRadius: 12, backgroundColor: unreadChatCount > 0 ? `${GOLD}38` : `${GOLD}22`, borderWidth: 1, borderColor: unreadChatCount > 0 ? GOLD : `${GOLD}55` }}
                 >
                   <MaterialIcons name="chat" size={18} color={GOLD} />
-                  <Text style={{ color: GOLD, fontWeight: "700", fontSize: 14 }}>Message</Text>
+                  <Text style={{ color: GOLD, fontWeight: "700", fontSize: 14 }}>{unreadChatCount > 0 ? `Message (${unreadChatCount})` : 'Message'}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1977,7 +2013,7 @@ export default function RiderHomeScreen() {
 
   const renderDefaultSheet = () => (
     <View style={{ flex: 1 }}>
-    <ScrollView style={{ maxHeight: SCREEN_HEIGHT * 0.23 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
+    <ScrollView style={{ maxHeight: SCREEN_HEIGHT * 0.28 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 }}>
       {/* Pickup row */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8, paddingHorizontal: 4 }}>
         <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: GREEN, borderWidth: 2, borderColor: '#00FF88' }} />
@@ -2048,9 +2084,9 @@ export default function RiderHomeScreen() {
 
   const bookingSheetPanResponder = PanResponder.create({
     onMoveShouldSetPanResponder: (_event, gesture) =>
-      Boolean((destination && !activeRide) || activeRide?.status === "searching") && Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+      Boolean((destination && !activeRide) || (activeRide && activeRide.status !== "completed")) && Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
     onPanResponderRelease: (_event, gesture) => {
-      if (activeRide?.status === "searching") {
+      if (activeRide && activeRide.status !== "completed") {
         if (gesture.dy > 12) setActiveRideSheetCollapsed(true);
         if (gesture.dy < -12) setActiveRideSheetCollapsed(false);
         return;
@@ -2065,12 +2101,14 @@ export default function RiderHomeScreen() {
   const sheetHeight = activeRide
     ? (activeRide.status === "completed"
       ? SCREEN_HEIGHT * 0.75
-      : activeRide.status === "searching"
-        ? (activeRideSheetCollapsed ? SCREEN_HEIGHT * 0.27 : SCREEN_HEIGHT * 0.52)
-        : SCREEN_HEIGHT * 0.65)
+      : activeRideSheetCollapsed
+        ? SCREEN_HEIGHT * 0.16
+        : activeRide.status === "searching"
+          ? SCREEN_HEIGHT * 0.42
+          : SCREEN_HEIGHT * 0.46)
     : destination
     ? (bookingSheetCollapsed ? SCREEN_HEIGHT * 0.18 : SCREEN_HEIGHT * 0.54)
-    : SCREEN_HEIGHT * 0.33;
+    : SCREEN_HEIGHT * 0.38;
 
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
@@ -2156,6 +2194,7 @@ export default function RiderHomeScreen() {
         <TouchableOpacity
           {...bookingSheetPanResponder.panHandlers}
           onPress={() => {
+            if (activeRide && activeRide.status !== "completed") setActiveRideSheetCollapsed((collapsed) => !collapsed);
             if (destination && !activeRide) setBookingSheetCollapsed((collapsed) => !collapsed);
           }}
           activeOpacity={0.75}
@@ -2165,18 +2204,16 @@ export default function RiderHomeScreen() {
           accessibilityHint="Tap, swipe down to minimize, or swipe up to expand booking options"
         >
           <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: BORDER }} />
-          {((destination && !activeRide) || activeRide?.status === "searching") && (
+          {((destination && !activeRide) || (activeRide && activeRide.status !== "completed")) && (
             <Text style={{ color: MUTED, fontSize: 10, marginTop: 4 }}>
-              {activeRide?.status === "searching"
+              {activeRide
                 ? (activeRideSheetCollapsed ? "Tap or swipe up for ride details" : "Tap or swipe down to keep the map open")
                 : (bookingSheetCollapsed ? "Tap or swipe up to expand" : "Tap or swipe down to minimize")}
             </Text>
           )}
         </TouchableOpacity>
         {activeRide ? (
-          activeRide.status === "searching" && activeRideSheetCollapsed
-            ? renderCompactSearchingRide()
-            : renderActiveRide()
+          renderActiveRide()
         ) : destination ? (
           bookingSheetCollapsed ? (
             <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 4 }}>
@@ -2611,7 +2648,7 @@ export default function RiderHomeScreen() {
         <RideChatModal
           isOpen={showChat}
           onClose={() => setShowChat(false)}
-          rideId={activeRide.firestoreId || ''}
+          rideId={activeRide.firestoreId || activeRide.id}
           currentUserId={user?.uid || ''}
           currentUserRole="rider"
           currentUserName={riderProfile?.full_name || user?.displayName || 'Rider'}
