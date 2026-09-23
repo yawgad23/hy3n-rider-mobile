@@ -1,56 +1,31 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Appearance, View, useColorScheme as useSystemColorScheme } from "react-native";
+import { createContext, useContext, useEffect, useMemo } from "react";
+import { View, useColorScheme as useSystemColorScheme } from "react-native";
 import { colorScheme as nativewindColorScheme, vars } from "nativewind";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { SchemeColors, type ColorScheme } from "@/constants/theme";
 
 type ThemeContextValue = {
   colorScheme: ColorScheme;
-  setColorScheme: (scheme: ColorScheme) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
-const THEME_PREFERENCE_KEY = "hy3n_rider_theme_preference";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const systemScheme = useSystemColorScheme() ?? "light";
-  const [colorScheme, setColorSchemeState] = useState<ColorScheme>(systemScheme);
+  // HY3N mirrors iOS/Android appearance directly. There is no stored override.
+  const colorScheme: ColorScheme = useSystemColorScheme() === "dark" ? "dark" : "light";
 
-  const applyScheme = useCallback((scheme: ColorScheme) => {
-    nativewindColorScheme.set(scheme);
-    Appearance.setColorScheme?.(scheme);
+  useEffect(() => {
+    nativewindColorScheme.set(colorScheme);
     if (typeof document !== "undefined") {
       const root = document.documentElement;
-      root.dataset.theme = scheme;
-      root.classList.toggle("dark", scheme === "dark");
-      const palette = SchemeColors[scheme];
+      root.dataset.theme = colorScheme;
+      root.classList.toggle("dark", colorScheme === "dark");
+      const palette = SchemeColors[colorScheme];
       Object.entries(palette).forEach(([token, value]) => {
         root.style.setProperty(`--color-${token}`, value);
       });
     }
-  }, []);
-
-  const setColorScheme = useCallback((scheme: ColorScheme) => {
-    setColorSchemeState(scheme);
-    applyScheme(scheme);
-    AsyncStorage.setItem(THEME_PREFERENCE_KEY, scheme).catch(() => {});
-  }, [applyScheme]);
-
-  useEffect(() => {
-    AsyncStorage.getItem(THEME_PREFERENCE_KEY)
-      .then((saved) => {
-        if (saved === "light" || saved === "dark") {
-          setColorSchemeState(saved);
-          applyScheme(saved);
-          return;
-        }
-        applyScheme(colorScheme);
-      })
-      .catch(() => applyScheme(colorScheme));
-  // Apply the stored preference once when the provider mounts.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applyScheme]);
+  }, [colorScheme]);
 
   const themeVariables = useMemo(
     () =>
@@ -69,11 +44,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({
-      colorScheme,
-      setColorScheme,
-    }),
-    [colorScheme, setColorScheme],
+    () => ({ colorScheme }),
+    [colorScheme],
   );
   return (
     <ThemeContext.Provider value={value}>

@@ -237,6 +237,7 @@ export default function RiderHomeScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [locationSearchMode, setLocationSearchMode] = useState<"pickup" | "destination">("destination");
   const [bookingSheetCollapsed, setBookingSheetCollapsed] = useState(false);
+  const [activeRideSheetCollapsed, setActiveRideSheetCollapsed] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState(RIDE_CATEGORIES[0]);
   const [selectedPayment, setSelectedPayment] = useState(PAYMENT_METHODS[0]);
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([
@@ -247,6 +248,13 @@ export default function RiderHomeScreen() {
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const activeRide = activeRides.find((ride) => ride.id === selectedRideId) ?? activeRides[0] ?? null;
   const [bookingLoading, setBookingLoading] = useState(false);
+
+  // Keep the map open while a request is searching. The expanded trip card is
+  // useful once a Driver accepts, but it should never cover the map while the
+  // Rider is choosing between nearby available vehicles.
+  useEffect(() => {
+    setActiveRideSheetCollapsed(activeRide?.status === "searching");
+  }, [activeRide?.id, activeRide?.status]);
 
   const addActiveRide = useCallback((ride: ActiveRide) => {
     setActiveRides((prev) => upsertRide(prev, ride));
@@ -1633,6 +1641,46 @@ export default function RiderHomeScreen() {
     );
   };
 
+  const renderCompactSearchingRide = () => {
+    if (!activeRide) return null;
+    return (
+      <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 6 }}>
+        <TouchableOpacity
+          onPress={() => setActiveRideSheetCollapsed(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Expand ride request details"
+          style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 2, paddingBottom: 9 }}
+        >
+          <ActivityIndicator size="small" color={GOLD} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: TEXT, fontSize: 14, fontWeight: "800" }}>Searching for a driver</Text>
+            <Text style={{ color: MUTED, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+              {activeRide.destination.name} · {activeRide.distance.toFixed(1)} km · ~{activeRide.duration} min
+            </Text>
+          </View>
+          <View style={{ alignItems: "flex-end" }}>
+            <Text style={{ color: GOLD, fontSize: 15, fontWeight: "900" }}>GH₵{activeRide.fare.toFixed(2)}</Text>
+            <Text style={{ color: MUTED, fontSize: 10, marginTop: 1 }}>Tap to expand</Text>
+          </View>
+        </TouchableOpacity>
+        <View style={{ flexDirection: "row", gap: 9 }}>
+          <TouchableOpacity
+            onPress={() => setActiveRideSheetCollapsed(false)}
+            style={{ flex: 1, borderRadius: 10, borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center", paddingVertical: 10 }}
+          >
+            <Text style={{ color: TEXT, fontSize: 12, fontWeight: "700" }}>View request</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleCancelRide}
+            style={{ flex: 1, borderRadius: 10, borderWidth: 1, borderColor: `${RED}66`, alignItems: "center", justifyContent: "center", paddingVertical: 10 }}
+          >
+            <Text style={{ color: RED, fontSize: 12, fontWeight: "700" }}>Cancel request</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   const renderRequestAction = () => (
     <TouchableOpacity
       onPress={handleBook}
@@ -2000,8 +2048,13 @@ export default function RiderHomeScreen() {
 
   const bookingSheetPanResponder = PanResponder.create({
     onMoveShouldSetPanResponder: (_event, gesture) =>
-      Boolean(destination) && !activeRide && Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+      Boolean((destination && !activeRide) || activeRide?.status === "searching") && Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
     onPanResponderRelease: (_event, gesture) => {
+      if (activeRide?.status === "searching") {
+        if (gesture.dy > 12) setActiveRideSheetCollapsed(true);
+        if (gesture.dy < -12) setActiveRideSheetCollapsed(false);
+        return;
+      }
       if (!destination || activeRide) return;
       if (gesture.dy > 12) setBookingSheetCollapsed(true);
       if (gesture.dy < -12) setBookingSheetCollapsed(false);
@@ -2010,7 +2063,11 @@ export default function RiderHomeScreen() {
   });
 
   const sheetHeight = activeRide
-    ? (activeRide.status === "completed" ? SCREEN_HEIGHT * 0.75 : SCREEN_HEIGHT * 0.65)
+    ? (activeRide.status === "completed"
+      ? SCREEN_HEIGHT * 0.75
+      : activeRide.status === "searching"
+        ? (activeRideSheetCollapsed ? SCREEN_HEIGHT * 0.27 : SCREEN_HEIGHT * 0.52)
+        : SCREEN_HEIGHT * 0.65)
     : destination
     ? (bookingSheetCollapsed ? SCREEN_HEIGHT * 0.18 : SCREEN_HEIGHT * 0.54)
     : SCREEN_HEIGHT * 0.33;
@@ -2108,13 +2165,19 @@ export default function RiderHomeScreen() {
           accessibilityHint="Tap, swipe down to minimize, or swipe up to expand booking options"
         >
           <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: BORDER }} />
-          {destination && !activeRide && (
+          {((destination && !activeRide) || activeRide?.status === "searching") && (
             <Text style={{ color: MUTED, fontSize: 10, marginTop: 4 }}>
-              {bookingSheetCollapsed ? "Tap or swipe up to expand" : "Tap or swipe down to minimize"}
+              {activeRide?.status === "searching"
+                ? (activeRideSheetCollapsed ? "Tap or swipe up for ride details" : "Tap or swipe down to keep the map open")
+                : (bookingSheetCollapsed ? "Tap or swipe up to expand" : "Tap or swipe down to minimize")}
             </Text>
           )}
         </TouchableOpacity>
-        {activeRide ? renderActiveRide() : destination ? (
+        {activeRide ? (
+          activeRide.status === "searching" && activeRideSheetCollapsed
+            ? renderCompactSearchingRide()
+            : renderActiveRide()
+        ) : destination ? (
           bookingSheetCollapsed ? (
             <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 4 }}>
               <TouchableOpacity
