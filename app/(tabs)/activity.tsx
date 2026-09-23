@@ -23,6 +23,7 @@ import { firestoreDB, COLLECTIONS } from "@/lib/firebase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { buildLostItemDescription, buildLostItemSupportMessage, validateLostItemForm, type LostItemContactMethod } from "@/lib/lost-item-support";
 import { buildSupportMailto, buildSupportWhatsAppUrl, SUPPORT_PHONE_E164 } from "@/lib/support-contact";
+import { useColors } from "@/hooks/use-colors";
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -80,10 +81,11 @@ function formatDate(iso: string) {
 }
 
 function Row({ label, value, valueColor, bold }: { label: string; value: string; valueColor?: string; bold?: boolean }) {
+  const colors = useColors();
   return (
     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
-      <Text style={{ color: MUTED, fontSize: 12 }}>{label}</Text>
-      <Text style={{ color: valueColor || TEXT, fontSize: 12, fontWeight: bold ? "bold" : "600" }}>{value}</Text>
+      <Text style={{ color: colors.muted, fontSize: 12 }}>{label}</Text>
+      <Text style={{ color: valueColor || colors.foreground, fontSize: 12, fontWeight: bold ? "bold" : "600" }}>{value}</Text>
     </View>
   );
 }
@@ -101,6 +103,13 @@ function escapeHtml(value: string) {
 export default function ActivityScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const colors = useColors();
+  const BG = colors.background;
+  const SURFACE = colors.surface;
+  const CARD = colors.card;
+  const BORDER = colors.border;
+  const TEXT = colors.foreground;
+  const MUTED = colors.muted;
   const [activeTab, setActiveTab] = useState<"past" | "upcoming">("past");
   const [rides, setRides] = useState<Ride[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -262,7 +271,7 @@ export default function ActivityScreen() {
   };
 
   return (
-    <ScreenContainer containerClassName="bg-[#0A0A0A]" safeAreaClassName="bg-[#0A0A0A]">
+    <ScreenContainer style={{ backgroundColor: BG }}>
       <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 0.5, borderBottomColor: BORDER }}>
         <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 22 }}>Activity</Text>
         <Text style={{ color: MUTED, fontSize: 13, marginTop: 2 }}>Your ride history</Text>
