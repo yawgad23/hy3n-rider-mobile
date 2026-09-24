@@ -6,7 +6,7 @@ import { useRouter } from "expo-router";
 import { useAuth } from "@/lib/auth-context";
 import { firestoreDB, COLLECTIONS } from "@/lib/firebase";
 import { formatTicketTimestamp, normalizeTicketStatus, ticketProgress, ticketStatusLabel } from "@/lib/support-ticket";
-import { buildSupportMailto, buildSupportWhatsAppUrl, SUPPORT_EMAIL, SUPPORT_PHONE_E164 } from "@/lib/support-contact";
+import { buildSupportMailto, openRiderSupportWhatsApp, SUPPORT_EMAIL, SUPPORT_PHONE_E164 } from "@/lib/support-contact";
 
 const GREEN = "#006B3F";
 const RED = "#CE1126";
@@ -80,24 +80,21 @@ export default function SupportScreen() {
     if (!selectedCategory) { Alert.alert("Required", "Please select a category"); return; }
     if (!subject.trim()) { Alert.alert("Required", "Please enter a subject"); return; }
     if (!description.trim() || description.length < 20) { Alert.alert("Required", "Please describe your issue in at least 20 characters"); return; }
-    if (!user) { Alert.alert("Sign in required", "Please sign in again before creating a support ticket."); return; }
     setSubmitting(true);
     try {
-      const newTicket = await firestoreDB.create(COLLECTIONS.SUPPORT_TICKETS, {
-        user_id: user.uid,
-        category: TICKET_CATEGORIES.find(c => c.id === selectedCategory)?.label || "Other",
-        subject: subject.trim(),
-        description: description.trim(),
-        status: "open",
-        source: "rider_support",
-      });
+      const category = TICKET_CATEGORIES.find(c => c.id === selectedCategory)?.label || "Other";
+      await openRiderSupportWhatsApp([
+        "Hi HY3N Support, I need help with my rider account.",
+        `Category: ${category}`,
+        `Subject: ${subject.trim()}`,
+        `Details: ${description.trim()}`,
+      ].join("\n"));
       setShowNewTicket(false);
       setSelectedCategory("");
       setSubject("");
       setDescription("");
-      Alert.alert("Ticket Submitted", `Your support ticket ${newTicket.id} is now open. We’ll show status updates here.`);
-    } catch {
-      Alert.alert("Unable to submit", "Please try again in a moment.");
+    } catch (error: any) {
+      Alert.alert("WhatsApp unavailable", error?.message || "Please call HY3N Support on 055 727 8990.");
     } finally {
       setSubmitting(false);
     }
@@ -121,11 +118,11 @@ export default function SupportScreen() {
         </TouchableOpacity>
         <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, flex: 1 }}>Contact Support</Text>
         <TouchableOpacity
-          onPress={() => setShowNewTicket(true)}
+          onPress={() => openRiderSupportWhatsApp("Hi HY3N Support, I need help with my rider account.").catch((error) => Alert.alert("WhatsApp unavailable", error?.message || "Please call HY3N Support on 055 727 8990."))}
           style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: `${GREEN}1A`, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: `${GREEN}4D` }}
         >
-          <MaterialIcons name="add" size={16} color={GREEN} />
-          <Text style={{ color: GREEN, fontWeight: "600", fontSize: 13 }}>New Ticket</Text>
+          <MaterialIcons name="chat" size={16} color={GREEN} />
+          <Text style={{ color: GREEN, fontWeight: "600", fontSize: 13 }}>WhatsApp</Text>
         </TouchableOpacity>
       </View>
 
@@ -133,16 +130,7 @@ export default function SupportScreen() {
         {/* Contact Options */}
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 20 }}>
           <TouchableOpacity
-            onPress={() => {
-              const whatsappUrl = buildSupportWhatsAppUrl("Hi HY3N Support, I need help with my ride.");
-              Linking.canOpenURL(whatsappUrl).then(supported => {
-                if (supported) {
-                  Linking.openURL(whatsappUrl);
-                } else {
-                  Alert.alert("WhatsApp not found", `Please install WhatsApp or email us at ${SUPPORT_EMAIL}`);
-                }
-              });
-            }}
+            onPress={() => openRiderSupportWhatsApp("Hi HY3N Support, I need help with my ride.").catch((error) => Alert.alert("WhatsApp unavailable", error?.message || `Please call HY3N Support on 055 727 8990 or email ${SUPPORT_EMAIL}.`))}
           style={{ flex: 1, backgroundColor: CARD, borderRadius: 14, padding: 14, alignItems: "center", borderWidth: 0.5, borderColor: BORDER, gap: 6 }}
           >
             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: GREEN + "1A", alignItems: "center", justifyContent: "center" }}>

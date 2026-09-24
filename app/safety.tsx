@@ -4,6 +4,10 @@ import { ScreenContainer } from "@/components/screen-container";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useAuth } from "@/lib/auth-context";
+import { COLLECTIONS, firestoreDB } from "@/lib/firebase";
+import { submitRiderSos } from "@/lib/rider-safety";
+import { openRiderSupportWhatsApp } from "@/lib/support-contact";
 
 const GREEN = "#006B3F";
 const RED = "#CE1126";
@@ -39,10 +43,12 @@ const STORAGE_KEY = 'hy3n_trusted_contacts';
 
 export default function SafetyScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const [showAddContact, setShowAddContact] = useState(false);
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [trustedContacts, setTrustedContacts] = useState<TrustedContact[]>([]);
+  const [sendingSos, setSendingSos] = useState(false);
 
   // Load persisted contacts on mount
   useEffect(() => {
@@ -60,13 +66,50 @@ export default function SafetyScreen() {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(contacts));
   };
 
+  const sendSos = async () => {
+    if (!user) {
+      Alert.alert("Sign in required", "Please sign in again before sending an SOS alert.");
+      return;
+    }
+    setSendingSos(true);
+    try {
+      let activeRide: any = null;
+      try {
+        const rides = await firestoreDB.list(COLLECTIONS.RIDES, { rider_id: user.uid });
+        activeRide = rides.find((ride: any) => ["searching", "driver_arriving", "in_progress"].includes(String(ride.status || "")));
+      } catch {
+        // An SOS must still be deliverable when the optional ride lookup fails.
+      }
+      const result = await submitRiderSos({ rideId: activeRide?.id });
+      const locationText = activeRide?.pickup_address || activeRide?.pickup?.address || "Current location";
+      const whatsappMessage = [
+        "HY3N Rider SOS — I need urgent safety assistance.",
+        `Reference: ${result.incidentId || "Pending"}`,
+        `Trip: ${activeRide?.id || "No active trip"}`,
+        `Location: ${locationText}`,
+      ].join("\n");
+      Alert.alert(
+        "SOS received",
+        "HY3N Safety has recorded your alert. You can now open WhatsApp to reach the support team immediately.",
+        [
+          { text: "Not now", style: "cancel" },
+          { text: "Open WhatsApp", onPress: () => openRiderSupportWhatsApp(whatsappMessage).catch(() => Alert.alert("WhatsApp unavailable", "Please call HY3N Support on 055 727 8990.")) },
+        ],
+      );
+    } catch (error: any) {
+      Alert.alert("SOS not sent", error?.message || "Please call emergency services or try again.");
+    } finally {
+      setSendingSos(false);
+    }
+  };
+
   const handleSOS = () => {
     Alert.alert(
       "Emergency SOS",
-      "This will immediately notify HY3N Safety team and your emergency contacts with your current location. Continue?",
+      "This will send your current location and active trip details to HY3N Safety. Continue?",
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Send SOS", style: "destructive", onPress: () => Alert.alert("SOS Sent", "Your emergency contacts and HY3N Safety team have been notified.") },
+        { text: "Send SOS", style: "destructive", onPress: sendSos },
       ]
     );
   };
@@ -96,12 +139,12 @@ export default function SafetyScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16, paddingBottom: 30 }}>
-        <TouchableOpacity onPress={handleSOS} style={{ backgroundColor: RED, borderRadius: 20, padding: 24, alignItems: "center", marginBottom: 20 }}>
+        <TouchableOpacity disabled={sendingSos} onPress={handleSOS} style={{ backgroundColor: RED, borderRadius: 20, padding: 24, alignItems: "center", marginBottom: 20, opacity: sendingSos ? 0.7 : 1 }}>
           <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
             <MaterialIcons name="sos" size={36} color="#fff" />
           </View>
-          <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 20 }}>Emergency SOS</Text>
-          <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4, textAlign: "center" }}>Tap to alert HY3N Safety team and your emergency contacts</Text>
+          <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 20 }}>{sendingSos ? "Sending SOS…" : "Emergency SOS"}</Text>
+          <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 4, textAlign: "center" }}>Tap to alert HY3N Safety with your location and active trip</Text>
         </TouchableOpacity>
 
         <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "700", marginBottom: 10 }}>Emergency Numbers</Text>
