@@ -566,9 +566,32 @@ export default function RiderHomeScreen() {
       .map((trackedRide) => dispatchService.listenToRide(trackedRide.firestoreId!, (ride: DispatchRide) => {
         updateActiveRide((prev) => {
           if (prev.id !== trackedRide.id) return prev;
-          const driver = ride.driver;
-          const nextDriverLocation = driver
-            ? { lat: driver.location.lat, lng: driver.location.lng }
+          const rawRide = ride as any;
+          const driver = ride.driver || (
+            rawRide.driver_name || rawRide.driver_vehicle || rawRide.driver_vehicle_make || rawRide.driver_plate
+              ? {
+                  id: rawRide.driver_id,
+                  name: rawRide.driver_name || rawRide.driverName,
+                  rating: rawRide.driver_rating,
+                  total_trips: rawRide.driver_total_trips,
+                  vehicle_make: rawRide.driver_vehicle_make || String(rawRide.driver_vehicle || '').split(' ')[0],
+                  vehicle_model: rawRide.driver_vehicle_model || String(rawRide.driver_vehicle || '').split(' ').slice(1).join(' '),
+                  vehicle_colour: rawRide.driver_colour,
+                  vehicle_colour_hex: rawRide.driver_colour_hex,
+                  plate: rawRide.driver_plate,
+                  phone: rawRide.driver_phone,
+                  location: rawRide.driver_location || { lat: 0, lng: 0 },
+                }
+              : null
+          );
+          const hasDriverLocation = Boolean(
+            driver?.location
+            && Number.isFinite(Number(driver.location.lat))
+            && Number.isFinite(Number(driver.location.lng))
+            && (Number(driver.location.lat) !== 0 || Number(driver.location.lng) !== 0),
+          );
+          const nextDriverLocation = hasDriverLocation
+            ? { lat: Number(driver!.location.lat), lng: Number(driver!.location.lng) }
             : prev.driverLocation;
           const driverBearing = nextDriverLocation && prev.driverLocation
             ? calculateBearing(prev.driverLocation.lat, prev.driverLocation.lng, nextDriverLocation.lat, nextDriverLocation.lng)
@@ -1577,7 +1600,9 @@ export default function RiderHomeScreen() {
                       <Text style={{ color: MUTED, fontSize: 11, marginLeft: 4 }}>· {activeRide.driverTotalTrips} trips</Text>
                     )}
                   </View>
-                  <Text style={{ color: MUTED, fontSize: 12 }}>Your assigned driver</Text>
+                  <Text style={{ color: MUTED, fontSize: 12 }} numberOfLines={1}>
+                    {`${activeRide.driverName || "Your driver"} is arriving in ${activeRide.driverColour || "your"} ${activeRide.driverVehicle || "HY3N vehicle"}`}
+                  </Text>
                 </View>
               </View>
               {/* Ride PIN row */}
@@ -1629,41 +1654,6 @@ export default function RiderHomeScreen() {
                   <MaterialIcons name="chat" size={18} color={GOLD} />
                   <Text style={{ color: GOLD, fontWeight: "700", fontSize: 14 }}>{unreadChatCount > 0 ? `Message (${unreadChatCount})` : 'Message'}</Text>
                 </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Vehicle Details — kept separate so the rider can quickly verify the car */}
-            <View style={{ backgroundColor: CARD, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 0.5, borderColor: BORDER }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                <MaterialIcons name="directions-car" size={18} color={GOLD} />
-                <Text style={{ color: TEXT, fontWeight: "800", fontSize: 14 }}>Vehicle details</Text>
-                {activeRide.etaSeconds !== undefined && activeRide.etaSeconds > 0 && (
-                  <Text style={{ color: GREEN, fontSize: 11, fontWeight: "700", marginLeft: "auto" }}>
-                    Arrives in {Math.floor(activeRide.etaSeconds / 60)}:{String(activeRide.etaSeconds % 60).padStart(2, '0')}
-                  </Text>
-                )}
-              </View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: activeRide.driverColourHex || `${GOLD}22`, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: `${GOLD}66` }}>
-                  <MaterialIcons name="directions-car" size={28} color={activeRide.driverColourHex?.toLowerCase() === "#f5f5f5" ? "#111" : "#fff"} />
-                </View>
-                <View style={{ flex: 1, gap: 6 }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-                    <Text style={{ color: MUTED, fontSize: 12 }}>Car model</Text>
-                    <Text style={{ color: TEXT, fontSize: 13, fontWeight: "700", flex: 1, textAlign: "right" }} numberOfLines={1}>{activeRide.driverVehicle || "Not available"}</Text>
-                  </View>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-                    <Text style={{ color: MUTED, fontSize: 12 }}>Plate number</Text>
-                    <Text style={{ color: GOLD, fontSize: 13, fontWeight: "800", letterSpacing: 1 }}>{activeRide.driverPlate || "Not available"}</Text>
-                  </View>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-                    <Text style={{ color: MUTED, fontSize: 12 }}>Colour</Text>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: activeRide.driverColourHex || "#888", borderWidth: 1, borderColor: BORDER }} />
-                      <Text style={{ color: TEXT, fontSize: 13, fontWeight: "700" }}>{activeRide.driverColour || "Not available"}</Text>
-                    </View>
-                  </View>
-                </View>
               </View>
             </View>
 
