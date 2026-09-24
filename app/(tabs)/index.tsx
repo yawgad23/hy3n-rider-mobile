@@ -14,8 +14,6 @@ import {
   Share,
   Linking,
   Image,
-  Keyboard,
-  KeyboardAvoidingView,
   PanResponder,
 } from "react-native";
 import LeafletMap from "@/components/LeafletMap";
@@ -442,10 +440,9 @@ export default function RiderHomeScreen() {
   const [recipientPhone, setRecipientPhone] = useState("");
   const [recipientAddress, setRecipientAddress] = useState("");
 
-  // MoMo payment form. Card details are never collected in HY3N: selecting
-  // Card launches Hubtel's hosted, PCI-managed checkout instead.
-  const [showMomoModal, setShowMomoModal] = useState(false);
-  const [momoNumber, setMomoNumber] = useState("");
+  // Card details are never collected in HY3N: selecting Card launches
+  // Hubtel's hosted, PCI-managed checkout. MoMo is settled directly with the
+  // Driver after the trip, so HY3N does not collect a mobile number or prompt.
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // In-ride chat
   const [showChat, setShowChat] = useState(false);
@@ -1008,15 +1005,6 @@ export default function RiderHomeScreen() {
       }
     }
 
-    if (paymentMethod.id === "mobile_money") {
-      const normalized = momoNumber.replace(/\D/g, "");
-      const isGhanaMomo = /^0\d{9}$/.test(normalized) || /^233\d{9}$/.test(normalized);
-      if (!isGhanaMomo) {
-        setShowMomoModal(true);
-        return;
-      }
-    }
-
     if (paymentMethod.id === "card") {
       setBookingLoading(true);
       try {
@@ -1167,18 +1155,6 @@ export default function RiderHomeScreen() {
       setTipAdded(false);
       setTipAmount(null);
     }
-  };
-
-  const handleMomoNumberSubmit = () => {
-    const normalized = momoNumber.replace(/\D/g, "");
-    const isGhanaMomo = /^0\d{9}$/.test(normalized) || /^233\d{9}$/.test(normalized);
-    if (!isGhanaMomo) {
-      Alert.alert("Valid MoMo number needed", "Enter a valid Ghana Mobile Money number, for example 0501234567.");
-      return;
-    }
-    Keyboard.dismiss();
-    setShowMomoModal(false);
-    void handleBook();
   };
 
   const CANCEL_REASONS = [
@@ -2217,7 +2193,6 @@ export default function RiderHomeScreen() {
           </Text>
         </View>
       )}
-
       {/* Trip Type */}
       <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Trip Type</Text>
       <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
@@ -2622,46 +2597,6 @@ export default function RiderHomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
-
-      {/* MoMo Payment Modal */}
-      <Modal visible={showMomoModal} transparent animationType="slide" onRequestClose={() => { Keyboard.dismiss(); setShowMomoModal(false); }}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={0}
-        >
-          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
-            <View style={{ backgroundColor: SURFACE, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: insets.bottom + 24 }}>
-              <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>MoMo Payment</Text>
-              <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>Enter the number that should receive the secure payment prompt.</Text>
-              <TextInput
-                value={momoNumber}
-                onChangeText={setMomoNumber}
-                placeholder="0XX XXX XXXX"
-                placeholderTextColor="#4A4A4A"
-                keyboardType="phone-pad"
-                autoFocus
-                returnKeyType="done"
-                blurOnSubmit
-                onSubmitEditing={handleMomoNumberSubmit}
-                style={{ backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER, marginBottom: 12 }}
-              />
-              <Text style={{ color: MUTED, fontSize: 11, lineHeight: 16, marginBottom: 16 }}>The Continue button stays above the keypad. You will approve the payment prompt on this number.</Text>
-              <TouchableOpacity
-                onPress={handleMomoNumberSubmit}
-                accessibilityRole="button"
-                accessibilityLabel="Continue with this MoMo number"
-                style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, alignItems: "center", marginBottom: 10 }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Continue with MoMo</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { Keyboard.dismiss(); setShowMomoModal(false); }} style={{ alignItems: "center", paddingVertical: 10 }}>
-                <Text style={{ color: MUTED, fontSize: 14 }}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
       </Modal>
 
       {/* Rating Modal */}
