@@ -7,7 +7,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/lib/auth-context";
 import { COLLECTIONS, firestoreDB } from "@/lib/firebase";
 import { submitRiderSos } from "@/lib/rider-safety";
-import { openRiderSupportWhatsApp } from "@/lib/support-contact";
+import { openRiderSupportWhatsApp, SUPPORT_PHONE_E164 } from "@/lib/support-contact";
 
 const GREEN = "#006B3F";
 const RED = "#CE1126";
@@ -19,10 +19,10 @@ const TEXT = "#FAFAFA";
 const MUTED = "#9CA3AF";
 
 const EMERGENCY_NUMBERS = [
-  { name: "Police", number: "191", icon: "local-police" as const, color: "#1E40AF" },
-  { name: "Ambulance", number: "193", icon: "local-hospital" as const, color: RED },
-  { name: "Fire Service", number: "192", icon: "local-fire-department" as const, color: "#EA580C" },
-  { name: "HY3N Safety", number: "+233 30 000 0000", icon: "security" as const, color: GREEN },
+  { name: "Police", number: "191", icon: "local-police" as const, color: "#1E40AF", usesWhatsApp: false },
+  { name: "Ambulance", number: "193", icon: "local-hospital" as const, color: RED, usesWhatsApp: false },
+  { name: "Fire Service", number: "192", icon: "local-fire-department" as const, color: "#EA580C", usesWhatsApp: false },
+  { name: "HY3N Safety", number: "+233 55 727 8990", icon: "security" as const, color: GREEN, usesWhatsApp: true },
 ];
 
 const SAFETY_TIPS = [
@@ -118,6 +118,16 @@ export default function SafetyScreen() {
     Linking.openURL("tel:" + number).catch(() => Alert.alert("Cannot Call", "Please call " + number + " manually"));
   };
 
+  const handleEmergencyContact = (contact: (typeof EMERGENCY_NUMBERS)[number]) => {
+    if (contact.usesWhatsApp) {
+      openRiderSupportWhatsApp("HY3N Rider Safety Centre — I need support.").catch(() => {
+        handleCall(SUPPORT_PHONE_E164);
+      });
+      return;
+    }
+    handleCall(contact.number);
+  };
+
   const handleAddContact = () => {
     if (!contactName.trim() || !contactPhone.trim()) { Alert.alert("Required", "Please enter both name and phone number"); return; }
     const updated = [...trustedContacts, { id: Date.now().toString(), name: contactName, phone: contactPhone }];
@@ -150,7 +160,7 @@ export default function SafetyScreen() {
         <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "700", marginBottom: 10 }}>Emergency Numbers</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
           {EMERGENCY_NUMBERS.map((contact) => (
-            <TouchableOpacity key={contact.name} onPress={() => handleCall(contact.number)} style={{ flex: 1, minWidth: "45%", backgroundColor: CARD, borderRadius: 14, padding: 14, alignItems: "center", borderWidth: 0.5, borderColor: BORDER, gap: 6 }}>
+            <TouchableOpacity key={contact.name} onPress={() => handleEmergencyContact(contact)} accessibilityRole="button" accessibilityLabel={contact.usesWhatsApp ? "Message HY3N Safety on WhatsApp" : `Call ${contact.name}`} style={{ flex: 1, minWidth: "45%", backgroundColor: CARD, borderRadius: 14, padding: 14, alignItems: "center", borderWidth: 0.5, borderColor: BORDER, gap: 6 }}>
               <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: contact.color + "1A", alignItems: "center", justifyContent: "center" }}>
                 <MaterialIcons name={contact.icon} size={22} color={contact.color} />
               </View>
