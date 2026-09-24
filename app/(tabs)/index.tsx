@@ -109,6 +109,7 @@ interface ActiveRide {
   driverPhoto?: string;
   driverLocation?: { lat: number; lng: number };
   driverBearing?: number;
+  driverLocationUpdatedAt?: string;
   driverTotalTrips?: number;
   driverPhone?: string;
   driverId?: string;
@@ -388,6 +389,7 @@ export default function RiderHomeScreen() {
   const [etaMinutes, setEtaMinutes] = useState<number>(0);
   const [totalDistanceTraveled, setTotalDistanceTraveled] = useState<number>(0);
   const [searchHistory, setSearchHistory] = useState<Location[]>([]);
+  const [locationFreshnessTick, setLocationFreshnessTick] = useState(0);
 
   // Schedule
   const [isScheduled, setIsScheduled] = useState(false);
@@ -623,6 +625,7 @@ export default function RiderHomeScreen() {
             driverPhone: driver?.phone ?? prev.driverPhone,
             driverLocation: nextDriverLocation,
             driverBearing,
+            driverLocationUpdatedAt: String((driver as any)?.location?.recorded_at || (driver as any)?.last_location_update || (ride as any).driver_location_updated_at || prev.driverLocationUpdatedAt || ''),
             safetySignal,
             routeDeviationKm,
             driverStoppedAt,
@@ -666,11 +669,24 @@ export default function RiderHomeScreen() {
           : prev.driverLocation
             ? calculateBearing(prev.driverLocation.lat, prev.driverLocation.lng, lat, lng)
             : prev.driverBearing;
-        return { ...prev, driverLocation: point, driverBearing: bearing };
+        return {
+          ...prev,
+          driverLocation: point,
+          driverBearing: bearing,
+          driverLocationUpdatedAt: String(current?.recorded_at || current?.updated_at || profile?.last_location_update || profile?.last_seen_at || profile?.last_seen || prev.driverLocationUpdatedAt || ''),
+        };
       });
       if (ride.id === selectedRideId) setDriverLocation(point);
     });
   }, [activeRides[0]?.id, activeRides[0]?.driverId, activeRides[0]?.status, selectedRideId, updateActiveRide]);
+
+  // Keep the on-screen freshness indicator honest even when a Driver has
+  // stopped moving and no new location snapshot is received.
+  useEffect(() => {
+    if (!activeRide?.driverLocation) return;
+    const interval = setInterval(() => setLocationFreshnessTick((tick) => tick + 1), 15_000);
+    return () => clearInterval(interval);
+  }, [activeRide?.id, Boolean(activeRide?.driverLocation)]);
 
   // Record rider-side location for safety and trip details while any ride is in
   // progress. Fare is locked when the Rider books and is never recalculated by
@@ -1378,6 +1394,31 @@ export default function RiderHomeScreen() {
     const hasDriver = ["matched", "driver_arriving", "driver_arrived", "in_progress"].includes(activeRide.status);
 
     const liveFare = isCompleted ? getFinalRideFare(activeRide) : getQuotedRideFare(activeRide);
+    const isTripShareActive = Boolean(
+      activeRide.sharingActive
+      && activeRide.shareExpiresAt
+      && new Date(activeRide.shareExpiresAt).getTime() > Date.now(),
+    );
+    const driverLocationTimestamp = activeRide.driverLocationUpdatedAt
+      ? new Date(activeRide.driverLocationUpdatedAt).getTime()
+      : Number.NaN;
+    const driverLocationAgeSeconds = Number.isFinite(driverLocationTimestamp)
+      ? Math.max(0, Math.floor((Date.now() - driverLocationTimestamp) / 1000))
+      : null;
+    // Reference the timer state so the age refreshes while the Driver is still.
+    void locationFreshnessTick;
+    const locationFreshnessLabel = driverLocationAgeSeconds === null
+      ? 'Last known location'
+      : driverLocationAgeSeconds <= 45
+        ? 'Live location'
+        : driverLocationAgeSeconds <= 180
+          ? `Updated ${Math.max(1, Math.floor(driverLocationAgeSeconds / 60))} min ago`
+          : 'Location may be out of date';
+    const locationFreshnessColor = driverLocationAgeSeconds === null || driverLocationAgeSeconds <= 45
+      ? GREEN
+      : driverLocationAgeSeconds <= 180
+        ? GOLD
+        : RED;
 
     // Keep the map useful while a ride is active. The expanded details remain
     // one tap away, but the default minimized state shows only live status.
@@ -1406,7 +1447,7 @@ export default function RiderHomeScreen() {
                 ? riderWaitSeconds < riderFreeWaitSecs
                   ? `Free wait: ${Math.floor((riderFreeWaitSecs - riderWaitSeconds) / 60)}:${String((riderFreeWaitSecs - riderWaitSeconds) % 60).padStart(2, "0")} remaining`
                   : `Paid wait time · GH₵${riderCurrentWaitingFee.toFixed(2)}`
-                : hasDriver ? `${activeRide.driverName || "Your driver"} · ${activeRide.driverVehicle || "Vehicle details"}` : activeRide.destination.name}
+                : hasDriver ? `${locationFreshnessLabel} · ${activeRide.driverName || "Your driver"}` : activeRide.destination.name}
             </Text>
           </View>
           <View style={{ alignItems: "flex-end", gap: 4 }}>
@@ -1494,6 +1535,11 @@ export default function RiderHomeScreen() {
                     <Text style={{ color: MUTED, fontSize: 11 }}>min</Text>
                   </View>
                 )}
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10, paddingTop: 9, borderTopWidth: 0.5, borderTopColor: `${GREEN}44` }}>
+                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: locationFreshnessColor }} />
+                <Text style={{ color: locationFreshnessColor, fontSize: 11, fontWeight: "700" }}>{locationFreshnessLabel}</Text>
+                <Text style={{ color: MUTED, fontSize: 11 }}>· ETA is an estimate</Text>
               </View>
             </View>
 
@@ -1710,14 +1756,14 @@ export default function RiderHomeScreen() {
             {/* Share Trip + SOS row */}
             <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
               <TouchableOpacity
-                onPress={activeRide.sharingActive ? handleStopSharingTrip : handleShareTrip}
+                onPress={isTripShareActive ? handleStopSharingTrip : handleShareTrip}
                 disabled={shareActionBusy}
-                accessibilityLabel={activeRide.sharingActive ? "Stop sharing live trip" : "Share live trip"}
-                accessibilityHint={activeRide.sharingActive ? "Revokes the current secure trip tracking link" : "Creates a secure link for a trusted contact to follow this trip"}
-                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 12, backgroundColor: activeRide.sharingActive ? `${GREEN}1A` : CARD, borderRadius: 12, borderWidth: 0.5, borderColor: activeRide.sharingActive ? `${GREEN}77` : BORDER, opacity: shareActionBusy ? 0.65 : 1 }}
+                accessibilityLabel={isTripShareActive ? "Stop sharing live trip" : "Share live trip"}
+                accessibilityHint={isTripShareActive ? "Revokes the current secure trip tracking link" : "Creates a secure link for a trusted contact to follow this trip"}
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 12, backgroundColor: isTripShareActive ? `${GREEN}1A` : CARD, borderRadius: 12, borderWidth: 0.5, borderColor: isTripShareActive ? `${GREEN}77` : BORDER, opacity: shareActionBusy ? 0.65 : 1 }}
               >
-                {shareActionBusy ? <ActivityIndicator size="small" color={activeRide.sharingActive ? GREEN : MUTED} /> : <MaterialIcons name={activeRide.sharingActive ? "stop-circle" : "share"} size={16} color={activeRide.sharingActive ? GREEN : MUTED} />}
-                <Text style={{ color: activeRide.sharingActive ? GREEN : MUTED, fontSize: 13, fontWeight: "600" }}>{activeRide.sharingActive ? 'Stop Sharing' : 'Share Trip'}</Text>
+                {shareActionBusy ? <ActivityIndicator size="small" color={isTripShareActive ? GREEN : MUTED} /> : <MaterialIcons name={isTripShareActive ? "stop-circle" : "share"} size={16} color={isTripShareActive ? GREEN : MUTED} />}
+                <Text style={{ color: isTripShareActive ? GREEN : MUTED, fontSize: 13, fontWeight: "600" }}>{isTripShareActive ? 'Stop Sharing' : 'Share Trip'}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleEmergencyAssist}
