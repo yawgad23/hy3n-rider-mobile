@@ -313,7 +313,7 @@ export default function RiderHomeScreen() {
   const [destination, setDestination] = useState<Location | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [locationSearchMode, setLocationSearchMode] = useState<"pickup" | "destination">("destination");
+  const [locationSearchMode, setLocationSearchMode] = useState<"pickup" | "destination" | "stop">("destination");
   const [bookingSheetCollapsed, setBookingSheetCollapsed] = useState(false);
   const [activeRideSheetCollapsed, setActiveRideSheetCollapsed] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState(RIDE_CATEGORIES[0]);
@@ -903,16 +903,18 @@ export default function RiderHomeScreen() {
   }, [searchQuery]);
 
   const filteredDestinations = searchQuery
-    ? placeSuggestions.length > 0
+    ? locationSearchMode === "stop"
       ? placeSuggestions
-      : POPULAR_DESTINATIONS.filter(
-          (p) =>
-            p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            p.address.toLowerCase().includes(searchQuery.toLowerCase())
-        )
+      : placeSuggestions.length > 0
+        ? placeSuggestions
+        : POPULAR_DESTINATIONS.filter(
+            (p) =>
+              p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              p.address.toLowerCase().includes(searchQuery.toLowerCase())
+          )
     : POPULAR_DESTINATIONS;
 
-  const openLocationSearch = (mode: "pickup" | "destination") => {
+  const openLocationSearch = (mode: "pickup" | "destination" | "stop") => {
     setLocationSearchMode(mode);
     setSearchQuery("");
     setSearchOpen(true);
@@ -951,6 +953,17 @@ export default function RiderHomeScreen() {
     if (selectedMode === "pickup") {
       setUserLocation([resolved.lat, resolved.lng]);
       setPickupAddress(resolved.address || resolved.name || "Selected pickup");
+      setSearchOpen(false);
+      setSearchQuery("");
+      return;
+    }
+
+    if (selectedMode === "stop") {
+      setStops((previousStops) => {
+        if (previousStops.length >= 3) return previousStops;
+        const duplicate = previousStops.some((stop) => stop && stop.lat === resolved.lat && stop.lng === resolved.lng);
+        return duplicate ? previousStops : [...previousStops, resolved];
+      });
       setSearchOpen(false);
       setSearchQuery("");
       return;
@@ -1217,14 +1230,7 @@ export default function RiderHomeScreen() {
       Alert.alert("Limit reached", "You can add up to 3 stops.");
       return;
     }
-    const options = POPULAR_DESTINATIONS.slice(0, 6).map((p) => ({
-      text: p.name,
-      onPress: () => setStops((prev) => [...prev, p]),
-    }));
-    Alert.alert("Add a stop", "Select a stop from popular places", [
-      ...options,
-      { text: "Cancel", style: "cancel" },
-    ]);
+    openLocationSearch("stop");
   };
 
   const moveStop = (index: number, direction: -1 | 1) => {
@@ -2482,7 +2488,11 @@ export default function RiderHomeScreen() {
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder={locationSearchMode === "pickup" ? "Choose pickup location" : "Where are you going?"}
+              placeholder={locationSearchMode === "pickup"
+                ? "Choose pickup location"
+                : locationSearchMode === "stop"
+                  ? "Enter a stop address"
+                  : "Where are you going?"}
               placeholderTextColor={MUTED}
               autoFocus
               style={{ flex: 1, color: TEXT, fontSize: 16, paddingVertical: 8 }}
@@ -2503,10 +2513,20 @@ export default function RiderHomeScreen() {
           )}
 
           <FlatList
-            data={searchQuery ? filteredDestinations : [...(searchHistory.length > 0 ? searchHistory : []), ...POPULAR_DESTINATIONS.slice(0, 8)]}
+            data={searchQuery
+              ? filteredDestinations
+              : locationSearchMode === "stop"
+                ? []
+                : [...(searchHistory.length > 0 ? searchHistory : []), ...POPULAR_DESTINATIONS.slice(0, 8)]}
             keyExtractor={(item, i) => `${item.name}-${i}`}
             ListHeaderComponent={
               <>
+                {locationSearchMode === "stop" && !searchQuery && (
+                  <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 }}>
+                    <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }}>Add a stop</Text>
+                    <Text style={{ color: MUTED, fontSize: 13, lineHeight: 19, marginTop: 5 }}>Type the address, landmark, or place name for this stop, then choose the matching result.</Text>
+                  </View>
+                )}
                 {searchHistory.length > 0 && !searchQuery && (
                   <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
                     <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600" }}>Recent</Text>
@@ -2517,7 +2537,7 @@ export default function RiderHomeScreen() {
                     <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600" }}>Suggestions</Text>
                   </View>
                 )}
-                {!searchQuery && (
+                {!searchQuery && locationSearchMode !== "stop" && (
                   <View style={{ paddingHorizontal: 16, paddingTop: searchHistory.length > 0 ? 4 : 16, paddingBottom: 8 }}>
                     <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600" }}>Popular</Text>
                   </View>
@@ -2539,6 +2559,18 @@ export default function RiderHomeScreen() {
                 <MaterialIcons name="chevron-right" size={18} color={MUTED} />
               </TouchableOpacity>
             )}
+            ListEmptyComponent={
+              locationSearchMode === "stop" && !searchQuery ? (
+                <View style={{ paddingHorizontal: 16, paddingVertical: 28, alignItems: "center" }}>
+                  <MaterialIcons name="edit-location-alt" size={28} color={GOLD} />
+                  <Text style={{ color: MUTED, fontSize: 13, textAlign: "center", marginTop: 10 }}>No preset places are selected for you.</Text>
+                </View>
+              ) : searchQuery && !suggestionsLoading ? (
+                <View style={{ paddingHorizontal: 24, paddingVertical: 28, alignItems: "center" }}>
+                  <Text style={{ color: MUTED, fontSize: 13, textAlign: "center" }}>No matching address found. Try adding the area, city, or a nearby landmark.</Text>
+                </View>
+              ) : null
+            }
           />
         </View>
       </Modal>
