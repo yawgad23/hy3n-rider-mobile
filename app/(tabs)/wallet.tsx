@@ -44,6 +44,8 @@ interface Transaction {
   date: string;
   reference: string;
   status?: string;
+  hubtel_status?: string;
+  hubtel_message?: string;
 }
 
 function formatDate(iso: string) {
@@ -57,6 +59,18 @@ function formatDate(iso: string) {
 }
 
 type TopUpStage = "idle" | "processing" | "ussd_sent" | "success" | "failed";
+
+function walletFailureMessage(message?: string): string {
+  const source = String(message || "").trim();
+  const normalized = source.toLowerCase();
+  if (normalized.includes("terminated") || normalized.includes("cancelled") || normalized.includes("expired")) {
+    return "The MoMo prompt was cancelled or expired before approval. No money was added. Start a new top-up and approve the prompt on your phone within 2 minutes.";
+  }
+  if (normalized.includes("declined")) {
+    return "The MoMo payment was declined. No money was added. Check the number and available balance, then try again.";
+  }
+  return source || "Top-up could not be completed. Please try again.";
+}
 
 export default function WalletScreen() {
   const { user, riderProfile } = useAuth();
@@ -141,7 +155,7 @@ export default function WalletScreen() {
         } else if (tx?.status === "failed") {
           clearInterval(pollRef.current!);
           setTopUpStage("failed");
-          setTopUpMessage("Payment was declined. Please try again.");
+          setTopUpMessage(walletFailureMessage(tx.hubtel_message || tx.hubtel_status));
         }
       } catch { /* ignore */ }
       // Stop polling after 3 minutes (36 × 5s)
@@ -184,11 +198,11 @@ export default function WalletScreen() {
         startPolling(result.txId);
       } else {
         setTopUpStage("failed");
-        setTopUpMessage(result.message || "Top-up failed. Please try again.");
+        setTopUpMessage(walletFailureMessage(result.message));
       }
     } catch (err: any) {
       setTopUpStage("failed");
-      setTopUpMessage(err?.message || "Something went wrong. Please try again.");
+      setTopUpMessage(walletFailureMessage(err?.message));
     }
   };
 
