@@ -671,6 +671,22 @@ export default function RiderHomeScreen() {
     return () => subscriptions.forEach((unsubscribe) => unsubscribe());
   }, [activeRideKeys, selectedRideId, updateActiveRide]);
 
+  // A message becomes delivered once this Rider app receives it, even if the
+  // chat sheet is closed. Opening the sheet additionally marks it as read.
+  useEffect(() => {
+    if (!user?.uid) return;
+    const subscriptions = activeRides
+      .filter((ride) => Boolean(ride.firestoreId))
+      .map((ride) => firestoreDB.subscribe('ride_messages', { ride_id: ride.firestoreId }, (messages: any[]) => {
+        messages
+          .filter((message) => message.sender_id !== user.uid && message.sender_role === 'driver' && !message.delivered_to_rider)
+          .forEach((message) => {
+            firestoreDB.update('ride_messages', message.id, { delivered_to_rider: true }).catch(() => {});
+          });
+      }));
+    return () => subscriptions.forEach((unsubscribe) => unsubscribe?.());
+  }, [activeRideKeys, user?.uid]);
+
   // Driver presence is updated by the standalone backend on the driver's
   // profile document. Subscribe to that document as well as the ride itself,
   // so the rider sees movement from acceptance through the live trip.

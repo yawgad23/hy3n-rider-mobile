@@ -33,6 +33,8 @@ interface Message {
   created_date?: string;
   read_by_driver?: boolean;
   read_by_rider?: boolean;
+  delivered_to_driver?: boolean;
+  delivered_to_rider?: boolean;
 }
 
 interface RideChatModalProps {
@@ -49,6 +51,8 @@ function ChatBubble({ msg, isMine, currentRole }: { msg: Message; isMine: boolea
     ? new Date(msg.created_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : '';
   const isRead = currentRole === 'rider' ? msg.read_by_driver : msg.read_by_rider;
+  const isDelivered = currentRole === 'rider' ? msg.delivered_to_driver : msg.delivered_to_rider;
+  const statusLabel = isRead ? 'Read' : isDelivered ? 'Delivered' : 'Sent';
 
   return (
     <View style={[styles.bubbleRow, isMine ? styles.bubbleRowRight : styles.bubbleRowLeft]}>
@@ -64,11 +68,14 @@ function ChatBubble({ msg, isMine, currentRole }: { msg: Message; isMine: boolea
         <View style={styles.bubbleMeta}>
           <Text style={styles.bubbleTime}>{time}</Text>
           {isMine && (
-            <MaterialIcons
-              name={isRead ? 'done-all' : 'done'}
-              size={12}
-              color={isRead ? GOLD : MUTED}
-            />
+            <>
+              <Text style={[styles.deliveryStatus, isRead && styles.deliveryStatusRead]}>{statusLabel}</Text>
+              <MaterialIcons
+                name={isRead || isDelivered ? 'done-all' : 'done'}
+                size={12}
+                color={isRead ? GOLD : MUTED}
+              />
+            </>
           )}
         </View>
       </View>
@@ -125,9 +132,10 @@ export function RideChatModal({
 
         // Mark messages as read
         const updateField = currentUserRole === 'rider' ? 'read_by_rider' : 'read_by_driver';
+        const deliveredField = currentUserRole === 'rider' ? 'delivered_to_rider' : 'delivered_to_driver';
         msgs.forEach((msg) => {
           if (msg.sender_role !== currentUserRole && msg.sender_id !== currentUserId && !msg[updateField]) {
-            firestoreDB.update('ride_messages', msg.id, { [updateField]: true }).catch(() => {});
+            firestoreDB.update('ride_messages', msg.id, { [deliveredField]: true, [updateField]: true }).catch(() => {});
           }
         });
       }
@@ -172,6 +180,8 @@ export function RideChatModal({
         created_date: new Date().toISOString(),
         read_by_driver: false,
         read_by_rider: false,
+        delivered_to_driver: false,
+        delivered_to_rider: false,
       });
     } catch (e) {
       console.warn('[RideChatModal] Failed to send message:', e);
@@ -349,6 +359,8 @@ const styles = StyleSheet.create({
   bubbleTextTheirs: { color: TEXT },
   bubbleMeta: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3, paddingHorizontal: 4 },
   bubbleTime: { fontSize: 10, color: MUTED },
+  deliveryStatus: { fontSize: 10, color: MUTED },
+  deliveryStatusRead: { color: GOLD, fontWeight: '700' },
   quickRepliesContainer: { borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 10, paddingBottom: 8 },
   quickRepliesHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginBottom: 8 },
   quickRepliesLabel: { fontSize: 10, fontWeight: '600', color: MUTED, letterSpacing: 1 },

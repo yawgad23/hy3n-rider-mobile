@@ -57,21 +57,25 @@ service cloud.firestore {
         request.resource.data.sender_id == request.auth.uid &&
         (get(/databases/$(database)/documents/rides/$(request.resource.data.ride_id)).data.rider_id == request.auth.uid ||
          get(/databases/$(database)/documents/rides/$(request.resource.data.ride_id)).data.driver_id == request.auth.uid);
-      // A participant can mark only the OTHER participant's messages as read.
-      // Client writes also stamp updated_date, so that field is allowed here.
+      // A participant can mark only the OTHER participant's messages as
+      // delivered/read. Client writes also stamp updated_date.
       allow update: if request.auth != null &&
         (get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.rider_id == request.auth.uid ||
          get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.driver_id == request.auth.uid) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read_by_rider', 'read_by_driver', 'updated_date']) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['delivered_to_rider', 'delivered_to_driver', 'read_by_rider', 'read_by_driver', 'updated_date']) &&
         (
           (get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.rider_id == request.auth.uid &&
            resource.data.sender_id != request.auth.uid &&
-           request.resource.data.read_by_rider == true &&
-           request.resource.data.read_by_driver == resource.data.read_by_driver) ||
+           request.resource.data.delivered_to_rider == true &&
+           request.resource.data.read_by_rider in [resource.data.get('read_by_rider', false), true] &&
+           request.resource.data.get('delivered_to_driver', false) == resource.data.get('delivered_to_driver', false) &&
+           request.resource.data.get('read_by_driver', false) == resource.data.get('read_by_driver', false)) ||
           (get(/databases/$(database)/documents/rides/$(resource.data.ride_id)).data.driver_id == request.auth.uid &&
            resource.data.sender_id != request.auth.uid &&
-           request.resource.data.read_by_driver == true &&
-           request.resource.data.read_by_rider == resource.data.read_by_rider)
+           request.resource.data.delivered_to_driver == true &&
+           request.resource.data.read_by_driver in [resource.data.get('read_by_driver', false), true] &&
+           request.resource.data.get('delivered_to_rider', false) == resource.data.get('delivered_to_rider', false) &&
+           request.resource.data.get('read_by_rider', false) == resource.data.get('read_by_rider', false))
         );
     }
 
