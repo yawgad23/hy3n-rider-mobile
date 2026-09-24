@@ -100,6 +100,7 @@ interface ActiveRide {
   driverName?: string;
   driverRating?: number;
   driverVehicle?: string;
+  driverServiceType?: string;
   driverPlate?: string;
   driverColour?: string;
   driverColourHex?: string;
@@ -138,6 +139,77 @@ const STATUS_LABELS: Record<string, string> = {
   in_progress: "On Trip",
   completed: "Trip Complete!",
   cancelled: "Ride Cancelled",
+};
+
+type NearbyVehicle = {
+  id: string;
+  lat: number;
+  lng: number;
+  heading?: number;
+  vehicleColourHex?: string;
+  vehicleLabel?: string;
+  serviceType: "car" | "okada" | "delivery";
+  rideCategories: string[];
+};
+
+const toFiniteNumber = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const vehicleServiceType = (profile: Record<string, any>): NearbyVehicle["serviceType"] => {
+  const explicit = String(profile.service_type || profile.serviceType || "").toLowerCase();
+  const categories = Array.isArray(profile.ride_categories)
+    ? profile.ride_categories.map((value: unknown) => String(value).toLowerCase())
+    : [];
+  if (explicit.includes("deliver") || categories.includes("express_delivery") || categories.includes("delivery")) return "delivery";
+  if (explicit.includes("okada") || explicit.includes("moto") || categories.includes("okada")) return "okada";
+  return "car";
+};
+
+const nearbyVehicleFromProfile = (profile: Record<string, any>): NearbyVehicle | null => {
+  const location = profile.current_location || profile.location || {};
+  const lat = toFiniteNumber(location.latitude ?? location.lat ?? profile.latitude ?? profile.current_lat);
+  const lng = toFiniteNumber(location.longitude ?? location.lng ?? profile.longitude ?? profile.current_lng);
+  if (lat === null || lng === null) return null;
+
+  const locationUpdatedAt = location.recorded_at || profile.last_location_update || profile.last_seen_at || profile.last_seen;
+  const locationAgeMs = locationUpdatedAt ? Date.now() - new Date(locationUpdatedAt).getTime() : 0;
+  // Never show a vehicle that has not published a location recently. Profiles
+  // without a timestamp are retained for backwards compatibility with the
+  // existing approved-driver records.
+  if (Number.isFinite(locationAgeMs) && locationAgeMs > 10 * 60 * 1000) return null;
+
+  const colourName = String(profile.vehicle_colour || profile.vehicle_color || "").trim().toLowerCase();
+  const vehicleColourHex = /^#[0-9a-fA-F]{6}$/.test(String(profile.vehicle_colour_hex || profile.vehicle_color_hex || ""))
+    ? String(profile.vehicle_colour_hex || profile.vehicle_color_hex)
+    : VEHICLE_COLOURS[colourName]?.hex || "#F5F5F5";
+  const rideCategories = Array.isArray(profile.ride_categories)
+    ? profile.ride_categories.map((value: unknown) => String(value).toLowerCase())
+    : [];
+  const heading = toFiniteNumber(location.heading ?? profile.heading);
+
+  return {
+    id: String(profile.user_id || profile.id),
+    lat,
+    lng,
+    heading: heading ?? undefined,
+    vehicleColourHex,
+    vehicleLabel: `${profile.vehicle_make || profile.make || "HY3N"} ${profile.vehicle_model || profile.model || "vehicle"}`.trim(),
+    serviceType: vehicleServiceType(profile),
+    rideCategories,
+  };
+};
+
+const vehicleServesRideCategory = (vehicle: NearbyVehicle, categoryId: string) => {
+  const category = String(categoryId || "standard").toLowerCase();
+  if (category === "okada") return vehicle.serviceType === "okada";
+  if (category === "express_delivery") return vehicle.serviceType === "delivery";
+  if (vehicle.serviceType !== "car") return false;
+  if (vehicle.rideCategories.length === 0) return true;
+  if (category === "standard") return vehicle.rideCategories.some((value) => ["standard", "comfort", "kantanka", "executive"].includes(value));
+  if (category === "comfort") return vehicle.rideCategories.some((value) => ["comfort", "kantanka", "executive"].includes(value));
+  return vehicle.rideCategories.includes(category);
 };
 
 export default function RiderHomeScreen() {
@@ -214,22 +286,21 @@ export default function RiderHomeScreen() {
     })();
   }, []);
   // ─── Nearby Drivers ─────────────────────────────────────────────────────────
-  const [nearbyDrivers, setNearbyDrivers] = useState<{ id: string; current_lat?: number; current_lng?: number }[]>([]);
+  const [nearbyDrivers, setNearbyDrivers] = useState<NearbyVehicle[]>([]);
 
-  // Poll Firestore every 10 seconds for online, available drivers with a known location
+  // Subscribe to actual online drivers so vehicles move on the map while the
+  // rider is choosing a ride. Driver updates use current_location.latitude /
+  // longitude, not the old current_lat/current_lng placeholder fields.
   useEffect(() => {
-    const fetchNearby = async () => {
-      try {
-        const drivers = await firestoreDB.list(COLLECTIONS.DRIVER_PROFILES, { is_online: true, is_available: true });
-        const withLocation = drivers.filter((d: any) => d.current_lat != null && d.current_lng != null);
-        setNearbyDrivers(withLocation);
-      } catch {
-        // Silently ignore — map will just show no nearby dots
-      }
-    };
-    fetchNearby();
-    const interval = setInterval(fetchNearby, 10000);
-    return () => clearInterval(interval);
+    return firestoreDB.subscribe(COLLECTIONS.DRIVER_PROFILES, { is_online: true }, (profiles) => {
+      const unique = new Map<string, NearbyVehicle>();
+      profiles.forEach((profile: any) => {
+        if (profile.is_available === false || String(profile.availability_status || '').toLowerCase() === 'busy') return;
+        const vehicle = nearbyVehicleFromProfile(profile);
+        if (vehicle) unique.set(vehicle.id, vehicle);
+      });
+      setNearbyDrivers([...unique.values()]);
+    });
   }, []);
 
   const [destination, setDestination] = useState<Location | null>(null);
@@ -249,6 +320,14 @@ export default function RiderHomeScreen() {
   const activeRide = activeRides.find((ride) => ride.id === selectedRideId) ?? activeRides[0] ?? null;
   const unreadChatCount = useUnreadChatCount(activeRide?.firestoreId || activeRide?.id || null, user?.uid || '', 'rider');
   const [bookingLoading, setBookingLoading] = useState(false);
+  const nearbyVehiclesForSelectedCategory = nearbyDrivers
+    .filter((vehicle) => vehicleServesRideCategory(vehicle, selectedCategory.id))
+    .map((vehicle) => ({
+      ...vehicle,
+      etaMinutes: calculateETA({ lat: vehicle.lat, lng: vehicle.lng }, { lat: userLocation[0], lng: userLocation[1] }),
+    }))
+    .sort((a, b) => (a.etaMinutes || 99) - (b.etaMinutes || 99));
+  const closestVehicleEta = nearbyVehiclesForSelectedCategory[0]?.etaMinutes ?? null;
 
   // Keep the map open while a request is searching. The expanded trip card is
   // is one tap away, but it should never cover the map when the rider needs
@@ -530,6 +609,7 @@ export default function RiderHomeScreen() {
             driverId: driver?.id ?? (ride as any).driver_id ?? prev.driverId,
             driverRating: driver?.rating ?? prev.driverRating,
             driverVehicle: driver ? `${driver.vehicle_make} ${driver.vehicle_model}` : prev.driverVehicle,
+            driverServiceType: (driver as any)?.service_type ?? (driver as any)?.serviceType ?? prev.driverServiceType,
             driverPlate: driver?.plate ?? prev.driverPlate,
             driverColour: driver?.vehicle_colour ?? prev.driverColour,
             driverColourHex: driver?.vehicle_colour_hex ?? prev.driverColourHex,
@@ -961,6 +1041,7 @@ export default function RiderHomeScreen() {
           driverName: matchedDriver?.name || undefined,
           driverRating: Number.isFinite(Number(matchedDriver?.rating)) ? Number(matchedDriver?.rating) : undefined,
           driverVehicle: matchedDriver ? `${matchedDriver.vehicle_make || ''} ${matchedDriver.vehicle_model || ''}`.trim() : undefined,
+          driverServiceType: matchedDriver?.service_type || matchedDriver?.serviceType || selectedCategory.id,
           driverPlate: matchedDriver?.plate || undefined,
           driverColour: matchedDriver?.vehicle_colour || undefined,
           driverColourHex: matchedDriver?.vehicle_colour_hex || undefined,
@@ -1825,11 +1906,28 @@ export default function RiderHomeScreen() {
 
       {/* Vehicle choices stay immediately visible instead of being pushed below
           optional passenger, stop, and payment controls. */}
-      <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Choose your ride</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600" }}>Choose your ride</Text>
+        {closestVehicleEta !== null ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <MaterialIcons name="directions-car" size={13} color={GREEN} />
+            <Text style={{ color: GREEN, fontSize: 11, fontWeight: "800" }}>
+              {nearbyVehiclesForSelectedCategory.length} nearby · {closestVehicleEta} min pickup
+            </Text>
+          </View>
+        ) : (
+          <Text style={{ color: MUTED, fontSize: 11, fontWeight: "600" }}>Searching nearby drivers</Text>
+        )}
+      </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9, paddingBottom: 14 }}>
         {RIDE_CATEGORIES.map((cat) => {
           const fare = calculateFare(cat.id, distance, duration);
           const isSelected = selectedCategory.id === cat.id;
+          const matchingVehicles = nearbyDrivers
+            .filter((vehicle) => vehicleServesRideCategory(vehicle, cat.id))
+            .map((vehicle) => calculateETA({ lat: vehicle.lat, lng: vehicle.lng }, { lat: userLocation[0], lng: userLocation[1] }));
+          const pickupEta = matchingVehicles.length ? Math.min(...matchingVehicles) : null;
+          const vehicleIcon = cat.id === "okada" ? "two-wheeler" : cat.id === "express_delivery" ? "inventory" : cat.icon;
           return (
             <TouchableOpacity
               key={cat.id}
@@ -1840,11 +1938,14 @@ export default function RiderHomeScreen() {
             >
               <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 7 }}>
                 <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: isSelected ? `${GOLD}33` : `${MUTED}18`, alignItems: "center", justifyContent: "center" }}>
-                  <MaterialIcons name={cat.icon as any} size={17} color={isSelected ? GOLD : MUTED} />
+                  <MaterialIcons name={vehicleIcon as any} size={17} color={isSelected ? GOLD : MUTED} />
                 </View>
                 <Text style={{ flex: 1, color: TEXT, fontSize: 13, fontWeight: "800" }} numberOfLines={1}>{cat.name}</Text>
               </View>
               <Text style={{ color: MUTED, fontSize: 10, minHeight: 26 }} numberOfLines={2}>{cat.description}</Text>
+              <Text style={{ color: pickupEta !== null ? GREEN : MUTED, fontSize: 11, fontWeight: "800", marginTop: 5 }}>
+                {pickupEta !== null ? `${pickupEta} min pickup · ${matchingVehicles.length} nearby` : "No nearby vehicle yet"}
+              </Text>
               <Text style={{ color: isSelected ? GOLD : TEXT, fontSize: 14, fontWeight: "900", marginTop: 7 }}>GH₵{fare.toFixed(2)}</Text>
             </TouchableOpacity>
           );
@@ -2143,6 +2244,7 @@ export default function RiderHomeScreen() {
         driverBearing={activeRide?.driverBearing ?? null}
         driverColourHex={activeRide?.driverColourHex ?? null}
         driverVehicle={activeRide?.driverVehicle ?? null}
+        driverServiceType={activeRide?.driverServiceType ?? activeRide?.categoryId ?? null}
         driverTracking={Boolean(activeRide && ['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(activeRide.status) && activeRide.driverLocation)}
         driverTrackingTarget={activeRide
           ? (activeRide.status === 'in_progress'
@@ -2151,16 +2253,7 @@ export default function RiderHomeScreen() {
             : null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
         nearbyDrivers={(!activeRide || activeRide.status === "searching")
-          ? nearbyDrivers
-              .filter((driver) => driver.current_lat != null && driver.current_lng != null)
-              .slice(0, 8)
-              .map((driver) => ({
-                ...driver,
-                etaMinutes: calculateETA(
-                  { lat: driver.current_lat as number, lng: driver.current_lng as number },
-                  { lat: userLocation[0], lng: userLocation[1] },
-                ),
-              }))
+          ? nearbyVehiclesForSelectedCategory.slice(0, 8)
           : []}
       />
 
