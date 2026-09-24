@@ -26,11 +26,13 @@ interface LeafletMapProps {
   driverColourHex?: string | null;
   driverVehicle?: string | null;
   driverServiceType?: string | null;
+  driverEtaMinutes?: number | null;
   driverTracking?: boolean;
   driverTrackingTarget?: [number, number] | null;
   tripStatus?: string | null;
   safetySignal?: "clear" | "route_deviation" | "long_stop";
   nearbyDrivers?: NearbyDriver[];
+  onRouteMetrics?: (metrics: { distanceKm: number; durationMinutes: number; phase: "pickup" | "destination" }) => void;
 }
 
 export interface LeafletMapRef {
@@ -55,11 +57,13 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     driverColourHex = null,
     driverVehicle = null,
     driverServiceType = null,
+    driverEtaMinutes = null,
     driverTracking = false,
     driverTrackingTarget = null,
     tripStatus = null,
     safetySignal = "clear",
     nearbyDrivers = [],
+    onRouteMetrics,
   },
   ref,
 ) {
@@ -104,6 +108,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         colour: safeHex(driverColourHex, "#F5F5F5"),
         label: cleanText(driverVehicle, "Driver vehicle"),
         serviceType: cleanText(driverServiceType, "car").toLowerCase(),
+        eta: Number.isFinite(driverEtaMinutes) ? Math.max(1, Math.round(Number(driverEtaMinutes))) : null,
       } : null,
       driverTracking,
       trackingTarget: driverTrackingTarget ? { lat: driverTrackingTarget[0], lng: driverTrackingTarget[1] } : null,
@@ -116,7 +121,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       safetySignal,
       nearby: normalizedNearby,
     };
-  }, [center, destination, driverBearing, driverColourHex, driverLocation, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearbyDrivers, safetySignal, tripStatus, userLocation, zoom]);
+  }, [center, destination, driverBearing, driverColourHex, driverEtaMinutes, driverLocation, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearbyDrivers, safetySignal, tripStatus, userLocation, zoom]);
 
   const serializedMapState = useMemo(
     () => JSON.stringify(mapState).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026"),
@@ -135,6 +140,21 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   useEffect(() => {
     pushMapState();
   }, [pushMapState]);
+
+  const handleMapMessage = useCallback((event: any) => {
+    if (!onRouteMetrics) return;
+    try {
+      const message = JSON.parse(event?.nativeEvent?.data || '{}');
+      if (message?.type !== 'route_metrics') return;
+      const distanceKm = Number(message.distanceKm);
+      const durationMinutes = Number(message.durationMinutes);
+      if (!Number.isFinite(distanceKm) || !Number.isFinite(durationMinutes)) return;
+      if (message.phase !== 'pickup' && message.phase !== 'destination') return;
+      onRouteMetrics({ distanceKm, durationMinutes, phase: message.phase });
+    } catch {
+      // Ignore non-map WebView messages.
+    }
+  }, [onRouteMetrics]);
 
   useImperativeHandle(ref, () => ({
     panTo(lat: number, lng: number) {
@@ -182,6 +202,9 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
 
       var layers = { user: null, pickup: null, destination: null, route: null, driver: null, tracking: null, nearby: {}, banner: null, nearbyChip: null };
       var lastMode = '';
+      var trackingRouteKey = '';
+      var trackingRequest = 0;
+      var lastRouteAt = 0;
       var markerAssets = ${serializedMarkerAssets};
 
       function validHex(value) { return /^#[0-9a-fA-F]{6}$/.test(value || '') ? value : '#F5F5F5'; }
@@ -261,6 +284,42 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         Object.keys(layers.nearby).forEach(function(id) { if (!next[id]) { map.removeLayer(layers.nearby[id]); delete layers.nearby[id]; } });
       }
       function clearNearby() { Object.keys(layers.nearby).forEach(function(id) { map.removeLayer(layers.nearby[id]); }); layers.nearby = {}; updateNearbyChip(0); }
+      function postRouteMetrics(distanceKm, durationMinutes, phase) {
+        if (!window.ReactNativeWebView || !window.ReactNativeWebView.postMessage) return;
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'route_metrics', distanceKm: distanceKm, durationMinutes: durationMinutes, phase: phase }));
+      }
+      function drawFallbackTrackingRoute(from, target) {
+        if (layers.tracking) { map.removeLayer(layers.tracking); layers.tracking = null; }
+        layers.tracking = L.polyline([[from.lat, from.lng], [target.lat, target.lng]], { color: '#006B3F', weight: 5, opacity: .84, dashArray: '10, 8' }).addTo(map);
+      }
+      function updateTrackingRoute(state) {
+        if (!state.driverTracking || !state.driver || !state.trackingTarget) {
+          trackingRouteKey = '';
+          if (layers.tracking) { map.removeLayer(layers.tracking); layers.tracking = null; }
+          return;
+        }
+        var from = state.driver;
+        var target = state.trackingTarget;
+        var phase = state.trackingPhase === 'destination' ? 'destination' : 'pickup';
+        var routeKey = phase + ':' + Number(from.lat).toFixed(5) + ',' + Number(from.lng).toFixed(5) + '>' + Number(target.lat).toFixed(5) + ',' + Number(target.lng).toFixed(5);
+        var now = Date.now();
+        if (trackingRouteKey === routeKey || (now - lastRouteAt < 12000 && trackingRouteKey.indexOf(phase + ':') === 0)) return;
+        trackingRouteKey = routeKey;
+        lastRouteAt = now;
+        var requestId = ++trackingRequest;
+        var url = 'https://router.project-osrm.org/route/v1/driving/' + from.lng + ',' + from.lat + ';' + target.lng + ',' + target.lat + '?overview=full&geometries=geojson';
+        fetch(url).then(function(response) { return response.ok ? response.json() : null; }).then(function(data) {
+          if (requestId !== trackingRequest || !data || !data.routes || !data.routes[0]) return;
+          var route = data.routes[0];
+          var coordinates = route.geometry && route.geometry.coordinates;
+          if (!coordinates || !coordinates.length) { drawFallbackTrackingRoute(from, target); return; }
+          if (layers.tracking) { map.removeLayer(layers.tracking); layers.tracking = null; }
+          layers.tracking = L.polyline(coordinates.map(function(point) { return [point[1], point[0]]; }), { color: '#006B3F', weight: 5, opacity: .92, lineCap: 'round', lineJoin: 'round' }).addTo(map);
+          postRouteMetrics(Number(route.distance || 0) / 1000, Math.max(1, Math.ceil(Number(route.duration || 0) / 60)), phase);
+        }).catch(function() {
+          if (requestId === trackingRequest) drawFallbackTrackingRoute(from, target);
+        });
+      }
       function fitForState(state, mode) {
         if (lastMode === mode) return;
         lastMode = mode;
@@ -286,11 +345,10 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         } else { removeLayer('destination'); if (layers.route) { map.removeLayer(layers.route); layers.route = null; } }
         if (state.driver) {
           clearNearby();
-          setMarker('driver', state.driver, vehicleIcon({ heading: state.driver.heading, colour: state.driver.colour, label: state.driver.label, serviceType: state.driver.serviceType, eta: null }, true));
+          setMarker('driver', state.driver, vehicleIcon({ heading: state.driver.heading, colour: state.driver.colour, label: state.driver.label, serviceType: state.driver.serviceType, eta: state.driver.eta }, true));
           if (state.driverTracking && state.trackingTarget && state.trackingPhase === 'pickup') setMarker('pickup', state.trackingTarget, pickupIcon());
           else removeLayer('pickup');
-          if (layers.tracking) { map.removeLayer(layers.tracking); layers.tracking = null; }
-          if (state.driverTracking && state.trackingTarget) layers.tracking = L.polyline([[state.driver.lat, state.driver.lng], [state.trackingTarget.lat, state.trackingTarget.lng]], { color: '#006B3F', weight: 4, opacity: .8, dashArray: '10, 8' }).addTo(map);
+          updateTrackingRoute(state);
         } else {
           removeLayer('driver');
           removeLayer('pickup');
@@ -333,6 +391,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         allowsInlineMediaPlayback
         startInLoadingState={false}
         cacheEnabled={false}
+        onMessage={handleMapMessage}
         onLoadEnd={() => setMapReady(true)}
       />
     </View>

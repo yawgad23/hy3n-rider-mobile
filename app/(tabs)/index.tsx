@@ -120,6 +120,9 @@ interface ActiveRide {
   surgeMultiplier?: number;
   eta?: number;
   etaSeconds?: number;  // live countdown in seconds
+  routeDistanceKm?: number;
+  routeDurationMinutes?: number;
+  routePhase?: "pickup" | "destination";
   waitingFee?: number;
   tipAmount?: number;
   quotedFare?: number;
@@ -368,6 +371,22 @@ export default function RiderHomeScreen() {
       : prev.map(rideIdOrUpdater));
   }, []);
 
+  const handleLiveRouteMetrics = useCallback((metrics: { distanceKm: number; durationMinutes: number; phase: "pickup" | "destination" }) => {
+    updateActiveRide((ride) => {
+      const expectedPhase = ride.status === 'in_progress' ? 'destination' : 'pickup';
+      if (metrics.phase !== expectedPhase) return ride;
+      const nextEta = Math.max(1, Math.ceil(metrics.durationMinutes));
+      return {
+        ...ride,
+        routeDistanceKm: Math.max(0, metrics.distanceKm),
+        routeDurationMinutes: nextEta,
+        routePhase: metrics.phase,
+        eta: metrics.phase === 'pickup' ? nextEta : ride.eta,
+        etaSeconds: metrics.phase === 'pickup' ? nextEta * 60 : ride.etaSeconds,
+      };
+    });
+  }, [updateActiveRide]);
+
   const removeActiveRide = useCallback((rideId?: string) => {
     if (!rideId) return;
     setActiveRides((prev) => removeRide(prev, rideId));
@@ -580,8 +599,11 @@ export default function RiderHomeScreen() {
           const driverBearing = nextDriverLocation && prev.driverLocation
             ? calculateBearing(prev.driverLocation.lat, prev.driverLocation.lng, nextDriverLocation.lat, nextDriverLocation.lng)
             : prev.driverBearing;
-          const etaMin = driver
-            ? calculateETA(nextDriverLocation!, { lat: prev.destination.lat, lng: prev.destination.lng })
+          const etaTarget = ride.status === 'in_progress'
+            ? { lat: prev.destination.lat, lng: prev.destination.lng }
+            : { lat: prev.pickupLocation.lat, lng: prev.pickupLocation.lng };
+          const etaMin = driver && nextDriverLocation
+            ? calculateETA(nextDriverLocation, etaTarget)
             : prev.eta;
           const enteredTrip = ride.status === 'in_progress' && prev.status !== 'in_progress';
           const routeDeviationKm = Number((ride as any).route_deviation_km ?? prev.routeDeviationKm ?? 0);
@@ -644,11 +666,12 @@ export default function RiderHomeScreen() {
             driverStoppedAt,
             eta: etaMin ?? prev.eta,
             etaSeconds: (ride as any).eta_seconds ?? ((etaMin ?? 0) * 60),
+            routePhase: ride.status === 'in_progress' ? 'destination' : 'pickup',
             quotedFare: getQuotedRideFare(ride),
             waitingFee: (ride as any).waiting_fee ?? prev.waitingFee,
             matchedAt: prev.matchedAt ?? ((ride.status === 'driver_arriving' || ride.status === 'matched') ? new Date().toISOString() : prev.matchedAt),
             trackingStartedAt: enteredTrip ? Date.now() : prev.trackingStartedAt,
-            actualDistanceKm: prev.actualDistanceKm ?? 0,
+            actualDistanceKm: toFiniteNumber((ride as any).actual_distance_km ?? (ride as any).trip_meter?.distance_km) ?? prev.actualDistanceKm ?? 0,
             // Completion must use the server-stored quote-backed amount, not a
             // local GPS/time estimate retained from the ride screen.
             currentFare: ride.status === 'completed' ? getFinalRideFare(ride) : prev.currentFare,
@@ -736,17 +759,16 @@ export default function RiderHomeScreen() {
             setUserLocation([point.lat, point.lng]);
             updateActiveRide((prev) => {
               if (prev.status !== 'in_progress') return prev;
-              const last = prev.lastRiderLocation;
-              const incremental = last ? calculateDistance(last.lat, last.lng, point.lat, point.lng) : 0;
-              const actualDistanceKm = (prev.actualDistanceKm ?? 0) + incremental;
               const trackingStartedAt = prev.trackingStartedAt ?? Date.now();
               const elapsedMinutes = Math.max(0, (Date.now() - trackingStartedAt) / 60000);
               if (prev.id === selectedRideId) {
-                setRideMetrics({ startTime: trackingStartedAt, actualDistanceKm, elapsedMinutes, waitingMinutes: 0, surgeMultiplier: prev.surgeMultiplier ?? 1 });
+                setRideMetrics({ startTime: trackingStartedAt, actualDistanceKm: prev.actualDistanceKm ?? 0, elapsedMinutes, waitingMinutes: 0, surgeMultiplier: prev.surgeMultiplier ?? 1 });
                 setCurrentDynamicFare(getQuotedRideFare(prev));
-                setTotalDistanceTraveled(actualDistanceKm);
+                setTotalDistanceTraveled(prev.actualDistanceKm ?? 0);
               }
-              return { ...prev, lastRiderLocation: point, actualDistanceKm, trackingStartedAt };
+              // Rider GPS improves the map/safety experience, but only the
+              // Driver's protected server meter can update billable distance.
+              return { ...prev, lastRiderLocation: point, trackingStartedAt };
             });
           },
         );
@@ -1124,6 +1146,14 @@ export default function RiderHomeScreen() {
       const matchedDriver = createdRide.driver as Record<string, any> | null;
       const rideStatus: ActiveRide['status'] = createdRide.status === 'matched' ? 'matched' : 'searching';
       const firestoreId = String(createdRide.id);
+      const matchedDriverLat = Number(matchedDriver?.location?.lat ?? matchedDriver?.location?.latitude);
+      const matchedDriverLng = Number(matchedDriver?.location?.lng ?? matchedDriver?.location?.longitude);
+      const matchedDriverLocation = Number.isFinite(matchedDriverLat) && Number.isFinite(matchedDriverLng)
+        ? { lat: matchedDriverLat, lng: matchedDriverLng }
+        : undefined;
+      const matchedDriverEta = matchedDriverLocation
+        ? calculateETA(matchedDriverLocation, { lat: userLocation[0], lng: userLocation[1] })
+        : undefined;
       addActiveRide({
           id: firestoreId,
           firestoreId,
@@ -1151,7 +1181,9 @@ export default function RiderHomeScreen() {
           driverColour: matchedDriver?.vehicle_colour || undefined,
           driverColourHex: matchedDriver?.vehicle_colour_hex || undefined,
           driverPhone: matchedDriver?.phone || undefined,
-          driverLocation: matchedDriver?.location || undefined,
+          driverLocation: matchedDriverLocation,
+          eta: matchedDriverEta,
+          etaSeconds: matchedDriverEta ? matchedDriverEta * 60 : undefined,
           matchedAt: createdRide.matched_at || undefined,
         });
         if (isScheduled) {
@@ -1447,11 +1479,27 @@ export default function RiderHomeScreen() {
     const pairingDriverName = activeRide.driverName || "Your driver";
     const pairingVehicle = activeRide.driverVehicle || "HY3N vehicle";
     const pairingVehicleIdentity = [activeRide.driverColour, pairingVehicle].filter(Boolean).join(" ");
-    const pairingEtaMinutes = activeRide.eta ?? (
+    const pairingEtaMinutes = activeRide.status !== 'in_progress' && activeRide.routePhase === 'pickup' && activeRide.routeDurationMinutes
+      ? activeRide.routeDurationMinutes
+      : activeRide.eta ?? (
       activeRide.etaSeconds && activeRide.etaSeconds > 0
         ? Math.max(1, Math.ceil(activeRide.etaSeconds / 60))
         : null
     );
+    const straightLinePickupDistanceKm = activeRide.driverLocation
+      ? calculateDistance(
+          activeRide.driverLocation.lat,
+          activeRide.driverLocation.lng,
+          activeRide.pickupLocation.lat,
+          activeRide.pickupLocation.lng,
+        )
+      : null;
+    const livePickupDistanceKm = activeRide.routePhase === 'pickup' && Number.isFinite(activeRide.routeDistanceKm)
+      ? activeRide.routeDistanceKm
+      : straightLinePickupDistanceKm;
+    const liveTripDistanceKm = activeRide.routePhase === 'destination' && Number.isFinite(activeRide.routeDistanceKm)
+      ? activeRide.routeDistanceKm
+      : activeRide.actualDistanceKm;
     const pairingStatus = activeRide.status === "driver_arrived"
       ? `${pairingDriverName} is at your pickup`
       : activeRide.status === "in_progress"
@@ -1493,43 +1541,66 @@ export default function RiderHomeScreen() {
       const statusLabel = isSearching
         ? "Searching for a driver"
         : activeRide.status === "in_progress"
-          ? "Trip in progress"
+          ? "On your way"
           : activeRide.status === "driver_arrived"
-            ? "Driver has arrived"
-            : "Driver arriving";
+            ? "Your driver has arrived"
+            : `Pickup in ${pairingEtaMinutes ?? '—'} min`;
       return (
-        <TouchableOpacity
-          onPress={() => setActiveRideSheetCollapsed(false)}
-          accessibilityRole="button"
-          accessibilityLabel="Open active ride details"
-          style={{ flexDirection: "row", alignItems: "center", gap: 11, paddingHorizontal: 16, paddingBottom: 7 }}
-        >
-          <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: isSearching ? `${GOLD}24` : `${GREEN}22`, alignItems: "center", justifyContent: "center" }}>
-            {isSearching ? <ActivityIndicator size="small" color={GOLD} /> : <MaterialIcons name="directions-car" size={21} color={GREEN} />}
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: TEXT, fontSize: 15, fontWeight: "800" }}>{statusLabel}</Text>
-            <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
-              {activeRide.status === "driver_arrived"
-                ? riderWaitSeconds < riderFreeWaitSecs
-                  ? `Free wait: ${Math.floor((riderFreeWaitSecs - riderWaitSeconds) / 60)}:${String((riderFreeWaitSecs - riderWaitSeconds) % 60).padStart(2, "0")} remaining`
-                  : `Paid wait time · GH₵${riderCurrentWaitingFee.toFixed(2)}`
-                : hasDriver ? `${locationFreshnessLabel} · ${activeRide.driverName || "Your driver"}` : activeRide.destination.name}
-            </Text>
-          </View>
-          <View style={{ alignItems: "flex-end", gap: 4 }}>
-            {activeRide.status === "driver_arrived" && (
-              <Text style={{ color: riderWaitSeconds < riderFreeWaitSecs ? GREEN : GOLD, fontSize: 12, fontWeight: "900" }}>
-                {riderWaitSeconds < riderFreeWaitSecs ? "FREE" : `GH₵${riderCurrentWaitingFee.toFixed(2)}`}
-              </Text>
-            )}
-            {unreadChatCount > 0 ? (
-              <View style={{ minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 11, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
-                <Text style={{ color: "#111", fontSize: 11, fontWeight: "900" }}>{unreadChatCount}</Text>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 6 }}>
+          <TouchableOpacity
+            onPress={() => setActiveRideSheetCollapsed(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Open active ride details"
+            style={{ alignItems: "center", paddingBottom: 8 }}
+          >
+            <View style={{ width: "100%", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={{ color: TEXT, fontSize: 22, fontWeight: "900", letterSpacing: -0.4 }}>{statusLabel}</Text>
+                <Text style={{ color: MUTED, fontSize: 12, fontWeight: "600", marginTop: 3 }} numberOfLines={1}>
+                  {activeRide.status === "in_progress"
+                    ? `Heading to ${activeRide.destination.name}`
+                    : activeRide.status === "driver_arrived"
+                      ? `Meet ${pairingDriverName} at your pickup point`
+                      : isSearching
+                        ? "Finding the nearest available driver"
+                        : livePickupDistanceKm !== null && livePickupDistanceKm !== undefined
+                          ? `${livePickupDistanceKm.toFixed(livePickupDistanceKm < 1 ? 1 : 0)} km by road to your pickup`
+                          : `Meet at ${activeRide.pickup}`}
+                </Text>
               </View>
-            ) : activeRide.status !== "driver_arrived" && hasDriver && activeRide.eta ? <Text style={{ color: GOLD, fontSize: 16, fontWeight: "900" }}>{activeRide.eta} min</Text> : activeRide.status !== "driver_arrived" ? <MaterialIcons name="keyboard-arrow-up" size={23} color={MUTED} /> : null}
+              <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: isSearching ? `${GOLD}22` : `${GREEN}20`, alignItems: "center", justifyContent: "center" }}>
+                {isSearching ? <ActivityIndicator size="small" color={GOLD} /> : <MaterialIcons name={activeRide.status === 'in_progress' ? 'navigation' : 'directions-car'} size={22} color={GREEN} />}
+              </View>
             </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+
+          {hasDriver && (
+            <View style={{ flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 11 }}>
+              {activeRide.driverPhoto ? (
+                <Image source={{ uri: activeRide.driverPhoto }} style={{ width: 44, height: 44, borderRadius: 22, marginRight: 10 }} />
+              ) : (
+                <View style={{ width: 44, height: 44, borderRadius: 22, marginRight: 10, backgroundColor: `${GREEN}20`, alignItems: "center", justifyContent: "center" }}>
+                  <MaterialIcons name="person" size={24} color={GREEN} />
+                </View>
+              )}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: TEXT, fontSize: 15, fontWeight: "900" }} numberOfLines={1}>{pairingDriverName}</Text>
+                <Text style={{ color: MUTED, fontSize: 12, fontWeight: "600", marginTop: 2 }} numberOfLines={1}>{pairingVehicleIdentity} · {activeRide.driverPlate || 'Plate pending'}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: locationFreshnessColor }} />
+                  <Text style={{ color: locationFreshnessColor, fontSize: 10, fontWeight: '800' }}>{locationFreshnessLabel}</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={handleCallDriver} accessibilityLabel="Call driver" style={{ width: 42, height: 42, borderRadius: 13, backgroundColor: `${GREEN}20`, alignItems: 'center', justifyContent: 'center', marginLeft: 8 }}>
+                <MaterialIcons name="phone" size={20} color={GREEN} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowChat(true)} accessibilityLabel="Message driver" style={{ width: 42, height: 42, borderRadius: 13, backgroundColor: `${GOLD}20`, alignItems: 'center', justifyContent: 'center', marginLeft: 8 }}>
+                <MaterialIcons name="chat" size={19} color={GOLD} />
+                {unreadChatCount > 0 && <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#111', fontSize: 9, fontWeight: '900' }}>{unreadChatCount}</Text></View>}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
       );
     }
     return (
@@ -1743,10 +1814,10 @@ export default function RiderHomeScreen() {
                   <Text style={{ color: GOLD, fontSize: 18, fontWeight: '900' }}>GH₵{liveFare.toFixed(2)}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ color: MUTED, fontSize: 11 }}>Actual distance</Text>
-                  <Text style={{ color: TEXT, fontSize: 11, fontWeight: '700' }}>{(activeRide.actualDistanceKm ?? 0).toFixed(2)} km</Text>
+                  <Text style={{ color: MUTED, fontSize: 11 }}>Metered distance</Text>
+                  <Text style={{ color: TEXT, fontSize: 11, fontWeight: '700' }}>{(liveTripDistanceKm ?? 0).toFixed(2)} km</Text>
                 </View>
-                <Text style={{ color: MUTED, fontSize: 10, marginTop: 5 }}>Updates from GPS movement; the booking estimate is not charged as travelled distance.</Text>
+                <Text style={{ color: MUTED, fontSize: 10, marginTop: 5 }}>Updates from the Driver GPS meter; your booking estimate is never charged as travelled distance.</Text>
               </View>
             )}
 
@@ -2357,10 +2428,10 @@ export default function RiderHomeScreen() {
     ? (activeRide.status === "completed"
       ? SCREEN_HEIGHT * 0.75
       : activeRideSheetCollapsed
-        ? SCREEN_HEIGHT * 0.16
+        ? (['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(activeRide.status) ? SCREEN_HEIGHT * 0.31 : SCREEN_HEIGHT * 0.18)
         : activeRide.status === "searching"
           ? SCREEN_HEIGHT * 0.42
-          : SCREEN_HEIGHT * 0.46)
+          : SCREEN_HEIGHT * 0.58)
     : destination
     ? (bookingSheetCollapsed ? SCREEN_HEIGHT * 0.18 : SCREEN_HEIGHT * 0.54)
     : SCREEN_HEIGHT * 0.38;
@@ -2384,6 +2455,7 @@ export default function RiderHomeScreen() {
         driverColourHex={activeRide?.driverColourHex ?? null}
         driverVehicle={activeRide?.driverVehicle ?? null}
         driverServiceType={activeRide?.driverServiceType ?? activeRide?.categoryId ?? null}
+        driverEtaMinutes={activeRide?.routePhase === 'pickup' ? (activeRide.routeDurationMinutes ?? activeRide.eta ?? null) : null}
         driverTracking={Boolean(activeRide && ['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(activeRide.status) && activeRide.driverLocation)}
         driverTrackingTarget={activeRide
           ? (activeRide.status === 'in_progress'
@@ -2395,6 +2467,7 @@ export default function RiderHomeScreen() {
         nearbyDrivers={(!activeRide || activeRide.status === "searching")
           ? nearbyVehiclesForSelectedCategory.slice(0, 8)
           : []}
+        onRouteMetrics={handleLiveRouteMetrics}
       />
 
       {/* Header */}
