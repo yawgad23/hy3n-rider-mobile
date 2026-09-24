@@ -113,6 +113,8 @@ interface ActiveRide {
   driverLocationUpdatedAt?: string;
   driverTotalTrips?: number;
   driverPhone?: string;
+  driverMomoNumber?: string;
+  driverMomoNetwork?: string;
   driverId?: string;
   ridePin?: string;
   surgeMultiplier?: number;
@@ -147,6 +149,14 @@ const STATUS_LABELS: Record<string, string> = {
   completed: "Trip Complete!",
   cancelled: "Ride Cancelled",
 };
+
+function formatMomoNumber(value?: string): string {
+  const digits = String(value || '').replace(/\D/g, '');
+  const localNumber = digits.startsWith('233') ? `0${digits.slice(3)}` : digits;
+  return /^0\d{9}$/.test(localNumber)
+    ? `${localNumber.slice(0, 3)} ${localNumber.slice(3, 6)} ${localNumber.slice(6)}`
+    : String(value || '');
+}
 
 type NearbyVehicle = {
   id: string;
@@ -620,6 +630,12 @@ export default function RiderHomeScreen() {
             driverColourHex: driver?.vehicle_colour_hex ?? prev.driverColourHex,
             driverTotalTrips: driver?.total_trips ?? prev.driverTotalTrips,
             driverPhone: driver?.phone ?? prev.driverPhone,
+            driverMomoNumber: (ride as any).payment_method === 'mobile_money' || ride.payment === 'mobile_money'
+              ? ((driver as any)?.momo_number ?? (ride as any).driver_momo_number ?? prev.driverMomoNumber)
+              : undefined,
+            driverMomoNetwork: (ride as any).payment_method === 'mobile_money' || ride.payment === 'mobile_money'
+              ? ((driver as any)?.momo_network ?? (ride as any).driver_momo_network ?? prev.driverMomoNetwork)
+              : undefined,
             driverLocation: nextDriverLocation,
             driverBearing,
             driverLocationUpdatedAt: String((driver as any)?.location?.recorded_at || (driver as any)?.last_location_update || (ride as any).driver_location_updated_at || prev.driverLocationUpdatedAt || ''),
@@ -1633,6 +1649,14 @@ export default function RiderHomeScreen() {
                     <Text style={{ color: MUTED, fontSize: 12, marginLeft: 8, flex: 1 }} numberOfLines={1}>To {activeRide.destination.name}</Text>
                   </View>
                 </View>
+
+                {activeRide.paymentId === 'mobile_money' && activeRide.driverMomoNumber && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 12, backgroundColor: `${GOLD}10`, borderWidth: 1, borderColor: `${GOLD}44` }}>
+                    <MaterialIcons name="phone-android" size={17} color={GOLD} />
+                    <Text style={{ color: MUTED, fontSize: 12, fontWeight: '700', marginLeft: 8, flex: 1 }}>MoMo</Text>
+                    <Text style={{ color: GOLD, fontSize: 15, fontWeight: '900', letterSpacing: 0.5 }}>{formatMomoNumber(activeRide.driverMomoNumber)}</Text>
+                  </View>
+                )}
 
                 {activeRide.ridePin && (
                   <TouchableOpacity
