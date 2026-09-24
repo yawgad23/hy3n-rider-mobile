@@ -56,7 +56,7 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    buildNumber: "46",
+    buildNumber: "47",
     "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
