@@ -67,12 +67,13 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   const [mapReady, setMapReady] = useState(false);
   const isDark = colorScheme === "dark";
   const mapBackground = isDark ? "#414853" : "#f3f5f7";
-  // Use one key-free provider in both appearances. Carto's legacy endpoint
-  // can return an API-key-required tile image on installed iOS apps, even
-  // though it works in a browser. The dark treatment is applied locally so
-  // the map stays dark grey without a provider key or a provider switch.
-  const tileUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-  const tileFilter = isDark ? "brightness(.46) saturate(.32) contrast(1.08)" : "none";
+  // Use key-free OSM for light mode and Carto's public dark_all tiles for dark
+  // mode. The previous OSM-plus-CSS-filter approach only dimmed the light map,
+  // which is why dark-mode screenshots still showed grey streets and labels.
+  const tileUrl = isDark
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const tileFilter = "none";
 
   const mapState = useMemo(() => {
     const normalizedNearby = nearbyDrivers
