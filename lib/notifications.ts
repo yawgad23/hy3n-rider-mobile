@@ -37,6 +37,7 @@ const NotificationsStub = {
   scheduleNotificationAsync: async () => '',
   addNotificationReceivedListener: () => ({ remove: () => {} }),
   addNotificationResponseReceivedListener: () => ({ remove: () => {} }),
+  addPushTokenListener: () => ({ remove: () => {} }),
   AndroidImportance: AndroidImportanceMock,
 };
 

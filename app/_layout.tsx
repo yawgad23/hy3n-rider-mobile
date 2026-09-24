@@ -8,8 +8,9 @@ import "react-native-reanimated";
 import { Platform } from "react-native";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
-import { AuthProvider } from "@/lib/auth-context";
-import { Notifications, registerForPushNotificationsAsync, setupNotificationChannels } from '@/lib/notifications';
+import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { Notifications, setupNotificationChannels } from '@/lib/notifications';
+import { listenForPushTokenRotation, registerAuthenticatedPushDevice } from '@/lib/push-device';
 import type { EventSubscription, Notification, NotificationResponse } from 'expo-notifications';
 import {
   SafeAreaFrameContext,
@@ -28,6 +29,25 @@ export const unstable_settings = {
   anchor: "(tabs)",
 };
 
+function RiderPushDeviceRegistration() {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user || Platform.OS === 'web') return;
+    let disposed = false;
+    registerAuthenticatedPushDevice(user, 'rider').catch((error) => {
+      if (!disposed) console.warn('[HY3N] Rider push registration failed:', error);
+    });
+    const subscription = listenForPushTokenRotation(user, 'rider');
+    return () => {
+      disposed = true;
+      subscription?.remove();
+    };
+  }, [user?.uid]);
+
+  return null;
+}
+
 export default function RootLayout() {
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
   const initialFrame = initialWindowMetrics?.frame ?? DEFAULT_WEB_FRAME;
@@ -44,7 +64,6 @@ export default function RootLayout() {
   useEffect(() => {
     if (Platform.OS === 'web') return;
     setupNotificationChannels();
-    registerForPushNotificationsAsync();
 
     // Listen for notifications received while app is foregrounded
     notificationListener.current = Notifications.addNotificationReceivedListener((notification: Notification) => {
@@ -104,6 +123,7 @@ export default function RootLayout() {
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
+            <RiderPushDeviceRegistration />
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="onboarding" />

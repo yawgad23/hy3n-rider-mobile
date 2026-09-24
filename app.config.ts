@@ -101,6 +101,7 @@ const config: ExpoConfig = {
     "expo-asset",
     "expo-audio",
     "expo-font",
+    "expo-notifications",
     "expo-video",
     "expo-web-browser",
     [
