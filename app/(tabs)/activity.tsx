@@ -24,6 +24,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { buildLostItemDescription, buildLostItemSupportMessage, validateLostItemForm, type LostItemContactMethod } from "@/lib/lost-item-support";
 import { buildSupportMailto, buildSupportWhatsAppUrl, SUPPORT_PHONE_E164 } from "@/lib/support-contact";
 import { useColors } from "@/hooks/use-colors";
+import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -44,6 +45,8 @@ interface Ride {
   distance: number;
   duration: number;
   fare: number;
+  quoted_fare?: number;
+  final_fare?: number;
   payment: string;
   driver_name?: string;
   driver_rating?: number;
@@ -124,6 +127,8 @@ export default function ActivityScreen() {
       // Normalize field names so the Ride interface and UI helpers work correctly
       firestoreRides = (firestoreRides || []).map((r: any) => ({
         ...r,
+        fare: getFinalRideFare(r),
+        quoted_fare: getQuotedRideFare(r),
         created_date: r.created_date || r.created_at || new Date().toISOString(),
         destination_address: r.destination_address ||
           (typeof r.destination === 'object' ? r.destination?.address || r.destination?.name : r.destination) || '',
@@ -164,7 +169,7 @@ export default function ActivityScreen() {
   }, [loadRides]);
 
   const downloadInvoice = async (ride: Ride) => {
-    const total = ride.fare + (ride.tip || 0) + (ride.waiting_fee || 0) - (ride.discount || 0);
+    const total = ride.fare + (ride.tip || 0);
     const date = new Date(ride.created_date).toLocaleString("en-GH", { dateStyle: "medium", timeStyle: "short" });
     const row = (label: string, value: string) => `<tr><td class="label">${escapeHtml(label)}</td><td class="value">${escapeHtml(value)}</td></tr>`;
     const html = `<!doctype html><html><head><meta charset="utf-8"><style>
@@ -176,7 +181,7 @@ export default function ActivityScreen() {
       <div class="total"><div class="total-label">Total paid</div><div class="amount">GH₵${total.toFixed(2)}</div></div>
       <h2>Trip route</h2><div class="route"><div class="route-label">Pickup</div><div class="route-value">${escapeHtml(ride.pickup_address)}</div></div><div class="route"><div class="route-label">Destination</div><div class="route-value">${escapeHtml(ride.destination_address)}</div></div>
       <h2>Trip details</h2><table class="details">${row("Date", date)}${row("Category", ride.category)}${row("Distance", `${ride.distance.toFixed(1)} km`)}${row("Duration", `${ride.duration} min`)}${row("Payment", ride.payment)}${row("Trip ID", ride.id)}</table>
-      <h2>Fare breakdown</h2><table class="details">${row(`${ride.category} fare`, `GH₵${ride.fare.toFixed(2)}`)}${ride.discount ? row(`Promo (${ride.promo_code || "discount"})`, `-GH₵${ride.discount.toFixed(2)}`) : ""}${ride.waiting_fee ? row("Waiting fee", `+GH₵${ride.waiting_fee.toFixed(2)}`) : ""}${ride.tip ? row("Tip", `+GH₵${ride.tip.toFixed(2)}`) : ""}${row("Total paid", `GH₵${total.toFixed(2)}`)}</table>
+      <h2>Fare breakdown</h2><table class="details">${row(`${ride.category} final fare`, `GH₵${ride.fare.toFixed(2)}`)}${ride.waiting_fee ? row("Waiting fee", `Included · GH₵${ride.waiting_fee.toFixed(2)}`) : ""}${ride.tip ? row("Tip", `+GH₵${ride.tip.toFixed(2)}`) : ""}${row("Total paid", `GH₵${total.toFixed(2)}`)}</table>
       <div class="footer">Thank you for riding with HY3N.<br/>Questions? hello@ridehy3n.com</div></div></body></html>`;
     try {
       const { uri } = await Print.printToFileAsync({ html });
@@ -438,12 +443,9 @@ export default function ActivityScreen() {
 
               <View style={{ backgroundColor: CARD, borderRadius: 16, padding: 14, marginBottom: 12, borderWidth: 0.5, borderColor: BORDER }}>
                 <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "700", marginBottom: 10 }}>Fare Breakdown</Text>
-                <Row label={`${selectedRide.category} Fare`} value={`GH₵${selectedRide.fare.toFixed(2)}`} />
-                {selectedRide.discount && selectedRide.discount > 0 && (
-                  <Row label={`Promo (${selectedRide.promo_code})`} value={`-GH₵${selectedRide.discount.toFixed(2)}`} valueColor={GREEN} />
-                )}
+                <Row label={`${selectedRide.category} Final Fare`} value={`GH₵${selectedRide.fare.toFixed(2)}`} />
                 {selectedRide.waiting_fee && selectedRide.waiting_fee > 0 && (
-                  <Row label="Waiting Fee" value={`+GH₵${selectedRide.waiting_fee.toFixed(2)}`} valueColor={RED} />
+                  <Row label="Waiting Fee" value={`Included · GH₵${selectedRide.waiting_fee.toFixed(2)}`} valueColor={MUTED} />
                 )}
                 {selectedRide.tip && selectedRide.tip > 0 && (
                   <Row label="Tip" value={`+GH₵${selectedRide.tip.toFixed(2)}`} valueColor={GREEN} />
@@ -451,7 +453,7 @@ export default function ActivityScreen() {
                 <View style={{ borderTopWidth: 0.5, borderTopColor: BORDER, marginTop: 8, paddingTop: 8 }}>
                   <Row
                     label="Total Paid"
-                    value={`GH₵${(selectedRide.fare + (selectedRide.tip || 0) + (selectedRide.waiting_fee || 0) - (selectedRide.discount || 0)).toFixed(2)}`}
+                    value={`GH₵${(selectedRide.fare + (selectedRide.tip || 0)).toFixed(2)}`}
                     valueColor={GOLD}
                     bold
                   />
@@ -498,7 +500,7 @@ export default function ActivityScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => {
-                      const total = (selectedRide.fare + (selectedRide.tip || 0) + (selectedRide.waiting_fee || 0) - (selectedRide.discount || 0)).toFixed(2);
+                      const total = (selectedRide.fare + (selectedRide.tip || 0)).toFixed(2);
                       const lines = [
                         '🚗 HY3N Trip Receipt',
                         `Date: ${new Date(selectedRide.created_date).toLocaleString('en-GH', { dateStyle: 'medium', timeStyle: 'short' })}`,
@@ -508,9 +510,8 @@ export default function ActivityScreen() {
                         selectedRide.distance ? `Distance: ${selectedRide.distance.toFixed(1)} km` : null,
                         selectedRide.duration ? `Duration: ${selectedRide.duration} min` : null,
                         `Payment: ${selectedRide.payment}`,
-                        `Fare: GH₵${selectedRide.fare.toFixed(2)}`,
-                        selectedRide.discount && selectedRide.discount > 0 ? `Promo (${selectedRide.promo_code}): -GH₵${selectedRide.discount.toFixed(2)}` : null,
-                        selectedRide.waiting_fee && selectedRide.waiting_fee > 0 ? `Waiting Fee: +GH₵${selectedRide.waiting_fee.toFixed(2)}` : null,
+                        `Final fare: GH₵${selectedRide.fare.toFixed(2)}`,
+                        selectedRide.waiting_fee && selectedRide.waiting_fee > 0 ? `Waiting Fee: Included · GH₵${selectedRide.waiting_fee.toFixed(2)}` : null,
                         selectedRide.tip && selectedRide.tip > 0 ? `Tip: +GH₵${selectedRide.tip.toFixed(2)}` : null,
                         `Total Paid: GH₵${total}`,
                         selectedRide.driver_name ? `Driver: ${selectedRide.driver_name}` : null,

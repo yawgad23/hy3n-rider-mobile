@@ -54,6 +54,7 @@ import { upsertRide, updateRide, removeRide, countActiveRides } from "@/lib/ride
 import { buildEmergencyAssistMessage, DEFAULT_RIDE_OPTIONS, getCancellationPolicy, getSafetySignal, RIDE_OPTION_DEFINITIONS, selectedRideOptionLabels, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 import { trpc } from "@/lib/trpc";
 import { buildReceiptEmailPayload, receiptRequestKey, type ReceiptEmailStatus } from "@/lib/receipt-email";
+import { getFinalRideFare, getQuotedRideFare, roundGhsFare } from "@/lib/fare";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -116,6 +117,7 @@ interface ActiveRide {
   etaSeconds?: number;  // live countdown in seconds
   waitingFee?: number;
   tipAmount?: number;
+  quotedFare?: number;
   finalFare?: number;
   firestoreId?: string;  // real Firestore document ID
   cancelReason?: string;
@@ -622,12 +624,15 @@ export default function RiderHomeScreen() {
             driverStoppedAt,
             eta: etaMin ?? prev.eta,
             etaSeconds: (ride as any).eta_seconds ?? ((etaMin ?? 0) * 60),
+            quotedFare: getQuotedRideFare(ride),
             waitingFee: (ride as any).waiting_fee ?? prev.waitingFee,
             matchedAt: prev.matchedAt ?? ((ride.status === 'driver_arriving' || ride.status === 'matched') ? new Date().toISOString() : prev.matchedAt),
             trackingStartedAt: enteredTrip ? Date.now() : prev.trackingStartedAt,
             actualDistanceKm: prev.actualDistanceKm ?? 0,
-            currentFare: ride.status === 'completed' ? (prev.currentFare ?? prev.fare) : prev.currentFare,
-            finalFare: ride.status === 'completed' ? (prev.currentFare ?? prev.fare) : prev.finalFare,
+            // Completion must use the server-stored quote-backed amount, not a
+            // local GPS/time estimate retained from the ride screen.
+            currentFare: ride.status === 'completed' ? getFinalRideFare(ride) : prev.currentFare,
+            finalFare: ride.status === 'completed' ? getFinalRideFare(ride) : prev.finalFare,
           };
         });
       }));
@@ -661,7 +666,9 @@ export default function RiderHomeScreen() {
     });
   }, [activeRides[0]?.id, activeRides[0]?.driverId, activeRides[0]?.status, selectedRideId, updateActiveRide]);
 
-  // Update fare from the rider's actual GPS movement while any ride is in progress.
+  // Record rider-side location for safety and trip details while any ride is in
+  // progress. Fare is locked when the Rider books and is never recalculated by
+  // a mobile client.
   const inProgressRideKeys = activeRides.filter((ride) => ride.status === 'in_progress').map((ride) => ride.id).join('|');
   useEffect(() => {
     if (!inProgressRideKeys) return;
@@ -683,19 +690,12 @@ export default function RiderHomeScreen() {
               const actualDistanceKm = (prev.actualDistanceKm ?? 0) + incremental;
               const trackingStartedAt = prev.trackingStartedAt ?? Date.now();
               const elapsedMinutes = Math.max(0, (Date.now() - trackingStartedAt) / 60000);
-              const breakdown = calculateDynamicFare(prev.categoryId, {
-                startTime: trackingStartedAt,
-                actualDistanceKm,
-                elapsedMinutes,
-                waitingMinutes: 0,
-                surgeMultiplier: prev.surgeMultiplier ?? 1,
-              });
               if (prev.id === selectedRideId) {
                 setRideMetrics({ startTime: trackingStartedAt, actualDistanceKm, elapsedMinutes, waitingMinutes: 0, surgeMultiplier: prev.surgeMultiplier ?? 1 });
-                setCurrentDynamicFare(breakdown.total);
+                setCurrentDynamicFare(getQuotedRideFare(prev));
                 setTotalDistanceTraveled(actualDistanceKm);
               }
-              return { ...prev, lastRiderLocation: point, actualDistanceKm, trackingStartedAt, currentFare: breakdown.total };
+              return { ...prev, lastRiderLocation: point, actualDistanceKm, trackingStartedAt };
             });
           },
         );
@@ -824,9 +824,9 @@ export default function RiderHomeScreen() {
       )
     : 0;
   const duration = Math.round(distance * 3.5 + 5);
-  const baseFare = destination ? calculateFare(selectedCategory.id, distance, duration) : 0;
+  const baseFare = destination ? roundGhsFare(calculateFare(selectedCategory.id, distance, duration)) : 0;
   const discount = appliedPromo ? calculateDiscount(appliedPromo, baseFare) : 0;
-  const finalFare = baseFare - discount;
+  const finalFare = roundGhsFare(Math.max(0, baseFare - discount));
   const preTipAmount = selectedTipPercent ? (finalFare * selectedTipPercent) / 100 : (customTip ? parseFloat(customTip) : 0);
   const selectedOptionLabels = selectedRideOptionLabels(rideOptions);
 
@@ -962,7 +962,7 @@ export default function RiderHomeScreen() {
     }
 
     setBookingLoading(true);
-    const surgedFare = Math.round(finalFare * surge.multiplier * 100) / 100;
+    const surgedFare = roundGhsFare(finalFare * surge.multiplier);
     try {
       if (selectedPayment.id === "wallet") {
         const wallet = await firestoreDB.get(COLLECTIONS.WALLET, user.uid);
@@ -1029,7 +1029,8 @@ export default function RiderHomeScreen() {
           pickupLocation: { lat: userLocation[0], lng: userLocation[1], name: recipientAddress || pickupAddress || 'Current Location', address: recipientAddress || pickupAddress || 'Current Location' },
           distance,
           duration,
-          fare: surgedFare,
+          fare: getQuotedRideFare(createdRide),
+          quotedFare: getQuotedRideFare(createdRide),
           payment: selectedPayment.name,
           paymentId: selectedPayment.id,
           status: rideStatus,
@@ -1274,7 +1275,7 @@ export default function RiderHomeScreen() {
           driverPlate: ride.driverPlate || "Not available",
           pickup: pickupAddress,
           destination: ride.destination.name,
-          fare: (ride.currentFare ?? ride.fare) + (tipAmount || 0),
+          fare: getFinalRideFare(ride) + (tipAmount || 0),
           paymentMethod: ride.payment || "Selected method",
           tripId,
           completedAt: new Date().toISOString(),
@@ -1296,7 +1297,7 @@ export default function RiderHomeScreen() {
     // Settle wallet payment: deduct fare from rider, credit driver
     if (activeRide?.status === 'completed' && isWalletPayment(activeRide) && user) {
       try {
-        const fare = (activeRide.currentFare ?? activeRide.fare) + (activeRide.waitingFee || 0);
+        const fare = getFinalRideFare(activeRide);
         const driverId = (activeRide as any).driverId || (activeRide as any).driver_id || '';
         const apiBase = getApiBaseUrl();
         await fetch(`${apiBase}/api/trpc/wallet.settleRide`, {
@@ -1333,7 +1334,7 @@ export default function RiderHomeScreen() {
     const isSearching = activeRide.status === "searching";
     const hasDriver = ["matched", "driver_arriving", "driver_arrived", "in_progress"].includes(activeRide.status);
 
-    const liveFare = activeRide.currentFare ?? activeRide.fare;
+    const liveFare = isCompleted ? getFinalRideFare(activeRide) : getQuotedRideFare(activeRide);
 
     // Keep the map useful while a ride is active. The expanded details remain
     // one tap away, but the default minimized state shows only live status.
@@ -1396,7 +1397,7 @@ export default function RiderHomeScreen() {
                 <TouchableOpacity key={ride.id} onPress={() => setSelectedRideId(ride.id)} style={{ backgroundColor: ride.id === activeRide.id ? `${GOLD}22` : CARD, borderColor: ride.id === activeRide.id ? GOLD : BORDER, borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, minWidth: 118 }}>
                   <Text style={{ color: ride.id === activeRide.id ? GOLD : TEXT, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>{ride.category}</Text>
                   <Text style={{ color: MUTED, fontSize: 10, marginTop: 2 }} numberOfLines={1}>{ride.destination.name}</Text>
-                  <Text style={{ color: ride.currentFare ? GOLD : MUTED, fontSize: 10, marginTop: 3 }}>GH₵{(ride.currentFare ?? ride.fare).toFixed(2)}</Text>
+                  <Text style={{ color: GOLD, fontSize: 10, marginTop: 3 }}>GH₵{getFinalRideFare(ride).toFixed(2)}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -1714,9 +1715,9 @@ export default function RiderHomeScreen() {
             <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>Thank you for riding with HY3N</Text>
 
             <View style={{ backgroundColor: CARD, borderRadius: 14, padding: 14, width: "100%", marginBottom: 16, borderWidth: 0.5, borderColor: BORDER }}>
-              <Row label="Base Fare" value={`GH₵${liveFare.toFixed(2)}`} />
+              <Row label={activeRide.waitingFee && activeRide.waitingFee > 0 ? "Final fare (includes wait)" : "Final fare"} value={`GH₵${liveFare.toFixed(2)}`} />
               {activeRide.waitingFee && activeRide.waitingFee > 0 && (
-                <Row label="Waiting Fee" value={`+GH₵${activeRide.waitingFee.toFixed(2)}`} valueColor={RED} />
+                <Row label="Waiting Fee" value={`Included · GH₵${activeRide.waitingFee.toFixed(2)}`} valueColor={MUTED} />
               )}
               {tipAmount && tipAmount > 0 && (
                 <Row label="Tip" value={`+GH₵${tipAmount.toFixed(2)}`} valueColor={GREEN} />
@@ -1724,7 +1725,7 @@ export default function RiderHomeScreen() {
               <View style={{ borderTopWidth: 0.5, borderTopColor: BORDER, marginTop: 8, paddingTop: 8 }}>
                 <Row
                   label="Total"
-                  value={`GH₵${(liveFare + (activeRide.waitingFee || 0) + (tipAmount || 0)).toFixed(2)}`}
+                  value={`GH₵${(liveFare + (tipAmount || 0)).toFixed(2)}`}
                   valueColor={GOLD}
                   bold
                 />
@@ -2700,7 +2701,7 @@ export default function RiderHomeScreen() {
               <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: `${GREEN}1A`, alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
                 <MaterialIcons name="check-circle" size={32} color={GREEN} />
               </View>
-              <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 22 }}>GH₵{activeRide ? ((activeRide.currentFare ?? activeRide.fare) + (activeRide.waitingFee || 0) + (tipAmount || 0)).toFixed(2) : "0.00"}</Text>
+              <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 22 }}>GH₵{activeRide ? (getFinalRideFare(activeRide) + (tipAmount || 0)).toFixed(2) : "0.00"}</Text>
               <Text style={{ color: MUTED, fontSize: 13, marginTop: 4 }}>Total Charged</Text>
             </View>
             {/* Trip Info */}
@@ -2717,15 +2718,15 @@ export default function RiderHomeScreen() {
             {/* Fare Breakdown */}
             <View style={{ backgroundColor: CARD, borderRadius: 14, padding: 16, marginBottom: 16, borderWidth: 0.5, borderColor: BORDER }}>
               <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 13, marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.8 }}>Fare Breakdown</Text>
-              <Row label="Base Fare" value={`GH₵${activeRide?.fare.toFixed(2) || "0.00"}`} />
+              <Row label={activeRide?.waitingFee ? "Final fare (includes wait)" : "Final fare"} value={`GH₵${activeRide ? getFinalRideFare(activeRide).toFixed(2) : "0.00"}`} />
               {activeRide?.waitingFee && activeRide.waitingFee > 0 && (
-                <Row label="Waiting Fee" value={`+GH₵${activeRide.waitingFee.toFixed(2)}`} valueColor={RED} />
+                <Row label="Waiting Fee" value={`Included · GH₵${activeRide.waitingFee.toFixed(2)}`} valueColor={MUTED} />
               )}
               {tipAmount && tipAmount > 0 && (
                 <Row label="Tip" value={`+GH₵${tipAmount.toFixed(2)}`} valueColor={GREEN} />
               )}
               <View style={{ borderTopWidth: 0.5, borderTopColor: BORDER, marginTop: 8, paddingTop: 8 }}>
-                <Row label="Total" value={`GH₵${activeRide ? ((activeRide.currentFare ?? activeRide.fare) + (activeRide.waitingFee || 0) + (tipAmount || 0)).toFixed(2) : "0.00"}`} valueColor={GOLD} bold />
+                <Row label="Total" value={`GH₵${activeRide ? (getFinalRideFare(activeRide) + (tipAmount || 0)).toFixed(2) : "0.00"}`} valueColor={GOLD} bold />
               </View>
             </View>
             {/* Driver Info */}
@@ -2740,7 +2741,7 @@ export default function RiderHomeScreen() {
             )}
             <TouchableOpacity
               onPress={async () => {
-                const receiptText = `HY3N Trip Receipt\nDate: ${new Date().toLocaleDateString('en-GH')}\nDestination: ${activeRide?.destination.name}\nFare: GH₵${(activeRide?.currentFare ?? activeRide?.fare ?? 0).toFixed(2)}\nTotal: GH₵${activeRide ? ((activeRide.currentFare ?? activeRide.fare) + (activeRide.waitingFee || 0) + (tipAmount || 0)).toFixed(2) : '0.00'}\nDriver: ${activeRide?.driverName || 'N/A'}\n\nThank you for riding with HY3N!`;
+                const receiptText = `HY3N Trip Receipt\nDate: ${new Date().toLocaleDateString('en-GH')}\nDestination: ${activeRide?.destination.name}\nFare: GH₵${activeRide ? getFinalRideFare(activeRide).toFixed(2) : '0.00'}\nTotal: GH₵${activeRide ? (getFinalRideFare(activeRide) + (tipAmount || 0)).toFixed(2) : '0.00'}\nDriver: ${activeRide?.driverName || 'N/A'}\n\nThank you for riding with HY3N!`;
                 try { await Share.share({ message: receiptText, title: 'HY3N Trip Receipt' }); } catch {}
               }}
               style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 16 }}
