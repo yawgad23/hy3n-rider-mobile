@@ -64,7 +64,10 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   const webViewRef = useRef<WebView>(null);
   const [mapReady, setMapReady] = useState(false);
   const isDark = colorScheme === "dark";
-  const mapBackground = isDark ? "#14181d" : "#f3f5f7";
+  const mapBackground = isDark ? "#414853" : "#f3f5f7";
+  const tileUrl = isDark
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 
   const mapState = useMemo(() => {
     const normalizedNearby = nearbyDrivers
@@ -140,7 +143,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     * { box-sizing: border-box; }
     html, body, #map { width: 100%; height: 100%; margin: 0; background: ${mapBackground}; }
     .leaflet-control-zoom, .leaflet-control-attribution { display: none; }
-    .leaflet-tile-pane { filter: ${isDark ? "brightness(.76) contrast(1.08) saturate(.72)" : "none"}; }
+    .leaflet-tile-pane { filter: none; }
     .hy3n-vehicle-marker { background: transparent; border: 0; }
     .hy3n-vehicle-wrap { width: 92px; height: 91px; position: relative; display: flex; justify-content: center; align-items: flex-start; pointer-events: none; filter: drop-shadow(0 3px 3px rgba(0,0,0,.32)); }
     .hy3n-vehicle { width: 58px; height: 72px; position: relative; transform-origin: 50% 48%; transition: transform .7s linear; }
@@ -161,7 +164,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     (function() {
       var map = L.map('map', { center: [5.6037, -0.187], zoom: 14, zoomControl: false, attributionControl: false });
       window.hy3nMap = map;
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+      L.tileLayer('${tileUrl}', { maxZoom: 19 }).addTo(map);
 
       var layers = { user: null, destination: null, route: null, driver: null, tracking: null, nearby: {}, banner: null, nearbyChip: null };
       var lastMode = '';
@@ -280,7 +283,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     })();
   </script>
 </body>
-</html>`, [isDark, mapBackground, serializedMapState, serializedMarkerAssets]);
+</html>`, [mapBackground, serializedMapState, serializedMarkerAssets, tileUrl]);
 
   if (Platform.OS === "web") {
     return (
