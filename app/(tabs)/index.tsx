@@ -51,7 +51,7 @@ import { PostRideModal } from "@/components/post-ride-modal";
 import { calculateDynamicFare, calculateDistance, RideMetrics } from "@/lib/dynamic-pricing";
 import { getDistanceToPickup, getDistanceToDestination, estimateETA, formatDistance, isDriverNearPickup, calculateBearing } from "@/lib/driver-tracking";
 import { upsertRide, updateRide, removeRide, countActiveRides } from "@/lib/rider-ride-state";
-import { buildEmergencyAssistMessage, DEFAULT_RIDE_OPTIONS, getCancellationPolicy, getSafetySignal, RIDE_OPTION_DEFINITIONS, selectedRideOptionLabels, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
+import { buildEmergencyAssistMessage, getCancellationPolicy, getSafetySignal, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 import { trpc } from "@/lib/trpc";
 import { buildReceiptEmailPayload, receiptRequestKey, type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare, roundGhsFare } from "@/lib/fare";
@@ -448,17 +448,6 @@ export default function RiderHomeScreen() {
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvv, setCardCvv] = useState("");
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Ride options (AC, pet, luggage)
-  const [rideOptions, setRideOptions] = useState<RiderRideOptions>({ ...DEFAULT_RIDE_OPTIONS });
-  const [showRideOptions, setShowRideOptions] = useState(false);
-
-  const updateRideOption = (key: keyof RiderRideOptions) => {
-    setRideOptions((previous) => {
-      const next = { ...previous, [key]: !previous[key] };
-      AsyncStorage.setItem(`rideOptions:${user?.uid ?? "guest"}`, JSON.stringify(next)).catch(() => {});
-      return next;
-    });
-  };
   // In-ride chat
   const [showChat, setShowChat] = useState(false);
   // Waiting timer (rider side) — shows how long driver has been waiting at pickup
@@ -517,17 +506,6 @@ export default function RiderHomeScreen() {
       }
     });
   }, []);
-
-  useEffect(() => {
-    AsyncStorage.getItem(`rideOptions:${user?.uid ?? "guest"}`).then((value) => {
-      if (!value) return;
-      try {
-        setRideOptions({ ...DEFAULT_RIDE_OPTIONS, ...JSON.parse(value) });
-      } catch {
-        setRideOptions({ ...DEFAULT_RIDE_OPTIONS });
-      }
-    });
-  }, [user?.uid]);
 
   // Pending rating check: on app load, look for completed rides in last 24h with no rating
   useEffect(() => {
@@ -892,7 +870,6 @@ export default function RiderHomeScreen() {
   // includes any administrator-approved surge before the Rider confirms.
   const bookingFare = destination ? roundGhsFare(finalFare * surge.multiplier) : 0;
   const preTipAmount = selectedTipPercent ? (finalFare * selectedTipPercent) / 100 : (customTip ? parseFloat(customTip) : 0);
-  const selectedOptionLabels = selectedRideOptionLabels(rideOptions);
 
   const [placeSuggestions, setPlaceSuggestions] = useState<Location[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -1084,7 +1061,6 @@ export default function RiderHomeScreen() {
         duration,
         promoCode: appliedPromo ?? undefined,
         discount: appliedPromo ? Math.round((finalFare - surgedFare) * 100) / 100 : undefined,
-        rideOptions,
       };
       const response = await fetch(`${getApiBaseUrl()}/api/rides/request`, {
         method: 'POST',
@@ -1120,7 +1096,6 @@ export default function RiderHomeScreen() {
           status: rideStatus,
           scheduled: isScheduled ? scheduledFor : null,
           ridePin: String(createdRide.pickup_code || createdRide.ride_pin || ''),
-          rideOptions,
           surgeMultiplier: surge.multiplier,
           driverId: matchedDriver?.id || createdRide.driver_id || undefined,
           driverName: matchedDriver?.name || undefined,
@@ -2209,24 +2184,6 @@ export default function RiderHomeScreen() {
           </Text>
         </TouchableOpacity>
       </View>
-
-      {/* Ride Preferences */}
-      <TouchableOpacity
-        onPress={() => setShowRideOptions(true)}
-        accessibilityLabel="Ride preferences"
-        accessibilityHint="Choose vehicle preferences for this booking"
-        style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, backgroundColor: selectedOptionLabels.length > 0 ? `${GREEN}1A` : CARD, borderWidth: 1, borderColor: selectedOptionLabels.length > 0 ? GREEN : BORDER, marginBottom: 12 }}
-      >
-        <MaterialIcons name="tune" size={18} color={selectedOptionLabels.length > 0 ? GREEN : MUTED} />
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: selectedOptionLabels.length > 0 ? GREEN : MUTED, fontSize: 13, fontWeight: "600" }}>Ride preferences</Text>
-          <Text style={{ color: MUTED, fontSize: 11 }} numberOfLines={1}>
-            {selectedOptionLabels.length > 0 ? selectedOptionLabels.join(" · ") : "AC, pet, luggage, or accessibility"}
-          </Text>
-        </View>
-        <MaterialIcons name="chevron-right" size={20} color={MUTED} />
-      </TouchableOpacity>
-
       </ScrollView>
       <View style={{ borderTopWidth: 1, borderTopColor: BORDER, paddingHorizontal: 16, paddingTop: 11, paddingBottom: 4, backgroundColor: SURFACE }}>
         <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 11 }}>
@@ -2549,42 +2506,6 @@ export default function RiderHomeScreen() {
               </TouchableOpacity>
             )}
           />
-        </View>
-      </Modal>
-
-      {/* Ride Preferences Modal */}
-      <Modal visible={showRideOptions} transparent animationType="slide">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: SURFACE, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: insets.bottom + 24 }}>
-            <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>Ride preferences</Text>
-            <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>We’ll request these preferences when the matching supply supports them.</Text>
-            {RIDE_OPTION_DEFINITIONS.map((option) => {
-              const enabled = rideOptions[option.key];
-              return (
-                <TouchableOpacity
-                  key={option.key}
-                  onPress={() => updateRideOption(option.key)}
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: enabled }}
-                  style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: BORDER }}
-                >
-                  <View style={{ width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: enabled ? `${GREEN}33` : CARD }}>
-                    <MaterialIcons name={option.icon as any} size={20} color={enabled ? GREEN : MUTED} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: TEXT, fontWeight: "600", fontSize: 14 }}>{option.label}</Text>
-                    <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>{option.description}</Text>
-                  </View>
-                  <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: enabled ? GREEN : BORDER, alignItems: "center", justifyContent: "center" }}>
-                    {enabled && <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: GREEN }} />}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-            <TouchableOpacity onPress={() => setShowRideOptions(false)} style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, alignItems: "center", marginTop: 18 }}>
-              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Done</Text>
-            </TouchableOpacity>
-          </View>
         </View>
       </Modal>
 
