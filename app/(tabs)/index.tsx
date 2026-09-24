@@ -56,6 +56,7 @@ import { trpc } from "@/lib/trpc";
 import { buildReceiptEmailPayload, receiptRequestKey, type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare, roundGhsFare } from "@/lib/fare";
 import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-share";
+import { payWithHubtelCard } from "@/lib/card-checkout";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -439,14 +440,10 @@ export default function RiderHomeScreen() {
   const [recipientPhone, setRecipientPhone] = useState("");
   const [recipientAddress, setRecipientAddress] = useState("");
 
-  // Payment forms
+  // MoMo payment form. Card details are never collected in HY3N: selecting
+  // Card launches Hubtel's hosted, PCI-managed checkout instead.
   const [showMomoModal, setShowMomoModal] = useState(false);
-  const [showCardModal, setShowCardModal] = useState(false);
   const [momoNumber, setMomoNumber] = useState("");
-  const [cardName, setCardName] = useState("");
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvv, setCardCvv] = useState("");
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // In-ride chat
   const [showChat, setShowChat] = useState(false);
@@ -973,7 +970,8 @@ export default function RiderHomeScreen() {
     return handleSelectLocation(loc, "destination");
   };
 
-  const handleBook = async () => {
+  const handleBook = async (paymentOverride = selectedPayment) => {
+    const paymentMethod = paymentOverride;
     if (!destination) {
       openLocationSearch("destination");
       return;
@@ -995,7 +993,7 @@ export default function RiderHomeScreen() {
       }
     }
 
-    if (selectedPayment.id === "mobile_money") {
+    if (paymentMethod.id === "mobile_money") {
       const normalized = momoNumber.replace(/\D/g, "");
       const isGhanaMomo = /^0\d{9}$/.test(normalized) || /^233\d{9}$/.test(normalized);
       if (!isGhanaMomo) {
@@ -1004,19 +1002,46 @@ export default function RiderHomeScreen() {
       }
     }
 
-    if (selectedPayment.id === "card") {
-      const cardDigits = cardNumber.replace(/\s/g, "");
-      const validCardLength = cardDigits.length === 15 || cardDigits.length === 16;
-      if (!cardName.trim() || !validCardLength || !cardExpiry.trim() || cardCvv.trim().length < 3) {
-        setShowCardModal(true);
-        return;
+    if (paymentMethod.id === "card") {
+      setBookingLoading(true);
+      try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error("Your session has expired. Please sign in again.");
+
+        const payment = await payWithHubtelCard({
+          idToken,
+          amount: bookingFare,
+          purpose: 'ride_quote',
+          description: `Ride credit to ${destination.name}`,
+        });
+
+        if (payment.status === 'failed') {
+          Alert.alert('Card payment not completed', payment.message || 'Your card was not charged. Please try again or choose another payment method.');
+          return;
+        }
+        if (payment.status === 'processing') {
+          Alert.alert('Card payment pending', payment.message || 'Hubtel is still confirming your card payment. Do not pay again; check your Wallet shortly.');
+          return;
+        }
+
+        // The confirmed card amount is held in the HY3N wallet and is then
+        // settled against the same locked quote after trip completion. Keeping
+        // the internal payment ID as `wallet` makes that debit idempotent;
+        // the rider-facing label still says Card via Hubtel.
+        const walletPayment = { id: 'wallet', name: 'Card via Hubtel', icon: 'credit-card' as const };
+        await handleBook(walletPayment);
+      } catch (error: any) {
+        Alert.alert('Card checkout unavailable', error?.message || 'We could not start the secure Hubtel card checkout. Please try again.');
+      } finally {
+        setBookingLoading(false);
       }
+      return;
     }
 
     setBookingLoading(true);
     const surgedFare = bookingFare;
     try {
-      if (selectedPayment.id === "wallet") {
+      if (paymentMethod.id === "wallet") {
         const wallet = await firestoreDB.get(COLLECTIONS.WALLET, user.uid);
         const balance = Number(wallet?.balance ?? 0);
         if (balance < surgedFare) {
@@ -1053,7 +1078,8 @@ export default function RiderHomeScreen() {
         pickup: { lat: userLocation[0], lng: userLocation[1], name: selectedPickupAddress, address: selectedPickupAddress },
         destination: { lat: destination.lat, lng: destination.lng, name: destination.name, address: destination.address || destination.name },
         stops: stops.filter(Boolean).map(s => ({ lat: s!.lat, lng: s!.lng, name: s!.name, address: s!.address || s!.name })),
-        payment: selectedPayment.id,
+        payment: paymentMethod.id,
+        paymentLabel: paymentMethod.name,
         fare: surgedFare,
         baseFare: finalFare,
         surgeMultiplier: surge.multiplier,
@@ -1091,8 +1117,8 @@ export default function RiderHomeScreen() {
           duration,
           fare: getQuotedRideFare(createdRide),
           quotedFare: getQuotedRideFare(createdRide),
-          payment: selectedPayment.name,
-          paymentId: selectedPayment.id,
+          payment: paymentMethod.name,
+          paymentId: paymentMethod.id,
           status: rideStatus,
           scheduled: isScheduled ? scheduledFor : null,
           ridePin: String(createdRide.pickup_code || createdRide.ride_pin || ''),
@@ -1911,7 +1937,7 @@ export default function RiderHomeScreen() {
 
   const renderRequestAction = () => (
     <TouchableOpacity
-      onPress={handleBook}
+      onPress={() => { void handleBook(); }}
       disabled={bookingLoading || (isScheduled && !scheduledFor)}
       accessibilityRole="button"
       accessibilityLabel={isScheduled ? "Schedule trip" : `Request HY3N for ${bookingFare.toFixed(2)} Ghana cedis`}
@@ -2163,6 +2189,14 @@ export default function RiderHomeScreen() {
           );
         })}
       </View>
+      {selectedPayment.id === 'card' && (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: -4, marginBottom: 12, padding: 10, borderRadius: 10, backgroundColor: `${GREEN}18`, borderWidth: 1, borderColor: `${GREEN}55` }}>
+          <MaterialIcons name="lock" size={16} color={GREEN} />
+          <Text style={{ flex: 1, color: MUTED, fontSize: 12, lineHeight: 17 }}>
+            You will complete this payment securely on Hubtel. HY3N never sees or stores your card number, expiry, or CVV.
+          </Text>
+        </View>
+      )}
 
       {/* Trip Type */}
       <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600", marginBottom: 8 }}>Trip Type</Text>
@@ -2194,7 +2228,7 @@ export default function RiderHomeScreen() {
             <Text style={{ color: GOLD, fontSize: 30, fontWeight: "900", letterSpacing: -0.5 }}>GH₵{bookingFare.toFixed(2)}</Text>
         </View>
         <TouchableOpacity
-          onPress={handleBook}
+          onPress={() => { void handleBook(); }}
           disabled={bookingLoading || (isScheduled && !scheduledFor)}
           accessibilityRole="button"
           accessibilityLabel={isScheduled ? "Schedule trip" : "Request HY3N"}
@@ -2562,55 +2596,6 @@ export default function RiderHomeScreen() {
               <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Use this number</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowMomoModal(false)} style={{ alignItems: "center", paddingVertical: 10 }}>
-              <Text style={{ color: MUTED, fontSize: 14 }}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Card Payment Modal */}
-      <Modal visible={showCardModal} transparent animationType="slide">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: SURFACE, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: insets.bottom + 24 }}>
-            <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, marginBottom: 4 }}>Card Payment</Text>
-            <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>Enter your card details</Text>
-            <TextInput
-              value={cardName}
-              onChangeText={setCardName}
-              placeholder="Name on card"
-              placeholderTextColor="#4A4A4A"
-              style={{ backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER, marginBottom: 10 }}
-            />
-            <TextInput
-              value={cardNumber}
-              onChangeText={setCardNumber}
-              placeholder="Card number"
-              placeholderTextColor="#4A4A4A"
-              keyboardType="number-pad"
-              style={{ backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER, marginBottom: 10 }}
-            />
-            <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
-              <TextInput
-                value={cardExpiry}
-                onChangeText={setCardExpiry}
-                placeholder="MM/YY"
-                placeholderTextColor="#4A4A4A"
-                style={{ flex: 1, backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }}
-              />
-              <TextInput
-                value={cardCvv}
-                onChangeText={setCardCvv}
-                placeholder="CVV"
-                placeholderTextColor="#4A4A4A"
-                keyboardType="number-pad"
-                secureTextEntry
-                style={{ flex: 1, backgroundColor: CARD, borderRadius: 12, padding: 12, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }}
-              />
-            </View>
-            <TouchableOpacity onPress={() => setShowCardModal(false)} style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, alignItems: "center", marginBottom: 10 }}>
-              <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 15 }}>Use this card</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowCardModal(false)} style={{ alignItems: "center", paddingVertical: 10 }}>
               <Text style={{ color: MUTED, fontSize: 14 }}>Cancel</Text>
             </TouchableOpacity>
           </View>
