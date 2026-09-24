@@ -952,6 +952,17 @@ export default function RiderHomeScreen() {
       return;
     }
 
+    const passengerName = bookForSomeone ? recipientName.trim() : (riderProfile?.full_name || user.displayName || 'Rider');
+    const passengerPhone = bookForSomeone ? recipientPhone.replace(/\s/g, '') : (riderProfile?.phone || user.phoneNumber || '');
+    if (bookForSomeone) {
+      const normalizedPassengerPhone = passengerPhone.replace(/\D/g, '');
+      const isGhanaPhone = /^0\d{9}$/.test(normalizedPassengerPhone) || /^233\d{9}$/.test(normalizedPassengerPhone);
+      if (passengerName.length < 2 || !isGhanaPhone) {
+        Alert.alert('Passenger details needed', 'Enter the passenger’s full name and a valid Ghana phone number before requesting the ride.');
+        return;
+      }
+    }
+
     if (selectedPayment.id === "mobile_money") {
       const normalized = momoNumber.replace(/\D/g, "");
       const isGhanaMomo = /^0\d{9}$/.test(normalized) || /^233\d{9}$/.test(normalized);
@@ -991,12 +1002,21 @@ export default function RiderHomeScreen() {
       // and writes the assigned `matched` record that the Driver app hears.
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) throw new Error("Your session has expired. Please sign in again.");
-      const selectedPickupAddress = recipientAddress || pickupAddress || 'Current Location';
+      // The actual pickup coordinates must always come from the map/location editor.
+      // A manual note for someone else is sent separately, so it cannot move the
+      // Driver to an address that does not have matching map coordinates.
+      const selectedPickupAddress = pickupAddress || 'Current Location';
       const requestBody = {
         riderId: user.uid,
-        riderName: bookForSomeone ? recipientName : (riderProfile?.full_name || user.displayName || 'Rider'),
-        riderPhone: bookForSomeone ? recipientPhone : (riderProfile?.phone || user.phoneNumber || ''),
+        riderName: passengerName,
+        riderPhone: passengerPhone,
         riderEmail: riderProfile?.email || user.email || '',
+        bookingForOther: bookForSomeone,
+        bookedByName: riderProfile?.full_name || user.displayName || 'Rider',
+        bookedByPhone: riderProfile?.phone || user.phoneNumber || '',
+        passengerName,
+        passengerPhone,
+        passengerPickupNote: bookForSomeone ? recipientAddress.trim() || undefined : undefined,
         category: selectedCategory.id,
         pickup: { lat: userLocation[0], lng: userLocation[1], name: selectedPickupAddress, address: selectedPickupAddress },
         destination: { lat: destination.lat, lng: destination.lng, name: destination.name, address: destination.address || destination.name },
@@ -1034,8 +1054,8 @@ export default function RiderHomeScreen() {
           category: selectedCategory.name,
           categoryId: selectedCategory.id,
           destination,
-          pickup: recipientAddress || pickupAddress || 'Current Location',
-          pickupLocation: { lat: userLocation[0], lng: userLocation[1], name: recipientAddress || pickupAddress || 'Current Location', address: recipientAddress || pickupAddress || 'Current Location' },
+          pickup: selectedPickupAddress,
+          pickupLocation: { lat: userLocation[0], lng: userLocation[1], name: selectedPickupAddress, address: selectedPickupAddress },
           distance,
           duration,
           fare: getQuotedRideFare(createdRide),
@@ -1092,6 +1112,10 @@ export default function RiderHomeScreen() {
     setAppliedPromo(null);
     setIsScheduled(false);
     setScheduledFor(null);
+    setBookForSomeone(false);
+    setRecipientName("");
+    setRecipientPhone("");
+    setRecipientAddress("");
   };
   const handleCancelRide = () => {
     if (activeRide?.status === "in_progress") {
@@ -2023,12 +2047,13 @@ export default function RiderHomeScreen() {
             <TextInput
               value={recipientAddress}
               onChangeText={setRecipientAddress}
-              placeholder="Passenger pickup address (optional)"
+              placeholder="Pickup note for the Driver (optional)"
               placeholderTextColor={MUTED}
               multiline
               numberOfLines={2}
               style={{ backgroundColor: BG, borderRadius: 10, padding: 11, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }}
             />
+            <Text style={{ color: MUTED, fontSize: 11, lineHeight: 15 }}>To change the pickup pin, use “Tap to change pickup” above. This note is only shared with the Driver.</Text>
           </View>
         )}
       </View>
