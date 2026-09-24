@@ -28,6 +28,7 @@ interface LeafletMapProps {
   driverServiceType?: string | null;
   driverTracking?: boolean;
   driverTrackingTarget?: [number, number] | null;
+  tripStatus?: string | null;
   safetySignal?: "clear" | "route_deviation" | "long_stop";
   nearbyDrivers?: NearbyDriver[];
 }
@@ -56,6 +57,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     driverServiceType = null,
     driverTracking = false,
     driverTrackingTarget = null,
+    tripStatus = null,
     safetySignal = "clear",
     nearbyDrivers = [],
   },
@@ -102,10 +104,16 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       } : null,
       driverTracking,
       trackingTarget: driverTrackingTarget ? { lat: driverTrackingTarget[0], lng: driverTrackingTarget[1] } : null,
+      // Before the Driver starts the trip, the only route target shown is the
+      // booked pickup. Destination navigation starts only once the trip is in
+      // progress, matching the Rider's real trip state.
+      trackingPhase: driverTracking && driverLocation
+        ? (tripStatus === "in_progress" ? "destination" : "pickup")
+        : "none",
       safetySignal,
       nearby: normalizedNearby,
     };
-  }, [center, destination, driverBearing, driverColourHex, driverLocation, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearbyDrivers, safetySignal, userLocation, zoom]);
+  }, [center, destination, driverBearing, driverColourHex, driverLocation, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearbyDrivers, safetySignal, tripStatus, userLocation, zoom]);
 
   const serializedMapState = useMemo(
     () => JSON.stringify(mapState).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026"),
@@ -169,7 +177,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       window.hy3nMap = map;
       L.tileLayer('${tileUrl}', { maxZoom: 19 }).addTo(map);
 
-      var layers = { user: null, destination: null, route: null, driver: null, tracking: null, nearby: {}, banner: null, nearbyChip: null };
+      var layers = { user: null, pickup: null, destination: null, route: null, driver: null, tracking: null, nearby: {}, banner: null, nearbyChip: null };
       var lastMode = '';
       var markerAssets = ${serializedMarkerAssets};
 
@@ -192,6 +200,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         return L.divIcon({ html: iconHtml, iconSize: [92, 91], iconAnchor: [46, 43], className: 'hy3n-vehicle-marker' });
       }
       function userIcon() { return L.divIcon({ html: '<div style="width:18px;height:18px;border-radius:50%;background:#006B3F;border:4px solid #fff;box-shadow:0 0 0 3px rgba(0,107,63,.24),0 2px 5px rgba(0,0,0,.32);"></div>', iconSize:[18,18], iconAnchor:[9,9], className:'' }); }
+      function pickupIcon() { return L.divIcon({ html: '<div style="width:24px;height:24px;border-radius:50%;background:#006B3F;border:3px solid #fff;box-shadow:0 0 0 4px rgba(0,107,63,.22),0 2px 5px rgba(0,0,0,.32);"></div>', iconSize:[24,24], iconAnchor:[12,12], className:'' }); }
       function destinationIcon() { return L.divIcon({ html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#D4AF37;border:3px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.32);transform:rotate(-45deg);"></div>', iconSize:[22,22], iconAnchor:[11,22], className:'' }); }
       function setMarker(name, position, icon) {
         if (!layers[name]) { layers[name] = L.marker([position.lat, position.lng], { icon: icon, keyboard: false }).addTo(map); return layers[name]; }
@@ -254,7 +263,10 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         lastMode = mode;
         var points = [];
         if (state.user) points.push([state.user.lat, state.user.lng]);
-        if (state.driver) points.push([state.driver.lat, state.driver.lng]);
+        if (state.driver) {
+          points.push([state.driver.lat, state.driver.lng]);
+          if (state.driverTracking && state.trackingTarget) points.push([state.trackingTarget.lat, state.trackingTarget.lng]);
+        }
         else if (state.destination) points.push([state.destination.lat, state.destination.lng]);
         else state.nearby.slice(0, 6).forEach(function(item) { points.push([item.lat, item.lng]); });
         if (points.length > 1) map.fitBounds(points, { padding: [58, 68], maxZoom: 15 });
@@ -263,24 +275,28 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       window.updateHy3nMap = function(state) {
         if (!state) return;
         if (state.user) setMarker('user', state.user, userIcon()); else removeLayer('user');
-        if (state.destination) {
+        var showDestination = state.destination && (!state.driver || state.trackingPhase === 'destination');
+        if (showDestination) {
           setMarker('destination', state.destination, destinationIcon());
           if (layers.route) map.removeLayer(layers.route);
-          if (state.user) layers.route = L.polyline([[state.user.lat, state.user.lng], [state.destination.lat, state.destination.lng]], { color: '#D4AF37', weight: 3, opacity: .82, dashArray: '9, 7' }).addTo(map);
+          if (!state.driver && state.user) layers.route = L.polyline([[state.user.lat, state.user.lng], [state.destination.lat, state.destination.lng]], { color: '#D4AF37', weight: 3, opacity: .82, dashArray: '9, 7' }).addTo(map);
         } else { removeLayer('destination'); if (layers.route) { map.removeLayer(layers.route); layers.route = null; } }
         if (state.driver) {
           clearNearby();
           setMarker('driver', state.driver, vehicleIcon({ heading: state.driver.heading, colour: state.driver.colour, label: state.driver.label, serviceType: state.driver.serviceType, eta: null }, true));
+          if (state.driverTracking && state.trackingTarget && state.trackingPhase === 'pickup') setMarker('pickup', state.trackingTarget, pickupIcon());
+          else removeLayer('pickup');
           if (layers.tracking) { map.removeLayer(layers.tracking); layers.tracking = null; }
           if (state.driverTracking && state.trackingTarget) layers.tracking = L.polyline([[state.driver.lat, state.driver.lng], [state.trackingTarget.lat, state.trackingTarget.lng]], { color: '#006B3F', weight: 4, opacity: .8, dashArray: '10, 8' }).addTo(map);
         } else {
           removeLayer('driver');
+          removeLayer('pickup');
           if (layers.tracking) { map.removeLayer(layers.tracking); layers.tracking = null; }
           updateNearby(state.nearby || []);
           updateNearbyChip((state.nearby || []).length);
         }
         updateBanner(state.safetySignal || 'clear');
-        fitForState(state, state.driver ? 'assigned' : state.destination ? 'booking' : (state.nearby || []).length ? 'nearby' : 'idle');
+        fitForState(state, state.driver ? 'assigned:' + state.trackingPhase : state.destination ? 'booking' : (state.nearby || []).length ? 'nearby' : 'idle');
       };
       window.updateHy3nMap(${serializedMapState});
     })();

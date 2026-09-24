@@ -2358,6 +2358,7 @@ export default function RiderHomeScreen() {
             ? [activeRide.destination.lat, activeRide.destination.lng] as [number, number]
             : [activeRide.pickupLocation.lat, activeRide.pickupLocation.lng] as [number, number])
             : null}
+        tripStatus={activeRide?.status ?? null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
         nearbyDrivers={(!activeRide || activeRide.status === "searching")
           ? nearbyVehiclesForSelectedCategory.slice(0, 8)
