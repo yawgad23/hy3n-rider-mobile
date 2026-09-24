@@ -21,11 +21,11 @@ export const RIDE_CATEGORIES: RideCategory[] = [
     id: "standard",
     name: "Standard",
     description: "Affordable everyday rides",
-    // Benchmark: GH₵80.00 for a 10.8 km / 43 min high-demand comparison
-    // route, keeping HY3N Standard below the GH₵83 Bolt quote.
-    basePrice: 11.80,
-    pricePerKm: 4.25,
-    pricePerMin: 0.46,
+    // Market calibration: GH₵70 for the 10.8 km / 43 min comparison route,
+    // below UberX (GH₵73) and above Bolt Basic (GH₵69) without a promo.
+    basePrice: 10.00,
+    pricePerKm: 3.65,
+    pricePerMin: 0.43,
     waitingFeePerMin: 0.55,
     minFare: 16.50,
     seats: 4,

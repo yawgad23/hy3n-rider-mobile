@@ -827,6 +827,9 @@ export default function RiderHomeScreen() {
   const baseFare = destination ? roundGhsFare(calculateFare(selectedCategory.id, distance, duration)) : 0;
   const discount = appliedPromo ? calculateDiscount(appliedPromo, baseFare) : 0;
   const finalFare = roundGhsFare(Math.max(0, baseFare - discount));
+  // This is the only amount offered to the Rider and sent to the backend. It
+  // includes any administrator-approved surge before the Rider confirms.
+  const bookingFare = destination ? roundGhsFare(finalFare * surge.multiplier) : 0;
   const preTipAmount = selectedTipPercent ? (finalFare * selectedTipPercent) / 100 : (customTip ? parseFloat(customTip) : 0);
   const selectedOptionLabels = selectedRideOptionLabels(rideOptions);
 
@@ -962,7 +965,7 @@ export default function RiderHomeScreen() {
     }
 
     setBookingLoading(true);
-    const surgedFare = roundGhsFare(finalFare * surge.multiplier);
+    const surgedFare = bookingFare;
     try {
       if (selectedPayment.id === "wallet") {
         const wallet = await firestoreDB.get(COLLECTIONS.WALLET, user.uid);
@@ -1825,7 +1828,7 @@ export default function RiderHomeScreen() {
       onPress={handleBook}
       disabled={bookingLoading || (isScheduled && !scheduledFor)}
       accessibilityRole="button"
-      accessibilityLabel={isScheduled ? "Schedule trip" : `Request HY3N for ${finalFare.toFixed(2)} Ghana cedis`}
+      accessibilityLabel={isScheduled ? "Schedule trip" : `Request HY3N for ${bookingFare.toFixed(2)} Ghana cedis`}
       style={{
         backgroundColor: GREEN,
         borderRadius: 14,
@@ -1843,7 +1846,7 @@ export default function RiderHomeScreen() {
         <>
           <MaterialIcons name={isScheduled ? "event" : "navigation"} size={20} color="#fff" />
           <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>
-            {isScheduled ? "Schedule Trip" : `Request HY3N · GH₵${finalFare.toFixed(2)}`}
+            {isScheduled ? "Schedule Trip" : `Request HY3N · GH₵${bookingFare.toFixed(2)}`}
           </Text>
         </>
       )}
@@ -1922,7 +1925,7 @@ export default function RiderHomeScreen() {
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9, paddingBottom: 14 }}>
         {RIDE_CATEGORIES.map((cat) => {
-          const fare = calculateFare(cat.id, distance, duration);
+          const fare = roundGhsFare(calculateFare(cat.id, distance, duration) * surge.multiplier);
           const isSelected = selectedCategory.id === cat.id;
           const matchingVehicles = nearbyDrivers
             .filter((vehicle) => vehicleServesRideCategory(vehicle, cat.id))
@@ -2106,7 +2109,7 @@ export default function RiderHomeScreen() {
             <Text style={{ color: MUTED, fontSize: 11, fontWeight: "800", letterSpacing: 0.9 }}>ESTIMATED FARE</Text>
             <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>{distance.toFixed(1)} km · ~{duration} min</Text>
           </View>
-          <Text style={{ color: GOLD, fontSize: 30, fontWeight: "900", letterSpacing: -0.5 }}>GH₵{finalFare.toFixed(2)}</Text>
+            <Text style={{ color: GOLD, fontSize: 30, fontWeight: "900", letterSpacing: -0.5 }}>GH₵{bookingFare.toFixed(2)}</Text>
         </View>
         <TouchableOpacity
           onPress={handleBook}
