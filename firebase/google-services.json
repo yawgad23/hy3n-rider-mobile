@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "362594902321",
+    "project_id": "hy3n26",
+    "storage_bucket": "hy3n26.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:362594902321:android:c1c869726756cd8916d010",
+        "android_client_info": {
+          "package_name": "com.hy3n.driver"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "362594902321-6e6rc7dmusragaillgh8nlhkvjs1htv8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hy3n.driver",
+            "certificate_hash": "1a79cdac2a4042ca7b85cbc9ede779b38aef952f"
+          }
+        },
+        {
+          "client_id": "362594902321-o9dsidn1o0h8s1r3qtc1u4eldu96sdkh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDGqpfK9eLIJ-drTRi8dp_Yhto97KC9Cyo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "362594902321-o9dsidn1o0h8s1r3qtc1u4eldu96sdkh.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "362594902321-741u009go27ohqvflcc00fkmpdnb7fs0.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.hy3n.driver"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:362594902321:android:0639beae9dd2efe216d010",
+        "android_client_info": {
+          "package_name": "com.hy3n.rider"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "362594902321-o9dsidn1o0h8s1r3qtc1u4eldu96sdkh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDGqpfK9eLIJ-drTRi8dp_Yhto97KC9Cyo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "362594902321-o9dsidn1o0h8s1r3qtc1u4eldu96sdkh.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "362594902321-741u009go27ohqvflcc00fkmpdnb7fs0.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.hy3n.driver"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

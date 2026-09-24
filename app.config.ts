@@ -57,8 +57,11 @@ const config: ExpoConfig = {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
     buildNumber: "53",
+    googleServicesFile: "./firebase/GoogleService-Info.plist",
     "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSSupportsLiveActivities": true,
+        "NSSupportsLiveActivitiesFrequentUpdates": true
       }
   },
   android: {
@@ -71,6 +74,7 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
+    googleServicesFile: "./firebase/google-services.json",
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
       {
@@ -102,6 +106,15 @@ const config: ExpoConfig = {
     "expo-audio",
     "expo-font",
     "expo-notifications",
+    "@react-native-firebase/app",
+    "@react-native-firebase/messaging",
+    "./plugins/withLiveActivityReleaseSettings",
+    [
+      "expo-live-activity",
+      {
+        enablePushNotifications: true,
+      },
+    ],
     "expo-video",
     "expo-web-browser",
     [
