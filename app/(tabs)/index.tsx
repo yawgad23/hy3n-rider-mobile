@@ -55,7 +55,7 @@ import { buildEmergencyAssistMessage, DEFAULT_RIDE_OPTIONS, getCancellationPolic
 import { trpc } from "@/lib/trpc";
 import { buildReceiptEmailPayload, receiptRequestKey, type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare, roundGhsFare } from "@/lib/fare";
-import { createLiveTripShareLink } from "@/lib/trip-share";
+import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-share";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -131,6 +131,8 @@ interface ActiveRide {
   currentFare?: number;
   trackingStartedAt?: number;
   lastRiderLocation?: { lat: number; lng: number };
+  sharingActive?: boolean;
+  shareExpiresAt?: string;
 }
 
 const DEFAULT_LOCATION: [number, number] = [5.6037, -0.187]; // Accra, Ghana
@@ -321,6 +323,7 @@ export default function RiderHomeScreen() {
   const [activeRides, setActiveRides] = useState<ActiveRide[]>([]);
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const activeRide = activeRides.find((ride) => ride.id === selectedRideId) ?? activeRides[0] ?? null;
+  const [shareActionBusy, setShareActionBusy] = useState(false);
   const unreadChatCount = useUnreadChatCount(activeRide?.firestoreId || activeRide?.id || null, user?.uid || '', 'rider');
   const [bookingLoading, setBookingLoading] = useState(false);
   const nearbyVehiclesForSelectedCategory = nearbyDrivers
@@ -634,6 +637,8 @@ export default function RiderHomeScreen() {
             // local GPS/time estimate retained from the ride screen.
             currentFare: ride.status === 'completed' ? getFinalRideFare(ride) : prev.currentFare,
             finalFare: ride.status === 'completed' ? getFinalRideFare(ride) : prev.finalFare,
+            sharingActive: Boolean((ride as any).sharing_active),
+            shareExpiresAt: String((ride as any).share_expires_at || '') || undefined,
           };
         });
       }));
@@ -1202,12 +1207,31 @@ export default function RiderHomeScreen() {
     if (!activeRide) return;
     const etaMinutes = activeRide.eta || (activeRide.etaSeconds ? Math.max(1, Math.ceil(activeRide.etaSeconds / 60)) : null);
     try {
-      const { trackingUrl, expiresAt } = await createLiveTripShareLink(activeRide.id);
+      setShareActionBusy(true);
+      const shareRideId = activeRide.firestoreId || activeRide.id;
+      const { trackingUrl, expiresAt } = await createLiveTripShareLink(shareRideId);
+      updateActiveRide(activeRide.id, (ride) => ({ ...ride, sharingActive: true, shareExpiresAt: expiresAt }));
       const expiry = expiresAt ? new Date(expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'the end of this trip';
       const msg = `I'm sharing my live HY3N trip with you.\n\nPickup: ${activeRide.pickup}\nDestination: ${activeRide.destination.name}${etaMinutes ? `\nETA: ${etaMinutes} min` : ''}\nDriver: ${activeRide.driverName || 'HY3N driver'}\n\nTrack the trip live: ${trackingUrl}\n\nThis secure link expires at ${expiry} or as soon as the trip ends.`;
       await Share.share({ message: msg, title: 'Track my HY3N trip' });
     } catch (error: any) {
       Alert.alert('Unable to share live trip', error?.message || 'Please try again in a moment.');
+    } finally {
+      setShareActionBusy(false);
+    }
+  };
+
+  const handleStopSharingTrip = async () => {
+    if (!activeRide) return;
+    try {
+      setShareActionBusy(true);
+      await revokeLiveTripShareLink(activeRide.firestoreId || activeRide.id);
+      updateActiveRide(activeRide.id, (ride) => ({ ...ride, sharingActive: false, shareExpiresAt: undefined }));
+      Alert.alert('Trip sharing stopped', 'Anyone using the previous live tracking link can no longer view this trip.');
+    } catch (error: any) {
+      Alert.alert('Unable to stop trip sharing', error?.message || 'Please try again in a moment.');
+    } finally {
+      setShareActionBusy(false);
     }
   };
 
@@ -1662,11 +1686,14 @@ export default function RiderHomeScreen() {
             {/* Share Trip + SOS row */}
             <View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
               <TouchableOpacity
-                onPress={handleShareTrip}
-                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 12, backgroundColor: CARD, borderRadius: 12, borderWidth: 0.5, borderColor: BORDER }}
+                onPress={activeRide.sharingActive ? handleStopSharingTrip : handleShareTrip}
+                disabled={shareActionBusy}
+                accessibilityLabel={activeRide.sharingActive ? "Stop sharing live trip" : "Share live trip"}
+                accessibilityHint={activeRide.sharingActive ? "Revokes the current secure trip tracking link" : "Creates a secure link for a trusted contact to follow this trip"}
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 12, backgroundColor: activeRide.sharingActive ? `${GREEN}1A` : CARD, borderRadius: 12, borderWidth: 0.5, borderColor: activeRide.sharingActive ? `${GREEN}77` : BORDER, opacity: shareActionBusy ? 0.65 : 1 }}
               >
-                <MaterialIcons name="share" size={16} color={MUTED} />
-                <Text style={{ color: MUTED, fontSize: 13, fontWeight: "500" }}>Share Trip</Text>
+                {shareActionBusy ? <ActivityIndicator size="small" color={activeRide.sharingActive ? GREEN : MUTED} /> : <MaterialIcons name={activeRide.sharingActive ? "stop-circle" : "share"} size={16} color={activeRide.sharingActive ? GREEN : MUTED} />}
+                <Text style={{ color: activeRide.sharingActive ? GREEN : MUTED, fontSize: 13, fontWeight: "600" }}>{activeRide.sharingActive ? 'Stop Sharing' : 'Share Trip'}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleEmergencyAssist}

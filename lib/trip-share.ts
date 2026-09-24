@@ -20,3 +20,22 @@ export async function createLiveTripShareLink(rideId: string): Promise<{ trackin
   }
   return { trackingUrl: String(body.trackingUrl), expiresAt: String(body.expiresAt || '') };
 }
+
+export async function revokeLiveTripShareLink(rideId: string): Promise<{ revokedAt: string }> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Please sign in again before stopping trip sharing.');
+  const baseUrl = getApiBaseUrl();
+  if (!baseUrl) throw new Error('Live trip sharing is temporarily unavailable.');
+
+  const response = await fetch(`${baseUrl}/api/rider/trips/${encodeURIComponent(rideId)}/share`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${await user.getIdToken()}`,
+    },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.success) {
+    throw new Error(body.message || 'Trip sharing could not be stopped.');
+  }
+  return { revokedAt: String(body.revokedAt || '') };
+}
