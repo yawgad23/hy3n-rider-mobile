@@ -126,7 +126,7 @@ export function RideChatModal({
         // Mark messages as read
         const updateField = currentUserRole === 'rider' ? 'read_by_rider' : 'read_by_driver';
         msgs.forEach((msg) => {
-          if (msg.sender_id !== currentUserId && !msg[updateField]) {
+          if (msg.sender_role !== currentUserRole && msg.sender_id !== currentUserId && !msg[updateField]) {
             firestoreDB.update('ride_messages', msg.id, { [updateField]: true }).catch(() => {});
           }
         });
@@ -155,6 +155,8 @@ export function RideChatModal({
       sender_name: currentUserName || currentUserRole,
       message: trimmed,
       created_date: new Date().toISOString(),
+      read_by_driver: currentUserRole === 'driver',
+      read_by_rider: currentUserRole === 'rider',
     };
     setMessages((prev) => [...prev, optimisticMsg]);
     setText('');
@@ -301,7 +303,7 @@ export function useUnreadChatCount(rideId: string | null, currentUserId: string,
       { ride_id: rideId },
       (msgs: Message[]) => {
         const unread = msgs.filter(
-          (m) => m.sender_id !== currentUserId && !m[readField]
+          (m) => m.sender_role !== currentUserRole && m.sender_id !== currentUserId && !m[readField]
         ).length;
         setUnreadCount(unread);
       }
