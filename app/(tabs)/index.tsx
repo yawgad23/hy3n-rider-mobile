@@ -55,6 +55,7 @@ import { buildEmergencyAssistMessage, DEFAULT_RIDE_OPTIONS, getCancellationPolic
 import { trpc } from "@/lib/trpc";
 import { buildReceiptEmailPayload, receiptRequestKey, type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare, roundGhsFare } from "@/lib/fare";
+import { createLiveTripShareLink } from "@/lib/trip-share";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -1200,23 +1201,14 @@ export default function RiderHomeScreen() {
   const handleShareTrip = async () => {
     if (!activeRide) return;
     const etaMinutes = activeRide.eta || (activeRide.etaSeconds ? Math.max(1, Math.ceil(activeRide.etaSeconds / 60)) : null);
-    const msg = `I'm in a HY3N ride! 🚗\nPickup: ${activeRide.pickup}\nDestination: ${activeRide.destination.name}${etaMinutes ? `\nETA: ${etaMinutes} min` : ''}\nDriver: ${activeRide.driverName || 'Searching...'}\n\nTrack me via HY3N.`;
-    const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(msg)}`;
-    const webWhatsappUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
-
     try {
-      const supported = await Linking.canOpenURL(whatsappUrl);
-      if (supported) {
-        await Linking.openURL(whatsappUrl);
-        return;
-      }
-      await Linking.openURL(webWhatsappUrl);
-      return;
-    } catch (e) {}
-
-    try {
-      await Share.share({ message: msg, title: "My HY3N Trip" });
-    } catch (e) {}
+      const { trackingUrl, expiresAt } = await createLiveTripShareLink(activeRide.id);
+      const expiry = expiresAt ? new Date(expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'the end of this trip';
+      const msg = `I'm sharing my live HY3N trip with you.\n\nPickup: ${activeRide.pickup}\nDestination: ${activeRide.destination.name}${etaMinutes ? `\nETA: ${etaMinutes} min` : ''}\nDriver: ${activeRide.driverName || 'HY3N driver'}\n\nTrack the trip live: ${trackingUrl}\n\nThis secure link expires at ${expiry} or as soon as the trip ends.`;
+      await Share.share({ message: msg, title: 'Track my HY3N trip' });
+    } catch (error: any) {
+      Alert.alert('Unable to share live trip', error?.message || 'Please try again in a moment.');
+    }
   };
 
   const handleEmergencyAssist = () => {
