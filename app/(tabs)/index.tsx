@@ -1908,10 +1908,10 @@ export default function RiderHomeScreen() {
         </View>
       </View>
 
-      {/* Vehicle choices stay immediately visible instead of being pushed below
-          optional passenger, stop, and payment controls. */}
+      {/* Ride options use a clear vertical list, like Bolt and Uber, so every
+          category can be read and chosen rather than being clipped sideways. */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600" }}>Choose your ride</Text>
+        <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600" }}>Ride options · {RIDE_CATEGORIES.length} available types</Text>
         {closestVehicleEta !== null ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
             <MaterialIcons name="directions-car" size={13} color={GREEN} />
@@ -1923,7 +1923,7 @@ export default function RiderHomeScreen() {
           <Text style={{ color: MUTED, fontSize: 11, fontWeight: "600" }}>Searching nearby drivers</Text>
         )}
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9, paddingBottom: 14 }}>
+      <View style={{ gap: 9, paddingBottom: 14 }}>
         {RIDE_CATEGORIES.map((cat) => {
           const fare = roundGhsFare(calculateFare(cat.id, distance, duration) * surge.multiplier);
           const isSelected = selectedCategory.id === cat.id;
@@ -1931,30 +1931,43 @@ export default function RiderHomeScreen() {
             .filter((vehicle) => vehicleServesRideCategory(vehicle, cat.id))
             .map((vehicle) => calculateETA({ lat: vehicle.lat, lng: vehicle.lng }, { lat: userLocation[0], lng: userLocation[1] }));
           const pickupEta = matchingVehicles.length ? Math.min(...matchingVehicles) : null;
-          const vehicleIcon = cat.id === "okada" ? "two-wheeler" : cat.id === "express_delivery" ? "inventory" : cat.icon;
+          const vehicleArtwork = cat.id === "okada"
+            ? require("@/assets/images/ride-list-map-okada.png")
+            : cat.id === "express_delivery"
+              ? require("@/assets/images/ride-list-map-delivery.png")
+              : require("@/assets/images/ride-list-map-car.png");
           return (
             <TouchableOpacity
               key={cat.id}
               onPress={() => setSelectedCategory(cat)}
               accessibilityRole="button"
               accessibilityState={{ selected: isSelected }}
-              style={{ width: 154, padding: 12, borderRadius: 14, backgroundColor: isSelected ? `${GOLD}1A` : CARD, borderWidth: 1.5, borderColor: isSelected ? GOLD : BORDER }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 13, borderRadius: 16, backgroundColor: isSelected ? `${GOLD}1A` : "transparent", borderWidth: isSelected ? 1.8 : 0, borderColor: GOLD }}
             >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 7 }}>
-                <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: isSelected ? `${GOLD}33` : `${MUTED}18`, alignItems: "center", justifyContent: "center" }}>
-                  <MaterialIcons name={vehicleIcon as any} size={17} color={isSelected ? GOLD : MUTED} />
-                </View>
-                <Text style={{ flex: 1, color: TEXT, fontSize: 13, fontWeight: "800" }} numberOfLines={1}>{cat.name}</Text>
+              <View style={{ width: 74, height: 52, alignItems: "center", justifyContent: "center" }}>
+                <Image source={vehicleArtwork} style={{ width: 74, height: 52 }} resizeMode="contain" />
               </View>
-              <Text style={{ color: MUTED, fontSize: 10, minHeight: 26 }} numberOfLines={2}>{cat.description}</Text>
-              <Text style={{ color: pickupEta !== null ? GREEN : MUTED, fontSize: 11, fontWeight: "800", marginTop: 5 }}>
-                {pickupEta !== null ? `${pickupEta} min pickup · ${matchingVehicles.length} nearby` : "No nearby vehicle yet"}
-              </Text>
-              <Text style={{ color: isSelected ? GOLD : TEXT, fontSize: 14, fontWeight: "900", marginTop: 7 }}>GH₵{fare.toFixed(2)}</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                  <Text style={{ color: TEXT, fontSize: 16, fontWeight: "800" }} numberOfLines={1}>{cat.name}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                    <MaterialIcons name="person" size={13} color={MUTED} />
+                    <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700" }}>{cat.seats || "Parcel"}</Text>
+                  </View>
+                </View>
+                <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{cat.description}</Text>
+                <Text style={{ color: pickupEta !== null ? GREEN : MUTED, fontSize: 11, fontWeight: "800", marginTop: 5 }}>
+                  {pickupEta !== null ? `${pickupEta} min pickup · ${matchingVehicles.length} nearby` : "No nearby vehicle yet"}
+                </Text>
+              </View>
+              <View style={{ alignItems: "flex-end", gap: 7 }}>
+                <Text style={{ color: isSelected ? GOLD : TEXT, fontSize: 18, fontWeight: "900" }}>GH₵{fare.toFixed(2)}</Text>
+                {isSelected ? <MaterialIcons name="check-circle" size={20} color={GOLD} /> : <MaterialIcons name="chevron-right" size={22} color={MUTED} />}
+              </View>
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
 
       {/* Web-parity passenger switch */}
       <View style={{ backgroundColor: CARD, borderRadius: 18, borderWidth: 1, borderColor: BORDER, marginBottom: 14, overflow: "hidden" }}>
