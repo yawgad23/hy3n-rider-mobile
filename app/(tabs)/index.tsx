@@ -1431,6 +1431,21 @@ export default function RiderHomeScreen() {
     const isCompleted = activeRide.status === "completed";
     const isSearching = activeRide.status === "searching";
     const hasDriver = ["matched", "driver_arriving", "driver_arrived", "in_progress"].includes(activeRide.status);
+    const pairingDriverName = activeRide.driverName || "Your driver";
+    const pairingVehicle = activeRide.driverVehicle || "HY3N vehicle";
+    const pairingVehicleIdentity = [activeRide.driverColour, pairingVehicle].filter(Boolean).join(" ");
+    const pairingEtaMinutes = activeRide.eta ?? (
+      activeRide.etaSeconds && activeRide.etaSeconds > 0
+        ? Math.max(1, Math.ceil(activeRide.etaSeconds / 60))
+        : null
+    );
+    const pairingStatus = activeRide.status === "driver_arrived"
+      ? `${pairingDriverName} is at your pickup`
+      : activeRide.status === "in_progress"
+        ? "Your trip is in progress"
+        : activeRide.status === "matched"
+          ? `${pairingDriverName} has been matched`
+          : `${pairingDriverName} is arriving`;
 
     const liveFare = isCompleted ? getFinalRideFare(activeRide) : getQuotedRideFare(activeRide);
     const isTripShareActive = Boolean(
@@ -1554,31 +1569,109 @@ export default function RiderHomeScreen() {
 
         {hasDriver && (
           <View>
-            {/* ETA Banner */}
-            <View style={{ backgroundColor: `${GREEN}1A`, borderWidth: 1, borderColor: `${GREEN}4D`, borderRadius: 16, padding: 14, marginBottom: 12 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: GREEN, alignItems: "center", justifyContent: "center" }}>
-                    <MaterialIcons name="navigation" size={22} color="#fff" />
-                  </View>
-                  <View>
-                    <Text style={{ color: GREEN, fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                      {activeRide.status === "driver_arriving" ? "Driver Arriving" : activeRide.status === "matched" ? "Driver Assigned" : "On Trip"}
-                    </Text>
-                    <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 16 }}>{activeRide.driverName || "Your Driver"}</Text>
-                  </View>
+            {/* Compact Uber/Bolt-style pairing card */}
+            <View style={{ backgroundColor: CARD, borderWidth: 1, borderColor: `${GREEN}66`, borderRadius: 20, marginBottom: 12, overflow: "hidden" }}>
+              <View style={{ backgroundColor: `${GREEN}16`, paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={{ color: GREEN, fontSize: 10, fontWeight: "900", letterSpacing: 1, textTransform: "uppercase" }}>
+                    {activeRide.status === "driver_arrived" ? "Driver arrived" : activeRide.status === "in_progress" ? "On your trip" : "Your driver"}
+                  </Text>
+                  <Text style={{ color: TEXT, fontSize: 16, fontWeight: "800", marginTop: 3 }} numberOfLines={1}>{pairingStatus}</Text>
                 </View>
-                {activeRide.eta && (
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 28 }}>{activeRide.eta}</Text>
-                    <Text style={{ color: MUTED, fontSize: 11 }}>min</Text>
+                {pairingEtaMinutes !== null && activeRide.status !== "driver_arrived" && (
+                  <View style={{ minWidth: 52, alignItems: "center" }}>
+                    <Text style={{ color: GOLD, fontSize: 25, fontWeight: "900", lineHeight: 28 }}>{pairingEtaMinutes}</Text>
+                    <Text style={{ color: MUTED, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>min away</Text>
                   </View>
                 )}
               </View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10, paddingTop: 9, borderTopWidth: 0.5, borderTopColor: `${GREEN}44` }}>
-                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: locationFreshnessColor }} />
-                <Text style={{ color: locationFreshnessColor, fontSize: 11, fontWeight: "700" }}>{locationFreshnessLabel}</Text>
-                <Text style={{ color: MUTED, fontSize: 11 }}>· ETA is an estimate</Text>
+
+              <View style={{ padding: 16 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View style={{ width: 60, height: 60, borderRadius: 18, backgroundColor: activeRide.driverColourHex || `${GOLD}24`, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: `${GOLD}88` }}>
+                    <MaterialIcons name="directions-car" size={33} color={activeRide.driverColourHex?.toLowerCase() === "#f5f5f5" ? "#111" : "#fff"} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }} numberOfLines={1}>{pairingVehicleIdentity}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 }}>
+                      <MaterialIcons name="star" size={15} color={GOLD} />
+                      <Text style={{ color: TEXT, fontSize: 12, fontWeight: "800" }}>{Number(activeRide.driverRating ?? 5).toFixed(1)}</Text>
+                      {activeRide.driverTotalTrips ? <Text style={{ color: MUTED, fontSize: 12 }}>· {activeRide.driverTotalTrips} trips</Text> : null}
+                    </View>
+                  </View>
+                  <View style={{ alignItems: "flex-end", gap: 4 }}>
+                    <Text style={{ color: MUTED, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>Plate</Text>
+                    <View style={{ backgroundColor: `${GOLD}22`, borderColor: `${GOLD}77`, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 }}>
+                      <Text style={{ color: GOLD, fontSize: 12, fontWeight: "900", letterSpacing: 0.8 }}>{activeRide.driverPlate || "—"}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 9, marginTop: 14, paddingTop: 13, borderTopWidth: 0.5, borderTopColor: BORDER }}>
+                  {activeRide.driverPhoto ? (
+                    <Image source={{ uri: activeRide.driverPhoto }} style={{ width: 34, height: 34, borderRadius: 17 }} />
+                  ) : (
+                    <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${GREEN}28`, alignItems: "center", justifyContent: "center" }}>
+                      <MaterialIcons name="person" size={20} color={GREEN} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: TEXT, fontSize: 14, fontWeight: "800" }} numberOfLines={1}>{pairingDriverName}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+                      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: locationFreshnessColor }} />
+                      <Text style={{ color: locationFreshnessColor, fontSize: 11, fontWeight: "700" }}>{locationFreshnessLabel}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: MUTED, fontSize: 11 }}>ETA is live</Text>
+                </View>
+
+                <View style={{ backgroundColor: `${GOLD}10`, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginTop: 14, gap: 8 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <MaterialIcons name="local-taxi" size={16} color={GOLD} />
+                    <Text style={{ color: TEXT, fontSize: 12, fontWeight: "800", marginLeft: 8, flex: 1 }} numberOfLines={1}>{activeRide.category}</Text>
+                    <Text style={{ color: GOLD, fontSize: 13, fontWeight: "900" }}>GH₵{liveFare.toFixed(2)}</Text>
+                  </View>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <MaterialIcons name="place" size={16} color={MUTED} />
+                    <Text style={{ color: MUTED, fontSize: 12, marginLeft: 8, flex: 1 }} numberOfLines={1}>To {activeRide.destination.name}</Text>
+                  </View>
+                </View>
+
+                {activeRide.ridePin && (
+                  <TouchableOpacity
+                    onPress={async () => {
+                      try { await Share.share({ message: `My HY3N pickup code is ${activeRide.ridePin}. Please confirm it before the ride starts.`, title: "HY3N Pickup Code" }); } catch {}
+                    }}
+                    accessibilityLabel="Share ride pickup code"
+                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 14, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: SURFACE, borderRadius: 12 }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                      <MaterialIcons name="lock" size={15} color={GOLD} />
+                      <Text style={{ color: MUTED, fontSize: 12 }}>Start code</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <Text style={{ color: GOLD, fontWeight: "900", fontSize: 16, letterSpacing: 4 }}>{activeRide.ridePin}</Text>
+                      <MaterialIcons name="share" size={15} color={MUTED} />
+                    </View>
+                  </TouchableOpacity>
+                )}
+
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
+                  <TouchableOpacity
+                    onPress={handleCallDriver}
+                    style={{ flex: 1, minHeight: 46, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 13, backgroundColor: GREEN }}
+                  >
+                    <MaterialIcons name="phone" size={18} color="#fff" />
+                    <Text style={{ color: "#fff", fontWeight: "800", fontSize: 14 }}>Call</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setShowChat(true)}
+                    style={{ flex: 1, minHeight: 46, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 13, backgroundColor: unreadChatCount > 0 ? `${GOLD}38` : `${GOLD}18`, borderWidth: 1, borderColor: unreadChatCount > 0 ? GOLD : `${GOLD}66` }}
+                  >
+                    <MaterialIcons name="chat" size={18} color={GOLD} />
+                    <Text style={{ color: GOLD, fontWeight: "800", fontSize: 14 }}>{unreadChatCount > 0 ? `Message (${unreadChatCount})` : "Message"}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
 
@@ -1595,83 +1688,6 @@ export default function RiderHomeScreen() {
                 </View>
               </View>
             )}
-
-            {/* Driver Card — full profile */}
-            <View style={{ backgroundColor: CARD, borderRadius: 16, marginBottom: 10, borderWidth: 0.5, borderColor: BORDER, overflow: "hidden" }}>
-              {/* Top: avatar + name + plate */}
-              <View style={{ flexDirection: "row", alignItems: "center", padding: 14, gap: 14 }}>
-                {/* Avatar */}
-                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: `${GREEN}33`, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: GREEN }}>
-                  <MaterialIcons name="person" size={36} color={GREEN} />
-                </View>
-                {/* Name + rating + vehicle */}
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: TEXT, fontWeight: "800", fontSize: 17, marginBottom: 2 }}>{activeRide.driverName || "Your Driver"}</Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 3 }}>
-                    {[1,2,3,4,5].map(i => (
-                      <MaterialIcons key={i} name="star" size={13} color={i <= Math.round(activeRide.driverRating ?? 5) ? GOLD : BORDER} />
-                    ))}
-                    <Text style={{ color: MUTED, fontSize: 12, marginLeft: 2 }}>{activeRide.driverRating?.toFixed(1)}</Text>
-                    {activeRide.driverTotalTrips && (
-                      <Text style={{ color: MUTED, fontSize: 11, marginLeft: 4 }}>· {activeRide.driverTotalTrips} trips</Text>
-                    )}
-                  </View>
-                  <Text style={{ color: MUTED, fontSize: 12 }} numberOfLines={1}>
-                    {`${activeRide.driverName || "Your driver"} is arriving in ${activeRide.driverColour || "your"} ${activeRide.driverVehicle || "HY3N vehicle"}`}
-                  </Text>
-                </View>
-              </View>
-              {/* Ride PIN row */}
-              {activeRide.ridePin && (
-                <TouchableOpacity
-                  onPress={async () => {
-                    try { await Share.share({ message: `My HY3N pickup code is ${activeRide.ridePin}. Please confirm it before the ride starts.`, title: "HY3N Pickup Code" }); } catch {}
-                  }}
-                  accessibilityLabel="Share ride pickup code"
-                  accessibilityHint="Shares the pickup code with the driver or a trusted person"
-                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 8, paddingHorizontal: 14, backgroundColor: `#0A0A0A`, borderTopWidth: 0.5, borderTopColor: BORDER }}
-                >
-                  <MaterialIcons name="lock" size={14} color={GOLD} />
-                  <Text style={{ color: MUTED, fontSize: 12 }}>Pickup code:</Text>
-                  <Text style={{ color: GOLD, fontWeight: "800", fontSize: 16, letterSpacing: 4 }}>{activeRide.ridePin}</Text>
-                  <Text style={{ color: MUTED, fontSize: 11 }}>Tap to share</Text>
-                </TouchableOpacity>
-              )}
-              {activeRide.rideOptions && selectedRideOptionLabels(activeRide.rideOptions).length > 0 && (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8, paddingHorizontal: 14, backgroundColor: `${GREEN}12`, borderTopWidth: 0.5, borderTopColor: `${GREEN}44` }}>
-                  <MaterialIcons name="tune" size={15} color={GREEN} />
-                  <Text style={{ color: GREEN, fontSize: 11, flex: 1 }} numberOfLines={2}>
-                    Preferences: {selectedRideOptionLabels(activeRide.rideOptions).join(" · ")}
-                  </Text>
-                </View>
-              )}
-              {/* Surge badge if applicable */}
-              {activeRide.surgeMultiplier && activeRide.surgeMultiplier > 1 && (
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: "#F59E0B18", borderTopWidth: 0.5, borderTopColor: "#F59E0B40" }}>
-                  <MaterialIcons name="bolt" size={14} color="#F59E0B" />
-                  <Text style={{ color: "#F59E0B", fontSize: 12, fontWeight: "600" }}>Fare includes administrator-approved high-demand pricing</Text>
-                </View>
-              )}
-              {/* Divider */}
-              <View style={{ height: 0.5, backgroundColor: BORDER, marginHorizontal: 14 }} />
-              {/* Bottom: call + message buttons */}
-              <View style={{ flexDirection: "row", padding: 12, gap: 10 }}>
-                <TouchableOpacity
-                  onPress={handleCallDriver}
-                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 11, borderRadius: 12, backgroundColor: GREEN }}
-                >
-                  <MaterialIcons name="phone" size={18} color="#fff" />
-                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Call</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setShowChat(true)}
-                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 11, borderRadius: 12, backgroundColor: unreadChatCount > 0 ? `${GOLD}38` : `${GOLD}22`, borderWidth: 1, borderColor: unreadChatCount > 0 ? GOLD : `${GOLD}55` }}
-                >
-                  <MaterialIcons name="chat" size={18} color={GOLD} />
-                  <Text style={{ color: GOLD, fontWeight: "700", fontSize: 14 }}>{unreadChatCount > 0 ? `Message (${unreadChatCount})` : 'Message'}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
 
             {/* Waiting Timer — shown when driver is at pickup */}
             {activeRide.status === 'driver_arrived' && (
