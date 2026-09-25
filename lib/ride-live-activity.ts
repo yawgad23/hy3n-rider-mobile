@@ -28,6 +28,11 @@ const LIVE_ACTIVITY_CONFIG: LiveActivity.LiveActivityConfig = {
   deepLinkUrl: 'manusrider://ride',
   timerType: 'digital',
   padding: { horizontal: 16, top: 12, bottom: 12 },
+  // The car asset is intentionally small and contained, never a blown-up
+  // map marker. It should look like a clean vehicle glyph at Lock Screen size.
+  imageSize: { width: 44, height: 44 },
+  imageAlign: 'center',
+  contentFit: 'contain',
 };
 
 function isSupportedPlatform() {
