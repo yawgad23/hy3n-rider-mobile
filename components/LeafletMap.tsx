@@ -27,6 +27,7 @@ interface LeafletMapProps {
   driverVehicle?: string | null;
   driverServiceType?: string | null;
   driverEtaMinutes?: number | null;
+  driverDistanceKm?: number | null;
   driverTracking?: boolean;
   driverTrackingTarget?: [number, number] | null;
   tripStatus?: string | null;
@@ -58,6 +59,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     driverVehicle = null,
     driverServiceType = null,
     driverEtaMinutes = null,
+    driverDistanceKm = null,
     driverTracking = false,
     driverTrackingTarget = null,
     tripStatus = null,
@@ -109,6 +111,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         label: cleanText(driverVehicle, "Driver vehicle"),
         serviceType: cleanText(driverServiceType, "car").toLowerCase(),
         eta: Number.isFinite(driverEtaMinutes) ? Math.max(1, Math.round(Number(driverEtaMinutes))) : null,
+        distanceKm: Number.isFinite(driverDistanceKm) && Number(driverDistanceKm) > 0 ? Number(driverDistanceKm) : null,
       } : null,
       driverTracking,
       trackingTarget: driverTrackingTarget ? { lat: driverTrackingTarget[0], lng: driverTrackingTarget[1] } : null,
@@ -121,7 +124,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       safetySignal,
       nearby: normalizedNearby,
     };
-  }, [center, destination, driverBearing, driverColourHex, driverEtaMinutes, driverLocation, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearbyDrivers, safetySignal, tripStatus, userLocation, zoom]);
+  }, [center, destination, driverBearing, driverColourHex, driverDistanceKm, driverEtaMinutes, driverLocation, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearbyDrivers, safetySignal, tripStatus, userLocation, zoom]);
 
   const serializedMapState = useMemo(
     () => JSON.stringify(mapState).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026"),
@@ -217,12 +220,16 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       }
       function vehicleIcon(item, assigned) {
         var kind = kindFor(item.serviceType);
-        var eta = item.eta ? String(Math.max(1, Math.round(item.eta))) + ' min' : 'Live';
+        var distance = Number(item.distanceKm);
+        var metric = Number.isFinite(distance) && distance > 0
+          ? (distance < 1 ? Math.round(distance * 1000) + ' m' : distance.toFixed(1) + ' km')
+          : (!assigned && item.eta ? String(Math.max(1, Math.round(item.eta)) + ' min') : '');
         var label = escapeHtml(item.label || 'HY3N vehicle');
         var heading = Number(item.heading || 0);
         var asset = markerAssets[kind] || markerAssets.car || '';
         var colour = validHex(item.colour);
-        var iconHtml = '<div class="hy3n-vehicle-wrap" title="' + label + '"><div class="hy3n-vehicle" style="transform:rotate(' + heading + 'deg)"><img src="' + asset + '" alt=""/><div class="hy3n-colour-tint" style="background:' + colour + ';-webkit-mask-image:url(' + asset + ');mask-image:url(' + asset + ');"></div><div class="hy3n-colour-swatch" style="background:' + colour + '"></div></div><div class="hy3n-eta ' + (assigned ? 'assigned' : '') + '">' + eta + '</div></div>';
+        var metricHtml = metric ? '<div class="hy3n-eta ' + (assigned ? 'assigned' : '') + '">' + metric + '</div>' : '';
+        var iconHtml = '<div class="hy3n-vehicle-wrap" title="' + label + '"><div class="hy3n-vehicle" style="transform:rotate(' + heading + 'deg)"><img src="' + asset + '" alt=""/><div class="hy3n-colour-tint" style="background:' + colour + ';-webkit-mask-image:url(' + asset + ');mask-image:url(' + asset + ');"></div><div class="hy3n-colour-swatch" style="background:' + colour + '"></div></div>' + metricHtml + '</div>';
         return L.divIcon({ html: iconHtml, iconSize: [92, 91], iconAnchor: [46, 43], className: 'hy3n-vehicle-marker' });
       }
       function userIcon() { return L.divIcon({ html: '<div style="width:18px;height:18px;border-radius:50%;background:#006B3F;border:4px solid #fff;box-shadow:0 0 0 3px rgba(0,107,63,.24),0 2px 5px rgba(0,0,0,.32);"></div>', iconSize:[18,18], iconAnchor:[9,9], className:'' }); }
@@ -345,7 +352,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         } else { removeLayer('destination'); if (layers.route) { map.removeLayer(layers.route); layers.route = null; } }
         if (state.driver) {
           clearNearby();
-          setMarker('driver', state.driver, vehicleIcon({ heading: state.driver.heading, colour: state.driver.colour, label: state.driver.label, serviceType: state.driver.serviceType, eta: state.driver.eta }, true));
+          setMarker('driver', state.driver, vehicleIcon({ heading: state.driver.heading, colour: state.driver.colour, label: state.driver.label, serviceType: state.driver.serviceType, eta: state.driver.eta, distanceKm: state.driver.distanceKm }, true));
           if (state.driverTracking && state.trackingTarget && state.trackingPhase === 'pickup') setMarker('pickup', state.trackingTarget, pickupIcon());
           else removeLayer('pickup');
           updateTrackingRoute(state);
