@@ -51,6 +51,7 @@ import { PostRideModal } from "@/components/post-ride-modal";
 import { calculateDynamicFare, calculateDistance, RideMetrics } from "@/lib/dynamic-pricing";
 import { getDistanceToPickup, getDistanceToDestination, estimateETA, formatDistance, isDriverNearPickup, calculateBearing } from "@/lib/driver-tracking";
 import { upsertRide, updateRide, removeRide, countActiveRides } from "@/lib/rider-ride-state";
+import { recoverActiveRides } from "@/lib/rider-active-ride-recovery";
 import { buildEmergencyAssistMessage, getCancellationPolicy, getSafetySignal, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 import { trpc } from "@/lib/trpc";
 import { buildReceiptEmailPayload, receiptRequestKey, type ReceiptEmailStatus } from "@/lib/receipt-email";
@@ -548,6 +549,35 @@ export default function RiderHomeScreen() {
     // Delay slightly so app finishes loading before showing modal
     const t = setTimeout(checkPendingRating, 2000);
     return () => clearTimeout(t);
+  }, [user?.uid]);
+
+  // Rehydrate every non-final ride from Firestore after a close, force-close,
+  // or app relaunch. The ongoing trip belongs to the signed-in rider on the
+  // server, so it must never depend only on the prior screen's memory.
+  useEffect(() => {
+    if (!user?.uid) {
+      setActiveRides([]);
+      setSelectedRideId(null);
+      return;
+    }
+
+    let cancelled = false;
+    const restoreActiveRides = async () => {
+      try {
+        const rides = await firestoreDB.list(COLLECTIONS.RIDES, { rider_id: user.uid });
+        const recovered = recoverActiveRides(rides as Record<string, any>[]) as ActiveRide[];
+        if (cancelled || recovered.length === 0) return;
+        setActiveRides((current) => recovered.reduce((next, ride) => upsertRide(next, ride), current));
+        setSelectedRideId((current) => current && recovered.some((ride) => ride.id === current) ? current : recovered[0].id);
+      } catch (error) {
+        // The normal booking screen remains usable if the network is briefly
+        // unavailable; the next relaunch or active subscription will retry.
+        console.warn('[Rider] Active ride restore failed:', error);
+      }
+    };
+
+    restoreActiveRides();
+    return () => { cancelled = true; };
   }, [user?.uid]);
 
   // Subscribe independently to every active ride so one booking never replaces another.
