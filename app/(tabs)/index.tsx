@@ -1622,6 +1622,28 @@ export default function RiderHomeScreen() {
             </View>
           </TouchableOpacity>
 
+          {activeRide.status === "driver_arrived" && activeRide.ridePin && (
+            <TouchableOpacity
+              onPress={async () => {
+                try { await Share.share({ message: `My HY3N start code is ${activeRide.ridePin}. Please confirm it before the ride starts.`, title: "HY3N Start Code" }); } catch {}
+              }}
+              accessibilityLabel="Share ride start code"
+              style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: `${GOLD}16`, borderWidth: 1, borderColor: `${GOLD}66`, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: hasDriver ? 10 : 0 }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                <MaterialIcons name="lock" size={17} color={GOLD} />
+                <View>
+                  <Text style={{ color: GOLD, fontSize: 12, fontWeight: "900" }}>Start code</Text>
+                  <Text style={{ color: MUTED, fontSize: 10, marginTop: 1 }}>Show this to your Driver</Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Text style={{ color: GOLD, fontWeight: "900", fontSize: 22, letterSpacing: 5 }}>{activeRide.ridePin}</Text>
+                <MaterialIcons name="share" size={16} color={GOLD} />
+              </View>
+            </TouchableOpacity>
+          )}
+
           {hasDriver && (
             <View style={{ flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 11 }}>
               {activeRide.driverPhoto ? (
@@ -2142,16 +2164,40 @@ export default function RiderHomeScreen() {
             <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }} numberOfLines={1}>{pickupAddress || "Current Location"}</Text>
             <Text style={{ color: GOLD, fontSize: 12, marginTop: 3 }}>Tap to change pickup</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => openLocationSearch("destination")}
-            accessibilityRole="button"
-            accessibilityLabel="Change destination"
-            style={{ flex: 1 }}
-          >
-            <Text style={{ color: MUTED, fontSize: 12, marginBottom: 3 }}>Destination</Text>
-            <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }} numberOfLines={1}>{destination?.name || "Selected destination"}</Text>
-            <Text style={{ color: GOLD, fontSize: 12, marginTop: 3 }}>Tap to change destination</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <TouchableOpacity
+              onPress={() => openLocationSearch("destination")}
+              accessibilityRole="button"
+              accessibilityLabel="Change destination"
+              style={{ flex: 1 }}
+            >
+              <Text style={{ color: MUTED, fontSize: 12, marginBottom: 3 }}>Destination</Text>
+              <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }} numberOfLines={1}>{destination?.name || "Selected destination"}</Text>
+              <Text style={{ color: GOLD, fontSize: 12, marginTop: 3 }}>Tap to change destination</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleAddStop}
+              accessibilityRole="button"
+              accessibilityLabel="Add a stop"
+              accessibilityHint="Opens address search for an additional stop"
+              style={{ minWidth: 70, minHeight: 54, alignItems: "center", justifyContent: "center", paddingHorizontal: 8, borderRadius: 12, backgroundColor: `${GOLD}16`, borderWidth: 1, borderColor: `${GOLD}55` }}
+            >
+              <MaterialIcons name="add-location-alt" size={19} color={GOLD} />
+              <Text style={{ color: GOLD, fontSize: 11, fontWeight: "800", marginTop: 3 }}>Add stop</Text>
+            </TouchableOpacity>
+          </View>
+          {stops.map((stop, idx) => (
+            <View key={`${stop?.name}-${idx}`} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: `${GOLD}0D`, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: `${GOLD}33` }}>
+              <MaterialIcons name="more-horiz" size={17} color={GOLD} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: MUTED, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>Stop {idx + 1}</Text>
+                <Text style={{ color: TEXT, fontSize: 13, fontWeight: "700", marginTop: 1 }} numberOfLines={1}>{stop?.name}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setStops((prev) => prev.filter((_, i) => i !== idx))} accessibilityLabel={`Remove stop ${idx + 1}`} style={{ padding: 4 }}>
+                <MaterialIcons name="close" size={18} color={RED} />
+              </TouchableOpacity>
+            </View>
+          ))}
         </View>
         <View style={{ minWidth: 66, alignItems: "flex-end", justifyContent: "center" }}>
           <Text style={{ color: TEXT, fontSize: 16, fontWeight: "800" }}>{distance.toFixed(1)} km</Text>
@@ -2264,31 +2310,6 @@ export default function RiderHomeScreen() {
             <Text style={{ color: MUTED, fontSize: 11, lineHeight: 15 }}>To change the pickup pin, use “Tap to change pickup” above. This note is only shared with the Driver.</Text>
           </View>
         )}
-      </View>
-
-      {/* Stops / Waypoints */}
-      <View style={{ marginBottom: 12 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-          <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600" }}>
-            Stops ({stops.length}/3)
-          </Text>
-          <TouchableOpacity onPress={handleAddStop} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <MaterialIcons name="add-circle-outline" size={16} color={GOLD} />
-            <Text style={{ color: GOLD, fontSize: 12, fontWeight: "600" }}>Add stop</Text>
-          </TouchableOpacity>
-        </View>
-        {stops.map((stop, idx) => (
-          <View key={`${stop?.name}-${idx}`} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: CARD, borderRadius: 12, padding: 10, borderWidth: 1, borderColor: BORDER, marginBottom: 6 }}>
-            <MaterialIcons name="place" size={16} color={GOLD} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: TEXT, fontSize: 13, fontWeight: "600" }} numberOfLines={1}>{stop?.name}</Text>
-              <Text style={{ color: MUTED, fontSize: 11 }} numberOfLines={1}>{stop?.address}</Text>
-            </View>
-            <TouchableOpacity onPress={() => setStops((prev) => prev.filter((_, i) => i !== idx))} accessibilityLabel="Remove stop">
-              <MaterialIcons name="close" size={16} color={RED} />
-            </TouchableOpacity>
-          </View>
-        ))}
       </View>
 
       {/* Surge banner — Uber/Bolt style: plain language, no multiplier */}
