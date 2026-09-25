@@ -173,9 +173,28 @@ type NearbyVehicle = {
   rideCategories: string[];
 };
 
+const LIVE_DRIVER_LOCATION_MAX_AGE_MS = 3 * 60 * 1000;
+
 const toFiniteNumber = (value: unknown) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const timestampToMilliseconds = (value: unknown): number | null => {
+  if (typeof value === 'string' || typeof value === 'number' || value instanceof Date) {
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (!value || typeof value !== 'object') return null;
+  const timestamp = value as { toMillis?: () => number; seconds?: number; _seconds?: number; nanoseconds?: number; _nanoseconds?: number };
+  if (typeof timestamp.toMillis === 'function') {
+    const parsed = timestamp.toMillis();
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  const seconds = Number(timestamp.seconds ?? timestamp._seconds);
+  if (!Number.isFinite(seconds)) return null;
+  const nanoseconds = Number(timestamp.nanoseconds ?? timestamp._nanoseconds ?? 0);
+  return seconds * 1000 + (Number.isFinite(nanoseconds) ? nanoseconds / 1_000_000 : 0);
 };
 
 const vehicleServiceType = (profile: Record<string, any>): NearbyVehicle["serviceType"] => {
@@ -194,12 +213,12 @@ const nearbyVehicleFromProfile = (profile: Record<string, any>): NearbyVehicle |
   const lng = toFiniteNumber(location.longitude ?? location.lng ?? profile.longitude ?? profile.current_lng);
   if (lat === null || lng === null) return null;
 
-  const locationUpdatedAt = location.recorded_at || profile.last_location_update || profile.last_seen_at || profile.last_seen;
-  const locationAgeMs = locationUpdatedAt ? Date.now() - new Date(locationUpdatedAt).getTime() : 0;
-  // Never show a vehicle that has not published a location recently. Profiles
-  // without a timestamp are retained for backwards compatibility with the
-  // existing approved-driver records.
-  if (Number.isFinite(locationAgeMs) && locationAgeMs > 10 * 60 * 1000) return null;
+  const locationUpdatedAtMs = timestampToMilliseconds(location.recorded_at ?? profile.last_location_update);
+  // Availability is not a GPS heartbeat. Hide a marker without a recent
+  // location timestamp so an offline or force-closed Driver does not remain
+  // parked on the Rider map.
+  if (locationUpdatedAtMs === null || locationUpdatedAtMs > Date.now() + 60_000) return null;
+  if (Date.now() - locationUpdatedAtMs > LIVE_DRIVER_LOCATION_MAX_AGE_MS) return null;
 
   const colourName = String(profile.vehicle_colour || profile.vehicle_color || "").trim().toLowerCase();
   const vehicleColourHex = /^#[0-9a-fA-F]{6}$/.test(String(profile.vehicle_colour_hex || profile.vehicle_color_hex || ""))
@@ -308,21 +327,34 @@ export default function RiderHomeScreen() {
   }, []);
   // ─── Nearby Drivers ─────────────────────────────────────────────────────────
   const [nearbyDrivers, setNearbyDrivers] = useState<NearbyVehicle[]>([]);
+  const [onlineDriverProfiles, setOnlineDriverProfiles] = useState<Record<string, any>[]>([]);
 
   // Subscribe to actual online drivers so vehicles move on the map while the
   // rider is choosing a ride. Driver updates use current_location.latitude /
   // longitude, not the old current_lat/current_lng placeholder fields.
   useEffect(() => {
     return firestoreDB.subscribe(COLLECTIONS.DRIVER_PROFILES, { is_online: true }, (profiles) => {
+      setOnlineDriverProfiles(profiles);
+    });
+  }, []);
+
+  // Firestore only notifies on document changes. Run the same filter every
+  // 30 seconds so a device that loses GPS or is force-closed disappears even
+  // when the old profile document is not updated to offline.
+  useEffect(() => {
+    const refreshNearbyDrivers = () => {
       const unique = new Map<string, NearbyVehicle>();
-      profiles.forEach((profile: any) => {
+      onlineDriverProfiles.forEach((profile: any) => {
         if (profile.is_available === false || String(profile.availability_status || '').toLowerCase() === 'busy') return;
         const vehicle = nearbyVehicleFromProfile(profile);
         if (vehicle) unique.set(vehicle.id, vehicle);
       });
       setNearbyDrivers([...unique.values()]);
-    });
-  }, []);
+    };
+    refreshNearbyDrivers();
+    const expiryTimer = setInterval(refreshNearbyDrivers, 30_000);
+    return () => clearInterval(expiryTimer);
+  }, [onlineDriverProfiles]);
 
   const [destination, setDestination] = useState<Location | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
