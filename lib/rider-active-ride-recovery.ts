@@ -41,6 +41,7 @@ export type RecoveredActiveRide = {
   driverPlate?: string;
   driverColour?: string;
   driverColourHex?: string;
+  driverPhoto?: string;
   driverPhone?: string;
   driverLocation?: { lat: number; lng: number };
   driverBearing?: number;
@@ -95,6 +96,14 @@ const driverPoint = (value: unknown): { lat: number; lng: number } | undefined =
   return Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0) ? { lat, lng } : undefined;
 };
 
+const driverPhoto = (value: unknown): string | undefined => {
+  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const candidates = [source.photo_url, source.photoUrl, source.avatar_url, source.avatarUrl, source.driver_photo, source.driverPhoto];
+  return candidates
+    .map((candidate) => String(candidate ?? '').trim())
+    .find((candidate) => /^https?:\/\//i.test(candidate));
+};
+
 /**
  * Rebuilds an active trip entirely from its authoritative Firestore document.
  * This makes an accepted or in-progress ride reappear after an app force-close
@@ -139,6 +148,7 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
     driverPlate: nonEmptyText(driver.plate ?? rawRide.driver_plate) || undefined,
     driverColour: nonEmptyText(driver.vehicle_colour ?? rawRide.driver_colour) || undefined,
     driverColourHex: nonEmptyText(driver.vehicle_colour_hex ?? rawRide.driver_colour_hex) || undefined,
+    driverPhoto: driverPhoto(driver) ?? driverPhoto(rawRide),
     driverPhone: nonEmptyText(driver.phone ?? rawRide.driver_phone) || undefined,
     driverLocation,
     driverBearing: optionalFiniteNumber(driver.location?.heading ?? rawRide.driver_location?.heading),

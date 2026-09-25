@@ -169,6 +169,21 @@ const toFiniteNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+function driverPhotoUri(value: unknown): string | undefined {
+  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const candidates = [
+    source.photo_url,
+    source.photoUrl,
+    source.avatar_url,
+    source.avatarUrl,
+    source.driver_photo,
+    source.driverPhoto,
+  ];
+  return candidates
+    .map((candidate) => String(candidate ?? '').trim())
+    .find((candidate) => /^https?:\/\//i.test(candidate));
+}
+
 export default function RiderHomeScreen() {
   const { colorScheme } = useThemeContext();
   const colors = useColors();
@@ -602,6 +617,7 @@ export default function RiderHomeScreen() {
                   vehicle_colour_hex: rawRide.driver_colour_hex,
                   plate: rawRide.driver_plate,
                   phone: rawRide.driver_phone,
+                  photo_url: rawRide.driver_photo || rawRide.driver_photo_url || rawRide.driverPhoto,
                   location: rawRide.driver_location || { lat: 0, lng: 0 },
                 }
               : null
@@ -671,6 +687,7 @@ export default function RiderHomeScreen() {
             driverColourHex: driver?.vehicle_colour_hex ?? prev.driverColourHex,
             driverTotalTrips: driver?.total_trips ?? prev.driverTotalTrips,
             driverPhone: driver?.phone ?? prev.driverPhone,
+            driverPhoto: driverPhotoUri(driver) ?? driverPhotoUri(rawRide) ?? prev.driverPhoto,
             driverMomoNumber: (ride as any).payment_method === 'mobile_money' || ride.payment === 'mobile_money'
               ? ((driver as any)?.momo_number ?? (ride as any).driver_momo_number ?? prev.driverMomoNumber)
               : undefined,
@@ -1200,6 +1217,7 @@ export default function RiderHomeScreen() {
           driverColour: matchedDriver?.vehicle_colour || undefined,
           driverColourHex: matchedDriver?.vehicle_colour_hex || undefined,
           driverPhone: matchedDriver?.phone || undefined,
+          driverPhoto: driverPhotoUri(matchedDriver),
           driverLocation: matchedDriverLocation,
           eta: matchedDriverEta,
           etaSeconds: matchedDriverEta ? matchedDriverEta * 60 : undefined,
@@ -1623,17 +1641,20 @@ export default function RiderHomeScreen() {
           )}
 
           {hasDriver && (
-            <View style={{ flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 11 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 12 }}>
               {activeRide.driverPhoto ? (
-                <Image source={{ uri: activeRide.driverPhoto }} style={{ width: 44, height: 44, borderRadius: 22, marginRight: 10 }} />
+                <View accessibilityLabel={`Driver photo for ${pairingDriverName}`} style={{ width: 76, height: 76, borderRadius: 20, marginRight: 12, padding: 2, backgroundColor: `${GREEN}22`, borderWidth: 2, borderColor: `${GREEN}AA` }}>
+                  <Image source={{ uri: activeRide.driverPhoto }} resizeMode="cover" style={{ width: "100%", height: "100%", borderRadius: 16 }} />
+                </View>
               ) : (
-                <View style={{ width: 44, height: 44, borderRadius: 22, marginRight: 10, backgroundColor: `${GREEN}20`, alignItems: "center", justifyContent: "center" }}>
-                  <MaterialIcons name="person" size={24} color={GREEN} />
+                <View accessibilityLabel="Driver photo unavailable" style={{ width: 76, height: 76, borderRadius: 20, marginRight: 12, backgroundColor: `${GREEN}20`, borderWidth: 2, borderColor: `${GREEN}66`, alignItems: "center", justifyContent: "center" }}>
+                  <MaterialIcons name="person" size={38} color={GREEN} />
                 </View>
               )}
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: TEXT, fontSize: 15, fontWeight: "900" }} numberOfLines={1}>{pairingDriverName}</Text>
-                <Text style={{ color: MUTED, fontSize: 12, fontWeight: "600", marginTop: 2 }} numberOfLines={1}>{pairingVehicleIdentity} · {activeRide.driverPlate || 'Plate pending'}</Text>
+                <Text style={{ color: GREEN, fontSize: 10, fontWeight: "900", letterSpacing: 0.8, textTransform: "uppercase" }}>Verify your Driver</Text>
+                <Text style={{ color: TEXT, fontSize: 16, fontWeight: "900", marginTop: 2 }} numberOfLines={1}>{pairingDriverName}</Text>
+                <Text style={{ color: MUTED, fontSize: 12, fontWeight: "700", marginTop: 2 }} numberOfLines={1}>{pairingVehicleIdentity} · {activeRide.driverPlate || 'Plate pending'}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 }}>
                   <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: locationFreshnessColor }} />
                   <Text style={{ color: locationFreshnessColor, fontSize: 10, fontWeight: '800' }}>{locationFreshnessLabel}</Text>
@@ -1739,16 +1760,22 @@ export default function RiderHomeScreen() {
                   </View>
                 </View>
 
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 9, marginTop: 14, paddingTop: 13, borderTopWidth: 0.5, borderTopColor: BORDER }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 14, paddingTop: 14, borderTopWidth: 0.5, borderTopColor: BORDER }}>
                   {activeRide.driverPhoto ? (
-                    <Image source={{ uri: activeRide.driverPhoto }} style={{ width: 34, height: 34, borderRadius: 17 }} />
+                    <View accessibilityLabel={`Driver photo for ${pairingDriverName}`} style={{ width: 82, height: 82, borderRadius: 22, padding: 2, backgroundColor: `${GREEN}22`, borderWidth: 2, borderColor: `${GREEN}AA` }}>
+                      <Image source={{ uri: activeRide.driverPhoto }} resizeMode="cover" style={{ width: "100%", height: "100%", borderRadius: 18 }} />
+                    </View>
                   ) : (
-                    <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${GREEN}28`, alignItems: "center", justifyContent: "center" }}>
-                      <MaterialIcons name="person" size={20} color={GREEN} />
+                    <View accessibilityLabel="Driver photo unavailable" style={{ width: 82, height: 82, borderRadius: 22, backgroundColor: `${GREEN}28`, borderWidth: 2, borderColor: `${GREEN}66`, alignItems: "center", justifyContent: "center" }}>
+                      <MaterialIcons name="person" size={42} color={GREEN} />
                     </View>
                   )}
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ color: TEXT, fontSize: 14, fontWeight: "800" }} numberOfLines={1}>{pairingDriverName}</Text>
+                    <Text style={{ color: GREEN, fontSize: 10, fontWeight: "900", letterSpacing: 0.8, textTransform: "uppercase" }}>Verify your Driver</Text>
+                    <Text style={{ color: TEXT, fontSize: 17, fontWeight: "900", marginTop: 2 }} numberOfLines={1}>{pairingDriverName}</Text>
+                    <Text style={{ color: MUTED, fontSize: 11, fontWeight: "600", marginTop: 2 }} numberOfLines={1}>
+                      {activeRide.driverPhoto ? 'Match photo, vehicle and plate before pickup' : 'Driver profile photo is not available'}
+                    </Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
                       <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: locationFreshnessColor }} />
                       <Text style={{ color: locationFreshnessColor, fontSize: 11, fontWeight: "700" }}>{locationFreshnessLabel}</Text>

@@ -15,6 +15,7 @@ const activeRide = {
   driver: {
     id: 'driver-123',
     name: 'Kofi',
+    photo_url: 'https://cdn.example.com/drivers/kofi.jpg',
     vehicle_make: 'Toyota',
     vehicle_model: 'Vitz',
     vehicle_colour: 'White',
@@ -32,6 +33,7 @@ describe('Rider active ride relaunch recovery', () => {
       pickup: 'Accra Mall',
       destination: { name: 'Airport', lat: 5.607, lng: -0.171 },
       driverName: 'Kofi',
+      driverPhoto: 'https://cdn.example.com/drivers/kofi.jpg',
       driverVehicle: 'Toyota Vitz',
       driverBearing: 0,
       ridePin: '9593',
