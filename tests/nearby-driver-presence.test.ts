@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   LIVE_DRIVER_LOCATION_MAX_AGE_MS,
   nearbyVehicleFromProfile,
+  vehicleServesRideCategory,
 } from '../lib/nearby-driver-presence';
 
 const now = Date.parse('2026-09-25T00:00:00.000Z');
@@ -84,5 +85,37 @@ describe('Rider nearby Driver live movement', () => {
 
     expect(nearbyVehicleFromProfile(offline, now)).toBeNull();
     expect(nearbyVehicleFromProfile(busy, now)).toBeNull();
+  });
+
+  it('keeps an online legacy Driver visible when last_seen_at is the only fresh heartbeat', () => {
+    const legacyPresence = {
+      ...driverProfile({ latitude: 5.6041, longitude: -0.1861 }),
+      current_location: {},
+      location: { latitude: 5.6041, longitude: -0.1861 },
+      last_seen_at: new Date(now - 5_000).toISOString(),
+    };
+
+    expect(nearbyVehicleFromProfile(legacyPresence, now)).toMatchObject({
+      id: 'driver-live-id',
+      lat: 5.6041,
+      lng: -0.1861,
+    });
+  });
+
+  it('counts Kantanka vehicles for Comfort but never treats Comfort-only vehicles as Kantanka', () => {
+    const kantanka = nearbyVehicleFromProfile({
+      ...driverProfile({ latitude: 5.6041, longitude: -0.1861, recorded_at: new Date(now - 5_000).toISOString() }),
+      ride_categories: ['kantanka'],
+    }, now)!;
+    const comfort = nearbyVehicleFromProfile({
+      ...driverProfile({ latitude: 5.6041, longitude: -0.1861, recorded_at: new Date(now - 5_000).toISOString() }),
+      ride_categories: ['comfort'],
+    }, now)!;
+
+    expect(vehicleServesRideCategory(kantanka, 'comfort')).toBe(true);
+    expect(vehicleServesRideCategory(kantanka, 'kantanka')).toBe(true);
+    expect(vehicleServesRideCategory(kantanka, 'standard')).toBe(false);
+    expect(vehicleServesRideCategory(comfort, 'comfort')).toBe(true);
+    expect(vehicleServesRideCategory(comfort, 'kantanka')).toBe(false);
   });
 });

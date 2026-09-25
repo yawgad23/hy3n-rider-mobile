@@ -47,12 +47,34 @@ const timestampToMilliseconds = (value: unknown): number | null => {
 
 const vehicleServiceType = (profile: Record<string, any>): NearbyVehicle['serviceType'] => {
   const explicit = String(profile.service_type || profile.serviceType || '').toLowerCase();
-  const categories = Array.isArray(profile.ride_categories)
-    ? profile.ride_categories.map((value: unknown) => String(value).toLowerCase())
-    : [];
+  const categories = driverRideCategories(profile);
   if (explicit.includes('deliver') || categories.includes('express_delivery') || categories.includes('delivery')) return 'delivery';
   if (explicit.includes('okada') || explicit.includes('moto') || categories.includes('okada')) return 'okada';
   return 'car';
+};
+
+const CATEGORY_ALIASES: Record<string, string> = {
+  economy: 'standard',
+  premium: 'comfort',
+  delivery: 'express_delivery',
+};
+
+/** Normalize legacy category names and treat an unspecified car as Standard. */
+export const driverRideCategories = (profile: Record<string, any>) => {
+  const configured = Array.isArray(profile.ride_categories)
+    ? profile.ride_categories
+    : Array.isArray(profile.accepted_categories)
+      ? profile.accepted_categories
+      : [];
+  const categories = configured
+    .map((value: unknown) => CATEGORY_ALIASES[String(value).trim().toLowerCase()] || String(value).trim().toLowerCase())
+    .filter(Boolean);
+  if (categories.length > 0) return [...new Set(categories)];
+
+  const explicit = String(profile.service_type || profile.serviceType || '').toLowerCase();
+  if (explicit.includes('deliver')) return ['express_delivery'];
+  if (explicit.includes('okada') || explicit.includes('moto')) return ['okada'];
+  return ['standard'];
 };
 
 /** Converts one live Driver profile into the Rider map marker, or hides it. */
@@ -66,12 +88,25 @@ export const nearbyVehicleFromProfile = (
   // visible after a fresh GPS update, while never showing offline or busy cars.
   if (!markedOnline || profile.is_available === false || availability === 'offline' || availability === 'busy') return null;
 
-  const location = profile.current_location || profile.location || {};
-  const lat = toFiniteNumber(location.latitude ?? location.lat ?? profile.latitude ?? profile.current_lat);
-  const lng = toFiniteNumber(location.longitude ?? location.lng ?? profile.longitude ?? profile.current_lng);
+  // Some older Driver profile documents keep current_location as an empty
+  // object while their fresh coordinates remain in location/root fields. Use
+  // the first complete coordinate pair rather than rejecting that Driver.
+  const locationCandidates = [profile.current_location, profile.location, profile]
+    .filter((candidate) => candidate && typeof candidate === 'object');
+  const location = locationCandidates.find((candidate: Record<string, any>) => (
+    toFiniteNumber(candidate.latitude ?? candidate.lat ?? candidate.current_lat) !== null
+      && toFiniteNumber(candidate.longitude ?? candidate.lng ?? candidate.current_lng) !== null
+  )) || {};
+  const lat = toFiniteNumber(location.latitude ?? location.lat ?? location.current_lat);
+  const lng = toFiniteNumber(location.longitude ?? location.lng ?? location.current_lng);
   if (lat === null || lng === null) return null;
 
-  const locationUpdatedAtMs = timestampToMilliseconds(location.recorded_at ?? profile.last_location_update);
+  const locationUpdatedAtMs = timestampToMilliseconds(
+    location.recorded_at
+      ?? profile.last_location_update
+      ?? profile.last_seen_at
+      ?? profile.last_seen,
+  );
   // Availability is not a GPS heartbeat. Hide a marker without a recent
   // location timestamp so an offline or force-closed Driver does not remain
   // parked on the Rider map.
@@ -82,9 +117,7 @@ export const nearbyVehicleFromProfile = (
   const vehicleColourHex = /^#[0-9a-fA-F]{6}$/.test(String(profile.vehicle_colour_hex || profile.vehicle_color_hex || ''))
     ? String(profile.vehicle_colour_hex || profile.vehicle_color_hex)
     : VEHICLE_COLOUR_HEX[colourName] || '#F5F5F5';
-  const rideCategories = Array.isArray(profile.ride_categories)
-    ? profile.ride_categories.map((value: unknown) => String(value).toLowerCase())
-    : [];
+  const rideCategories = driverRideCategories(profile);
   const heading = toFiniteNumber(location.heading ?? profile.heading);
 
   return {
@@ -104,8 +137,10 @@ export const vehicleServesRideCategory = (vehicle: NearbyVehicle, categoryId: st
   if (category === 'okada') return vehicle.serviceType === 'okada';
   if (category === 'express_delivery') return vehicle.serviceType === 'delivery';
   if (vehicle.serviceType !== 'car') return false;
-  if (vehicle.rideCategories.length === 0) return true;
-  if (category === 'standard') return vehicle.rideCategories.some((value) => ['standard', 'comfort', 'kantanka', 'executive'].includes(value));
-  if (category === 'comfort') return vehicle.rideCategories.some((value) => ['comfort', 'kantanka', 'executive'].includes(value));
+
+  // A Rider must see the same availability that the Driver can actually
+  // accept. Kantanka is a premium Comfort-compatible vehicle; a Comfort-only
+  // Driver must never appear for, or receive, a Kantanka request.
+  if (category === 'comfort') return vehicle.rideCategories.some((value) => value === 'comfort' || value === 'kantanka');
   return vehicle.rideCategories.includes(category);
 };

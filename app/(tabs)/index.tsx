@@ -2188,6 +2188,7 @@ export default function RiderHomeScreen() {
             .filter((vehicle) => vehicleServesRideCategory(vehicle, cat.id))
             .map((vehicle) => calculateETA({ lat: vehicle.lat, lng: vehicle.lng }, { lat: userLocation[0], lng: userLocation[1] }));
           const pickupEta = matchingVehicles.length ? Math.min(...matchingVehicles) : null;
+          const driverLabel = `${matchingVehicles.length} ${cat.name} driver${matchingVehicles.length === 1 ? '' : 's'}`;
           const vehicleArtwork = cat.id === "okada"
             ? require("@/assets/images/ride-list-map-okada.png")
             : cat.id === "express_delivery"
@@ -2214,7 +2215,7 @@ export default function RiderHomeScreen() {
                 </View>
                 <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{cat.description}</Text>
                 <Text style={{ color: pickupEta !== null ? GREEN : MUTED, fontSize: 11, fontWeight: "800", marginTop: 5 }}>
-                  {pickupEta !== null ? `${pickupEta} min pickup · ${matchingVehicles.length} nearby` : "No nearby vehicle yet"}
+                  {pickupEta !== null ? `${driverLabel} nearby · ${pickupEta} min pickup` : `No ${cat.name} drivers nearby`}
                 </Text>
               </View>
               <View style={{ alignItems: "flex-end", gap: 7 }}>
