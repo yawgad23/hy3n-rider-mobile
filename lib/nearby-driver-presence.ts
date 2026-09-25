@@ -77,11 +77,26 @@ export const driverRideCategories = (profile: Record<string, any>) => {
   return ['standard'];
 };
 
+/**
+ * Driver profiles are visible to Riders only after an administrator has
+ * explicitly approved the registration. A missing approval value is treated
+ * as pending so a newly created or malformed profile cannot appear on the map.
+ */
+export const isApprovedNearbyDriverProfile = (profile: Record<string, any>) => {
+  for (const value of [profile.approval_status, profile.application_status, profile.status]) {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    if (normalized === 'approved') return true;
+    if (normalized === 'pending' || normalized === 'rejected') return false;
+  }
+  return profile.approved === true || profile.is_approved === true;
+};
+
 /** Converts one live Driver profile into the Rider map marker, or hides it. */
 export const nearbyVehicleFromProfile = (
   profile: Record<string, any>,
   referenceMs = Date.now(),
 ): NearbyVehicle | null => {
+  if (!isApprovedNearbyDriverProfile(profile)) return null;
   const availability = String(profile.availability_status || '').toLowerCase();
   const markedOnline = profile.is_online === true || availability === 'online';
   // Older installed Driver versions only wrote availability_status. Keep them

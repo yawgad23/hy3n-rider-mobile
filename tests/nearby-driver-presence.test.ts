@@ -10,6 +10,7 @@ const now = Date.parse('2026-09-25T00:00:00.000Z');
 const driverProfile = (location: Record<string, unknown>) => ({
   id: 'driver-document-id',
   user_id: 'driver-live-id',
+  approval_status: 'approved',
   is_online: true,
   service_type: 'car',
   ride_categories: ['standard'],
@@ -85,6 +86,18 @@ describe('Rider nearby Driver live movement', () => {
 
     expect(nearbyVehicleFromProfile(offline, now)).toBeNull();
     expect(nearbyVehicleFromProfile(busy, now)).toBeNull();
+  });
+
+  it('never exposes pending or rejected Driver applications on the Rider map', () => {
+    const location = {
+      latitude: 5.6041,
+      longitude: -0.1861,
+      recorded_at: new Date(now - 5_000).toISOString(),
+    };
+
+    expect(nearbyVehicleFromProfile({ ...driverProfile(location), approval_status: 'pending' }, now)).toBeNull();
+    expect(nearbyVehicleFromProfile({ ...driverProfile(location), approval_status: 'rejected' }, now)).toBeNull();
+    expect(nearbyVehicleFromProfile({ ...driverProfile(location), approval_status: undefined }, now)).toBeNull();
   });
 
   it('keeps an online legacy Driver visible when last_seen_at is the only fresh heartbeat', () => {
