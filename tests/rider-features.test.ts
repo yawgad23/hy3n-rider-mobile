@@ -7,6 +7,7 @@ import { buildEmergencyAssistMessage, getCancellationPolicy, getSafetySignal, se
 import { buildLostItemDescription, buildLostItemSupportMessage, validateLostItemForm } from "@/lib/lost-item-support";
 import { normalizeTicketStatus, ticketProgress, ticketStatusLabel } from "@/lib/support-ticket";
 import { buildReceiptEmailPayload, receiptRequestKey } from "@/lib/receipt-email";
+import { getFinalRideFare } from "@/lib/fare";
 
 type TestRide = RideStateRecord & { fare: number };
 
@@ -96,6 +97,13 @@ describe("HY3N Rider App feature math", () => {
     expect(payload.driverPlate).toBe("GR 1234-24");
     expect(payload.tripId).toBe("trip-123");
     expect(receiptRequestKey("trip-123")).toBe("hy3n_receipt_email_requested_trip-123");
+  });
+
+  it("uses the completed server fare rather than the original booking quote", () => {
+    // This is the amount used for a completed-trip alert, receipt, and
+    // history when a Driver did not travel the original booked route.
+    expect(getFinalRideFare({ quoted_fare: 70, fare: 70, final_fare: 19 })).toBe(19);
+    expect(getFinalRideFare({ quoted_fare: 70, fare: 70 })).toBe(70);
   });
 
   it("keeps simultaneous rides isolated when one ride is added, updated, or removed", () => {

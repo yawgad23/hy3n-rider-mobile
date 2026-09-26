@@ -657,7 +657,10 @@ export default function RiderHomeScreen() {
             if (ride.status === 'matched' && driver) notifyDriverFound(driver.name, etaMin ?? 5);
             if (ride.status === 'driver_arriving' && driver) notifyDriverArriving(driver.name);
             if (ride.status === 'in_progress') notifyTripStarted(prev.destination.name);
-            if (ride.status === 'completed') notifyTripCompleted(prev.currentFare ?? prev.fare);
+            // `prev` still carries the booking quote at this point. The backend
+            // writes `status` and `final_fare` together, so the completion alert
+            // must use this completed ride snapshot—not the stale quote.
+            if (ride.status === 'completed') notifyTripCompleted(getFinalRideFare(ride));
           }
 
           if (trackedRide.id === selectedRideId && nextDriverLocation) {
