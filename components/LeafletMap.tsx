@@ -44,6 +44,19 @@ export interface LeafletMapRef {
 const FALLBACK_CENTER: [number, number] = [5.6037, -0.187];
 const safeHex = (value?: string | null, fallback = "#F5F5F5") => /^#[0-9a-fA-F]{6}$/.test(value || "") ? value! : fallback;
 const cleanText = (value?: string | null, fallback = "") => String(value || fallback).replace(/[<>&"']/g, "").slice(0, 70);
+const MAP_STATE_PLACEHOLDER = "__HY3N_INITIAL_MAP_STATE__";
+const STATIC_INITIAL_MAP_STATE = JSON.stringify({
+  center: FALLBACK_CENTER,
+  zoom: 14,
+  user: null,
+  destination: null,
+  driver: null,
+  driverTracking: false,
+  trackingTarget: null,
+  trackingPhase: "none",
+  safetySignal: "clear",
+  nearby: [],
+});
 
 const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMap(
   {
@@ -366,16 +379,31 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         updateBanner(state.safetySignal || 'clear');
         fitForState(state, state.driver ? 'assigned:' + state.trackingPhase : state.destination ? 'booking' : (state.nearby || []).length ? 'nearby' : 'idle');
       };
-      window.updateHy3nMap(${serializedMapState});
+      window.updateHy3nMap(${MAP_STATE_PLACEHOLDER});
     })();
   </script>
 </body>
-</html>`, [mapBackground, serializedMapState, serializedMarkerAssets, tileFilter, tileUrl]);
+</html>`, [mapBackground, serializedMarkerAssets, tileFilter, tileUrl]);
+
+  // Native Rider apps receive live GPS changes through injectJavaScript. The
+  // WebView source must not contain current location data: changing source HTML
+  // forces iOS/Android to reload Leaflet and makes the map flash on each move.
+  const nativeMapHtml = useMemo(
+    () => mapHtml.replace(MAP_STATE_PLACEHOLDER, STATIC_INITIAL_MAP_STATE),
+    [mapHtml],
+  );
+  const nativeWebViewSource = useMemo(() => ({ html: nativeMapHtml }), [nativeMapHtml]);
+  // The web iframe has no native injectJavaScript bridge, so it retains its
+  // existing document-update path without affecting the installed apps.
+  const webMapHtml = useMemo(
+    () => mapHtml.replace(MAP_STATE_PLACEHOLDER, serializedMapState),
+    [mapHtml, serializedMapState],
+  );
 
   if (Platform.OS === "web") {
     return (
       <View style={[{ flex: 1, overflow: "hidden" }, style]}>
-        <iframe srcDoc={mapHtml} style={{ width: "100%", height: "100%", border: "none" }} title="HY3N map" />
+        <iframe srcDoc={webMapHtml} style={{ width: "100%", height: "100%", border: "none" }} title="HY3N map" />
       </View>
     );
   }
@@ -385,7 +413,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       <WebView
         key={colorScheme}
         ref={webViewRef}
-        source={{ html: mapHtml }}
+        source={nativeWebViewSource}
         style={{ flex: 1, backgroundColor: mapBackground }}
         scrollEnabled={false}
         bounces={false}
@@ -399,6 +427,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         startInLoadingState={false}
         cacheEnabled={false}
         onMessage={handleMapMessage}
+        onLoadStart={() => setMapReady(false)}
         onLoadEnd={() => setMapReady(true)}
       />
     </View>
