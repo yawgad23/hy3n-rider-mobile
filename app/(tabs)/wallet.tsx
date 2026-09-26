@@ -191,14 +191,14 @@ export default function WalletScreen() {
         amount,
       });
 
-      if (result.success) {
+      if (result.success && result.txId) {
         setPendingTxId(result.txId);
         setTopUpStage("ussd_sent");
         setTopUpMessage("A USSD prompt has been sent to your phone. Enter your MoMo PIN to approve.");
         startPolling(result.txId);
       } else {
         setTopUpStage("failed");
-        setTopUpMessage(walletFailureMessage(result.message));
+        setTopUpMessage(walletFailureMessage(result.message || "Payment could not be started. Please try again."));
       }
     } catch (err: any) {
       setTopUpStage("failed");

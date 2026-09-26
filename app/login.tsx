@@ -20,18 +20,6 @@ const MUTED = '#9CA3AF';
 
 type LoginTab = 'phone' | 'email';
 
-// Google "G" SVG-style coloured letter using Text spans
-function GoogleIcon() {
-  return (
-    <View style={styles.googleIconWrap}>
-      {/* Render the Google G using coloured segments via a background image approach */}
-      <Text style={styles.googleIconText}>
-        <Text style={{ color: '#4285F4' }}>G</Text>
-      </Text>
-    </View>
-  );
-}
-
 export default function LoginScreen() {
   const { signIn, signInWithGoogle } = useAuth();
   const [tab, setTab] = useState<LoginTab>('phone');
@@ -321,24 +309,13 @@ export default function LoginScreen() {
         <TouchableOpacity
           style={styles.googleBtn}
           onPress={async () => {
-            console.log("Google button pressed in UI");
             try {
-              if (Platform.OS === 'web') {
-                console.log("Platform is web, calling signInWithGoogle...");
-                await signInWithGoogle();
-                console.log("Google Sign-In completed successfully, routing...");
-                router.replace('/(tabs)' as any);
-              } else {
-                console.log("Platform is native, showing alert...");
-                Alert.alert(
-                  'Google Sign-In',
-                  'Google Sign-In is available in the published app. Please use Phone or Email login for now.',
-                  [{ text: 'OK' }]
-                );
-              }
+              await signInWithGoogle();
+              router.replace('/(tabs)' as any);
             } catch (err: any) {
-              console.error("Catch block in Google Sign-In button handler:", err);
-              Alert.alert('Error', err.message || 'Google Sign-In failed');
+              if (err?.code !== 'auth/popup-closed-by-user') {
+                Alert.alert('Google Sign-In', err?.message || 'Google Sign-In failed. Please try again.');
+              }
             }
           }}
           activeOpacity={0.85}

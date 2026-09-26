@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { firebaseAuth, firestoreDB, COLLECTIONS } from './firebase';
 import type { User } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -28,7 +28,7 @@ interface AuthContextType {
   guestMode: boolean;
   setGuestMode: (val: boolean) => void;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string, inviteCode?: string) => Promise<void>;
+  signUp: (email: string, password: string, fullName: string, phone: string, inviteCode?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
@@ -38,31 +38,46 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+type RiderProfileBootstrap = Pick<RiderProfile, 'full_name' | 'email' | 'phone'> & {
+  invite_code_used?: string;
+  wallet_balance?: number;
+  loyalty_points?: number;
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [riderProfile, setRiderProfile] = useState<RiderProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [guestMode, setGuestMode] = useState(false);
+  const pendingRegistrationRef = useRef<RiderProfileBootstrap | null>(null);
 
-  const loadProfile = async (firebaseUser: User) => {
+  const loadProfile = async (firebaseUser: User, bootstrap?: RiderProfileBootstrap) => {
     try {
-      const profiles = await firestoreDB.list(
-        COLLECTIONS.RIDER_PROFILES,
-        { user_id: firebaseUser.uid }
-      );
+      const registrationDetails = bootstrap ?? pendingRegistrationRef.current ?? undefined;
+      const canonical = await firestoreDB.get(COLLECTIONS.RIDER_PROFILES, firebaseUser.uid);
+      const profiles = canonical
+        ? [canonical]
+        : await firestoreDB.list(COLLECTIONS.RIDER_PROFILES, { user_id: firebaseUser.uid });
       if (profiles.length > 0) {
-        setRiderProfile(profiles[0] as RiderProfile);
+        const existing = profiles[0] as RiderProfile;
+        if (registrationDetails) {
+          const updated = await firestoreDB.update(COLLECTIONS.RIDER_PROFILES, existing.id, registrationDetails);
+          setRiderProfile({ ...existing, ...updated } as RiderProfile);
+        } else {
+          setRiderProfile(existing);
+        }
       } else {
-        const newProfile = await firestoreDB.create(COLLECTIONS.RIDER_PROFILES, {
+        const newProfile = await firestoreDB.set(COLLECTIONS.RIDER_PROFILES, firebaseUser.uid, {
           user_id: firebaseUser.uid,
-          full_name: firebaseUser.displayName || '',
-          email: firebaseUser.email || '',
-          phone: firebaseUser.phoneNumber || '',
+          full_name: registrationDetails?.full_name || firebaseUser.displayName || '',
+          email: registrationDetails?.email || firebaseUser.email || '',
+          phone: registrationDetails?.phone || firebaseUser.phoneNumber || '',
           loyalty_points: 0,
           loyalty_tier: 'Bronze',
           rating: 5.0,
           total_rides: 0,
           referral_code: Math.random().toString(36).slice(2, 8).toUpperCase(),
+          ...registrationDetails,
         });
         setRiderProfile(newProfile as unknown as RiderProfile);
       }
@@ -94,7 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             phoneNumber: firebaseUser.phoneNumber,
           }));
         }
-        await loadProfile(firebaseUser);
+        await loadProfile(firebaseUser, pendingRegistrationRef.current ?? undefined);
       } else {
         if (Platform.OS !== 'web') {
           await AsyncStorage.removeItem('firebaseUser');
@@ -113,25 +128,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await loadProfile(firebaseUser);
   };
 
-  const signUp = async (email: string, password: string, fullName: string, inviteCode?: string) => {
-    const firebaseUser = await firebaseAuth.register(email, password, fullName);
-    setGuestMode(false);
-    // Store invite code in profile if provided
-    if (inviteCode) {
-      await firestoreDB.create(COLLECTIONS.RIDER_PROFILES, {
-        user_id: firebaseUser.uid,
-        full_name: fullName,
-        email: email,
-        loyalty_points: 10, // GH₵10 bonus for using invite code
-        loyalty_tier: 'Bronze',
-        rating: 5.0,
-        total_rides: 0,
-        referral_code: Math.random().toString(36).slice(2, 8).toUpperCase(),
-        invite_code_used: inviteCode,
-        wallet_balance: 10, // GH₵10 bonus credited to wallet
-      });
+  const signUp = async (email: string, password: string, fullName: string, phone: string, inviteCode?: string) => {
+    const bootstrap: RiderProfileBootstrap = {
+      full_name: fullName,
+      email,
+      phone,
+      ...(inviteCode
+        ? {
+            invite_code_used: inviteCode,
+            loyalty_points: 10,
+            wallet_balance: 10,
+          }
+        : {}),
+    };
+    pendingRegistrationRef.current = bootstrap;
+    try {
+      const firebaseUser = await firebaseAuth.register(email, password, fullName);
+      setGuestMode(false);
+      await loadProfile(firebaseUser, bootstrap);
+    } finally {
+      pendingRegistrationRef.current = null;
     }
-    await loadProfile(firebaseUser);
   };
 
   const signOutUser = async () => {

@@ -33,6 +33,8 @@ interface FirebaseRecaptchaVerifierModalProps {
 export interface FirebaseRecaptchaVerifierHandle {
   type: 'recaptcha';
   verify: () => Promise<string>;
+  /** Firebase Auth calls this after any completed or failed SMS request. */
+  _reset: () => void;
 }
 
 function getWebviewHtml(
@@ -193,6 +195,10 @@ export const FirebaseRecaptchaVerifierModal = forwardRef<
             setVisible(true);
           }
         }),
+      _reset: () => {
+        pending.current = null;
+        setVisible(false);
+      },
     }),
     [attemptInvisibleVerification, invisibleLoaded],
   );

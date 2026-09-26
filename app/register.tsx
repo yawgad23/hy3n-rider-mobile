@@ -7,12 +7,14 @@ import { router } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { useColors } from '@/hooks/use-colors';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { normalizeGhanaMobilePhone, toGhanaLocalPhoneInput } from '@/lib/ghana-phone';
 
 export default function RegisterScreen() {
   const colors = useColors();
   const { signUp } = useAuth();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,8 +22,13 @@ export default function RegisterScreen() {
   const [inviteCode, setInviteCode] = useState('');
 
   const handleRegister = async () => {
+    const normalizedPhone = normalizeGhanaMobilePhone(phone);
     if (!fullName.trim() || !email.trim() || !password.trim()) {
       Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+    if (!normalizedPhone) {
+      Alert.alert('Phone number', 'Enter a valid 9-digit Ghana mobile number.');
       return;
     }
     if (password !== confirmPassword) {
@@ -34,10 +41,27 @@ export default function RegisterScreen() {
     }
     setLoading(true);
     try {
-      await signUp(email.trim(), password, fullName.trim(), inviteCode.trim().toUpperCase() || undefined);
+      await signUp(
+        email.trim(),
+        password,
+        fullName.trim(),
+        normalizedPhone,
+        inviteCode.trim().toUpperCase() || undefined,
+      );
       router.replace('/(tabs)');
     } catch (err: any) {
-      Alert.alert('Registration Failed', err.message || 'Could not create account');
+      if (String(err?.code || '') === 'auth/email-already-in-use') {
+        Alert.alert(
+          'Account already exists',
+          'This email already has a HY3N account. Please enter your password on the Log in page.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Log in', onPress: () => router.replace('/login' as any) },
+          ],
+        );
+      } else {
+        Alert.alert('Registration Failed', err.message || 'Could not create account');
+      }
     } finally {
       setLoading(false);
     }
@@ -84,6 +108,23 @@ export default function RegisterScreen() {
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
+          />
+        </View>
+
+        {/* Ghana phone number */}
+        <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.phonePrefix}>
+            <Text style={[styles.phonePrefixText, { color: colors.foreground }]}>🇬🇭 +233</Text>
+          </View>
+          <TextInput
+            style={[styles.input, { color: colors.foreground }]}
+            placeholder="24 123 4567"
+            placeholderTextColor={colors.muted}
+            value={phone}
+            onChangeText={(value) => setPhone(toGhanaLocalPhoneInput(value))}
+            keyboardType="phone-pad"
+            autoComplete="tel"
+            maxLength={9}
           />
         </View>
 
@@ -171,6 +212,8 @@ const styles = StyleSheet.create({
   },
   inputIcon: { marginRight: 10 },
   input: { flex: 1, height: 50, fontSize: 15 },
+  phonePrefix: { borderRightWidth: 1, borderRightColor: '#2A2A2A', paddingRight: 10, marginRight: 10 },
+  phonePrefixText: { fontSize: 14, fontWeight: '700' },
   eyeBtn: { padding: 4 },
   btn: { height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
   btnDisabled: { opacity: 0.6 },

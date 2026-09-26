@@ -111,6 +111,7 @@ const config: ExpoConfig = {
     "expo-notifications",
     "@react-native-firebase/app",
     "@react-native-firebase/messaging",
+    "@react-native-google-signin/google-signin",
     "./plugins/withLiveActivityReleaseSettings",
     [
       "expo-live-activity",
