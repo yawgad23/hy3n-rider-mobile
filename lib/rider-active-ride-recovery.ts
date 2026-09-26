@@ -1,3 +1,5 @@
+import { isExpiredRiderSearch } from './rider-search-expiry';
+
 export const ACTIVE_RIDE_STATUSES = [
   'searching',
   'matched',
@@ -113,6 +115,10 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
   const status = activeStatus(rawRide.status);
   const id = nonEmptyText(rawRide.id);
   if (!status || !id) return null;
+  // A new search can survive an app relaunch within its short dispatch window,
+  // but an old, unaccepted search must never make the home screen look as if a
+  // fresh Driver search began on login.
+  if (status === 'searching' && isExpiredRiderSearch(rawRide)) return null;
 
   const pickupLocation = locationFrom(rawRide.pickup ?? rawRide.pickup_location, 'Pickup location');
   const destination = locationFrom(rawRide.destination ?? rawRide.destination_location, 'Destination');

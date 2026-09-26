@@ -45,6 +45,20 @@ describe('Rider active ride relaunch recovery', () => {
     expect(recoverActiveRide({ ...activeRide, status: 'cancelled' })).toBeNull();
   });
 
+  it('does not revive an expired driver search, but keeps a current search recoverable', () => {
+    const now = Date.now();
+    expect(recoverActiveRide({
+      ...activeRide,
+      status: 'searching',
+      created_at: new Date(now - 7 * 60 * 1000).toISOString(),
+    })).toBeNull();
+    expect(recoverActiveRide({
+      ...activeRide,
+      status: 'searching',
+      created_at: new Date(now - 60 * 1000).toISOString(),
+    })?.status).toBe('searching');
+  });
+
   it('deduplicates the recovered active ride list by ride id', () => {
     const restored = recoverActiveRides([activeRide, { ...activeRide, status: 'driver_arriving' }]);
     expect(restored).toHaveLength(1);

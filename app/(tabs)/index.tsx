@@ -52,6 +52,8 @@ import { calculateDynamicFare, calculateDistance, RideMetrics } from "@/lib/dyna
 import { getDistanceToPickup, getDistanceToDestination, estimateETA, formatDistance, isDriverNearPickup, calculateBearing } from "@/lib/driver-tracking";
 import { upsertRide, updateRide, removeRide, countActiveRides } from "@/lib/rider-ride-state";
 import { recoverActiveRides } from "@/lib/rider-active-ride-recovery";
+import { isExpiredRiderSearch } from "@/lib/rider-search-expiry";
+import { expireStaleRiderSearch } from "@/lib/rider-search-expiry-api";
 import { buildEmergencyAssistMessage, getCancellationPolicy, getSafetySignal, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 import { trpc } from "@/lib/trpc";
 import { type ReceiptEmailStatus } from "@/lib/receipt-email";
@@ -578,6 +580,11 @@ export default function RiderHomeScreen() {
     const restoreActiveRides = async () => {
       try {
         const rides = await firestoreDB.list(COLLECTIONS.RIDES, { rider_id: user.uid });
+        const expiredSearches = (rides as Record<string, any>[]).filter(isExpiredRiderSearch);
+        // The card is hidden immediately by recovery below, while the trusted
+        // API records the terminal status so expired requests disappear from
+        // Drivers' offer queues too.
+        void Promise.allSettled(expiredSearches.map((ride) => expireStaleRiderSearch(String(ride.id || ''))));
         const recovered = recoverActiveRides(rides as Record<string, any>[]) as ActiveRide[];
         if (cancelled || recovered.length === 0) return;
         setActiveRides((current) => recovered.reduce((next, ride) => upsertRide(next, ride), current));
