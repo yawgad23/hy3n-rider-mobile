@@ -76,7 +76,7 @@ const config: ExpoConfig = {
     package: env.androidPackage,
     // Play Console requires each uploaded Android App Bundle to have a higher
     // version code than every previous artifact for com.hy3n.rider.
-    versionCode: 58001,
+    versionCode: 58002,
     googleServicesFile: "./firebase/google-services.json",
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
