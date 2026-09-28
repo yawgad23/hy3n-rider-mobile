@@ -160,16 +160,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const deleteAccount = async () => {
     if (!user) return;
-    try {
-      // Delete rider profile from Firestore if it exists
-      if (riderProfile?.id) {
-        await firestoreDB.delete(COLLECTIONS.RIDER_PROFILES, riderProfile.id);
-      }
-    } catch (err) {
-      console.error('Error deleting profile:', err);
-    }
-    // Delete Firebase Auth account
-    await firebaseAuth.deleteAccount();
+    await firebaseAuth.deactivateAccount();
+    await firebaseAuth.logout();
     setUser(null);
     setRiderProfile(null);
     setGuestMode(false);

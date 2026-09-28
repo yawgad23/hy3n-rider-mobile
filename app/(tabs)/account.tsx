@@ -159,11 +159,11 @@ export default function AccountScreen() {
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete Account',
-      'This will permanently delete your account and all ride history. This cannot be undone.',
+      'Your account will be deactivated immediately and you will be signed out. HY3N retains limited identity, trip, payment, and safety records for 6 months for fraud, safety, and legal review before a deletion decision.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete Account',
+          text: 'Deactivate Account',
           style: 'destructive',
           onPress: async () => {
             try {
