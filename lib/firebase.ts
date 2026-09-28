@@ -116,6 +116,7 @@ export const COLLECTIONS = {
   PAYMENTS: 'payments',
   RIDE_REPORTS: 'ride_reports',
   DRIVER_PROFILES: 'driver_profiles',
+  DRIVER_PRESENCE: 'driver_presence',
   DAILY_COMMISSION: 'daily_commissions',
 };
 

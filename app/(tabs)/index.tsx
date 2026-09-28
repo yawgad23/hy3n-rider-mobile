@@ -263,12 +263,10 @@ export default function RiderHomeScreen() {
   const [nearbyDrivers, setNearbyDrivers] = useState<NearbyVehicle[]>([]);
   const [onlineDriverProfiles, setOnlineDriverProfiles] = useState<Record<string, any>[]>([]);
 
-  // Subscribe to Driver profiles while the rider is choosing a ride. Presence
-  // is filtered locally because older installed Driver builds wrote
-  // availability_status="online" without the newer is_online boolean; a
-  // filtered Firestore query would silently omit those live vehicles.
+  // Subscribe only to the server-published, map-safe Driver presence feed.
+  // Full Driver profiles contain private application and payment information.
   useEffect(() => {
-    return firestoreDB.subscribe(COLLECTIONS.DRIVER_PROFILES, {}, (profiles) => {
+    return firestoreDB.subscribe(COLLECTIONS.DRIVER_PRESENCE, {}, (profiles) => {
       setOnlineDriverProfiles(profiles);
     });
   }, []);
@@ -744,15 +742,15 @@ export default function RiderHomeScreen() {
     return () => subscriptions.forEach((unsubscribe) => unsubscribe?.());
   }, [activeRideKeys, user?.uid]);
 
-  // Driver presence is updated by the standalone backend on the driver's
-  // profile document. Subscribe to that document as well as the ride itself,
-  // so the rider sees movement from acceptance through the live trip.
+  // Subscribe to the server-published map-safe presence document as well as
+  // the ride itself, so the Rider sees movement without reading private
+  // Driver application records.
   useEffect(() => {
     const ride = activeRides.find((item) => item.id === selectedRideId) || activeRides[0];
     const driverId = ride?.driverId;
     if (!driverId || !ride || !['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(ride.status)) return;
 
-    return firestoreDB.subscribeDoc(COLLECTIONS.DRIVER_PROFILES, driverId, (profile: any) => {
+    return firestoreDB.subscribeDoc(COLLECTIONS.DRIVER_PRESENCE, driverId, (profile: any) => {
       const current = profile?.current_location || profile?.location;
       const lat = Number(current?.latitude ?? current?.lat);
       const lng = Number(current?.longitude ?? current?.lng);
@@ -1442,22 +1440,15 @@ export default function RiderHomeScreen() {
     // Settle wallet payment: deduct fare from rider, credit driver
     if (activeRide?.status === 'completed' && isWalletPayment(activeRide) && user) {
       try {
-        const fare = getFinalRideFare(activeRide);
-        const driverId = (activeRide as any).driverId || (activeRide as any).driver_id || '';
         const apiBase = getApiBaseUrl();
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) throw new Error('The Rider session has expired.');
         await fetch(`${apiBase}/api/trpc/wallet.settleRide`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           credentials: 'include',
           body: JSON.stringify({
-            rideId: activeRide.id,
-            riderId: user.uid,
-            driverId,
-            driverName: activeRide.driverName || 'Driver',
-            riderName: (riderProfile as any)?.full_name || user.displayName || 'Rider',
-            fare,
-            pickup: typeof activeRide.pickup === 'string' ? activeRide.pickup : 'Pickup',
-            destination: activeRide.destination?.name || 'Destination',
+            json: { rideId: activeRide.id, riderId: user.uid },
           }),
         });
       } catch (err: any) {
