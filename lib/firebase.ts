@@ -11,7 +11,6 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
-  sendPasswordResetEmail,
   sendEmailVerification,
   onAuthStateChanged,
   PhoneAuthProvider,
@@ -163,7 +162,16 @@ export const firebaseAuth = {
   },
 
   async resetPassword(email: string) {
-    await sendPasswordResetEmail(auth, email);
+    const apiBaseUrl = getApiBaseUrl();
+    if (!apiBaseUrl) throw new Error('Password reset is temporarily unavailable. Please try again later.');
+    const response = await fetch(`${apiBaseUrl}/api/auth/password-reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!response.ok) {
+      throw new Error('Password reset is temporarily unavailable. Please try again later.');
+    }
   },
 
   getCurrentUser(): User | null {

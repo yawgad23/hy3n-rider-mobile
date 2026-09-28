@@ -23,8 +23,8 @@ export default function ForgotPasswordScreen() {
     try {
       await firebaseAuth.resetPassword(email.trim());
       setSent(true);
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to send reset email');
+    } catch {
+      Alert.alert('Unable to send reset link', 'Password reset is temporarily unavailable. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -46,14 +46,14 @@ export default function ForgotPasswordScreen() {
 
         <Text style={[styles.title, { color: colors.foreground }]}>Reset password</Text>
         <Text style={[styles.subtitle, { color: colors.muted }]}>
-          Enter your email and we&apos;ll send you a reset link
+          Enter the email address associated with your account
         </Text>
 
         {sent ? (
           <View style={[styles.successBox, { backgroundColor: '#006B3F20' }]}>
             <MaterialIcons name="check-circle" size={24} color="#006B3F" />
             <Text style={[styles.successText, { color: '#006B3F' }]}>
-              Reset email sent! Check your inbox.
+              If an account exists for this email, we have sent a reset link. Check your inbox and spam folder.
             </Text>
           </View>
         ) : (
