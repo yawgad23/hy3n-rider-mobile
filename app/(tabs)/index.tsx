@@ -32,9 +32,6 @@ import {
   RIDE_CATEGORIES,
   POPULAR_DESTINATIONS,
   PAYMENT_METHODS,
-  PROMO_CODES,
-  calculateFare,
-  calculateDiscount,
   FREE_WAITING_MINUTES,
 } from "@/constants/rides";
 import {
@@ -57,7 +54,7 @@ import { expireStaleRiderSearch } from "@/lib/rider-search-expiry-api";
 import { buildEmergencyAssistMessage, getCancellationPolicy, getSafetySignal, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 import { trpc } from "@/lib/trpc";
 import { type ReceiptEmailStatus } from "@/lib/receipt-email";
-import { getFinalRideFare, getQuotedRideFare, roundGhsFare } from "@/lib/fare";
+import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
 import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-share";
 import { payWithHubtelCard } from "@/lib/card-checkout";
 import { endRiderLiveActivity, syncRiderLiveActivity } from "@/lib/ride-live-activity";
@@ -89,6 +86,20 @@ interface SavedPlace {
   address: string;
   lat?: number;
   lng?: number;
+}
+
+interface ServerRideQuote {
+  quoteId?: string;
+  expiresAt?: string;
+  category: string;
+  available: boolean;
+  total: number;
+  baseFare: number;
+  distanceKm: number;
+  durationMinutes: number;
+  surgeMultiplier: number;
+  fareRate: Record<string, unknown>;
+  breakdown: Record<string, unknown>;
 }
 
 interface ActiveRide {
@@ -306,6 +317,8 @@ export default function RiderHomeScreen() {
   const [shareActionBusy, setShareActionBusy] = useState(false);
   const unreadChatCount = useUnreadChatCount(activeRide?.firestoreId || activeRide?.id || null, user?.uid || '', 'rider');
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [serverQuotes, setServerQuotes] = useState<Record<string, ServerRideQuote>>({});
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const nearbyVehiclesForSelectedCategory = nearbyDrivers
     .filter((vehicle) => vehicleServesRideCategory(vehicle, selectedCategory.id))
     .map((vehicle) => ({
@@ -439,7 +452,6 @@ export default function RiderHomeScreen() {
 
   // Promo Code
   const [promoInput, setPromoInput] = useState("");
-  const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
   const [promoExpanded, setPromoExpanded] = useState(false);
   const [promoError, setPromoError] = useState("");
 
@@ -939,13 +951,67 @@ export default function RiderHomeScreen() {
       )
     : 0;
   const duration = Math.round(distance * 3.5 + 5);
-  const baseFare = destination ? roundGhsFare(calculateFare(selectedCategory.id, distance, duration)) : 0;
-  const discount = appliedPromo ? calculateDiscount(appliedPromo, baseFare) : 0;
-  const finalFare = roundGhsFare(Math.max(0, baseFare - discount));
-  // This is the only amount offered to the Rider and sent to the backend. It
-  // includes any administrator-approved surge before the Rider confirms.
-  const bookingFare = destination ? roundGhsFare(finalFare * surge.multiplier) : 0;
-  const preTipAmount = selectedTipPercent ? (finalFare * selectedTipPercent) / 100 : (customTip ? parseFloat(customTip) : 0);
+  const selectedQuote = destination ? serverQuotes[selectedCategory.id] : undefined;
+  const bookingFare = selectedQuote?.available ? selectedQuote.total : 0;
+  const quoteSurgeMultiplier = selectedQuote?.surgeMultiplier ?? surge.multiplier;
+  const preTipAmount = selectedTipPercent ? (bookingFare * selectedTipPercent) / 100 : (customTip ? parseFloat(customTip) : 0);
+
+  // The app displays quotes from the protected API rather than calculating a
+  // fare locally. A price edit in the admin dashboard applies on this refresh;
+  // accepting the ride locks the same server quote into the ride record.
+  useEffect(() => {
+    if (!destination || !user) {
+      setServerQuotes({});
+      setQuoteLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const loadQuotes = async () => {
+      setQuoteLoading(true);
+      try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error('Session expired');
+        const response = await fetch(`${getApiBaseUrl()}/api/rides/quote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+          body: JSON.stringify({
+            categories: RIDE_CATEGORIES.map((category) => category.id),
+            pickup: {
+              lat: userLocation[0],
+              lng: userLocation[1],
+              name: pickupAddress || 'Current Location',
+              address: pickupAddress || 'Current Location',
+            },
+            destination: {
+              lat: destination.lat,
+              lng: destination.lng,
+              name: destination.name,
+              address: destination.address || destination.name,
+            },
+            stops: stops.filter(Boolean).map((stop) => ({
+              lat: stop!.lat,
+              lng: stop!.lng,
+              name: stop!.name,
+              address: stop!.address || stop!.name,
+            })),
+            distance,
+            duration,
+          }),
+        });
+        const payload = await response.json().catch(() => null) as { success?: boolean; quotes?: ServerRideQuote[] } | null;
+        if (!response.ok || !payload?.success || !Array.isArray(payload.quotes)) throw new Error('Quote unavailable');
+        if (!cancelled) setServerQuotes(Object.fromEntries(payload.quotes.map((quote) => [quote.category, quote])));
+      } catch {
+        // Do not use local pricing as a fallback: the Rider must never accept
+        // a number that the backend has not calculated.
+        if (!cancelled) setServerQuotes({});
+      } finally {
+        if (!cancelled) setQuoteLoading(false);
+      }
+    };
+    loadQuotes();
+    return () => { cancelled = true; };
+  }, [destination?.lat, destination?.lng, destination?.name, destination?.address, user?.uid, userLocation[0], userLocation[1], pickupAddress, stops, distance, duration]);
 
   const [placeSuggestions, setPlaceSuggestions] = useState<Location[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -1062,7 +1128,7 @@ export default function RiderHomeScreen() {
     return handleSelectLocation(loc, "destination");
   };
 
-  const handleBook = async (paymentOverride = selectedPayment) => {
+  const handleBook = async (paymentOverride = selectedPayment, cardCheckoutTransactionId?: string) => {
     const paymentMethod = paymentOverride;
     if (!destination) {
       openLocationSearch("destination");
@@ -1071,6 +1137,10 @@ export default function RiderHomeScreen() {
 
     if (!user) {
       Alert.alert("Sign in required", "Please sign in before requesting a HY3N ride.");
+      return;
+    }
+    if (!selectedQuote?.quoteId || !selectedQuote.available) {
+      Alert.alert("Pricing is updating", "Please wait for the protected server quote before requesting this ride.");
       return;
     }
 
@@ -1095,6 +1165,7 @@ export default function RiderHomeScreen() {
           idToken,
           amount: bookingFare,
           purpose: 'ride_quote',
+          quoteId: selectedQuote.quoteId,
           description: `Ride credit to ${destination.name}`,
         });
 
@@ -1112,7 +1183,7 @@ export default function RiderHomeScreen() {
         // the internal payment ID as `wallet` makes that debit idempotent;
         // the rider-facing label still says Card via Hubtel.
         const walletPayment = { id: 'wallet', name: 'Card via Hubtel', icon: 'credit-card' as const };
-        await handleBook(walletPayment);
+        await handleBook(walletPayment, payment.transactionId);
       } catch (error: any) {
         Alert.alert('Card checkout unavailable', error?.message || 'We could not start the secure Hubtel card checkout. Please try again.');
       } finally {
@@ -1122,13 +1193,12 @@ export default function RiderHomeScreen() {
     }
 
     setBookingLoading(true);
-    const surgedFare = bookingFare;
     try {
       if (paymentMethod.id === "wallet") {
         const wallet = await firestoreDB.get(COLLECTIONS.WALLET, user.uid);
         const balance = Number(wallet?.balance ?? 0);
-        if (balance < surgedFare) {
-          Alert.alert("Insufficient Wallet Balance", `You need GH₵${(surgedFare - balance).toFixed(2)} more to book this ride.`);
+        if (balance < bookingFare) {
+          Alert.alert("Insufficient Wallet Balance", `You need GH₵${(bookingFare - balance).toFixed(2)} more to book this ride.`);
           setBookingLoading(false);
           return;
         }
@@ -1163,13 +1233,10 @@ export default function RiderHomeScreen() {
         stops: stops.filter(Boolean).map(s => ({ lat: s!.lat, lng: s!.lng, name: s!.name, address: s!.address || s!.name })),
         payment: paymentMethod.id,
         paymentLabel: paymentMethod.name,
-        fare: surgedFare,
-        baseFare: finalFare,
-        surgeMultiplier: surge.multiplier,
+        quoteId: selectedQuote.quoteId,
+        cardCheckoutTransactionId,
         distance,
         duration,
-        promoCode: appliedPromo ?? undefined,
-        discount: appliedPromo ? Math.round((finalFare - surgedFare) * 100) / 100 : undefined,
       };
       const response = await fetch(`${getApiBaseUrl()}/api/rides/request`, {
         method: 'POST',
@@ -1213,7 +1280,7 @@ export default function RiderHomeScreen() {
           status: rideStatus,
           scheduled: isScheduled ? scheduledFor : null,
           ridePin: String(createdRide.pickup_code || createdRide.ride_pin || ''),
-          surgeMultiplier: surge.multiplier,
+          surgeMultiplier: Number(createdRide.surge_multiplier) || quoteSurgeMultiplier,
           driverId: matchedDriver?.id || createdRide.driver_id || undefined,
           driverName: matchedDriver?.name || undefined,
           driverRating: Number.isFinite(Number(matchedDriver?.rating)) ? Number(matchedDriver?.rating) : undefined,
@@ -1259,7 +1326,8 @@ export default function RiderHomeScreen() {
   const resetBookingState = () => {
     setDestination(null);
     setStops([]);
-    setAppliedPromo(null);
+    setPromoInput("");
+    setPromoError("");
     setIsScheduled(false);
     setScheduledFor(null);
     setBookForSomeone(false);
@@ -1325,14 +1393,9 @@ export default function RiderHomeScreen() {
   };
 
   const handleApplyPromo = () => {
-    const code = promoInput.trim().toUpperCase();
-    if (!PROMO_CODES[code]) {
-      setPromoError("Invalid promo code");
-      return;
-    }
-    setAppliedPromo(code);
-    setPromoExpanded(false);
-    setPromoError("");
+    // Promotional pricing must be validated by a server campaign before it can
+    // affect a quote. Do not show an unverified client-side discount.
+    setPromoError("Promo codes are not active right now. Your quoted fare is server-calculated.");
   };
 
   const handleScheduleConfirm = () => {
@@ -2183,7 +2246,9 @@ export default function RiderHomeScreen() {
       </View>
       <View style={{ gap: 9, paddingBottom: 14 }}>
         {RIDE_CATEGORIES.map((cat) => {
-          const fare = roundGhsFare(calculateFare(cat.id, distance, duration) * surge.multiplier);
+          const quote = serverQuotes[cat.id];
+          const fare = quote?.total ?? 0;
+          const isAvailable = quote?.available === true;
           const isSelected = selectedCategory.id === cat.id;
           const matchingVehicles = nearbyDrivers
             .filter((vehicle) => vehicleServesRideCategory(vehicle, cat.id))
@@ -2198,10 +2263,10 @@ export default function RiderHomeScreen() {
           return (
             <TouchableOpacity
               key={cat.id}
-              onPress={() => setSelectedCategory(cat)}
+              onPress={() => isAvailable && setSelectedCategory(cat)}
               accessibilityRole="button"
-              accessibilityState={{ selected: isSelected }}
-              style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 13, borderRadius: 16, backgroundColor: isSelected ? `${GOLD}1A` : "transparent", borderWidth: isSelected ? 1.8 : 0, borderColor: GOLD }}
+              accessibilityState={{ selected: isSelected, disabled: !isAvailable }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 13, borderRadius: 16, opacity: quoteLoading || !isAvailable ? 0.58 : 1, backgroundColor: isSelected ? `${GOLD}1A` : "transparent", borderWidth: isSelected ? 1.8 : 0, borderColor: GOLD }}
             >
               <View style={{ width: 74, height: 52, alignItems: "center", justifyContent: "center" }}>
                 <Image source={vehicleArtwork} style={{ width: 74, height: 52 }} resizeMode="contain" />
@@ -2215,12 +2280,12 @@ export default function RiderHomeScreen() {
                   </View>
                 </View>
                 <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{cat.description}</Text>
-                <Text style={{ color: pickupEta !== null ? GREEN : MUTED, fontSize: 11, fontWeight: "800", marginTop: 5 }}>
-                  {pickupEta !== null ? `${driverLabel} nearby · ${pickupEta} min pickup` : `No ${cat.name} drivers nearby`}
+                <Text style={{ color: !isAvailable ? MUTED : pickupEta !== null ? GREEN : MUTED, fontSize: 11, fontWeight: "800", marginTop: 5 }}>
+                  {!quote ? 'Updating protected fare…' : !isAvailable ? 'Temporarily unavailable' : pickupEta !== null ? `${driverLabel} nearby · ${pickupEta} min pickup` : `No ${cat.name} drivers nearby`}
                 </Text>
               </View>
               <View style={{ alignItems: "flex-end", gap: 7 }}>
-                <Text style={{ color: isSelected ? GOLD : TEXT, fontSize: 18, fontWeight: "900" }}>GH₵{fare.toFixed(2)}</Text>
+                <Text style={{ color: isSelected ? GOLD : TEXT, fontSize: 18, fontWeight: "900" }}>{quote ? `GH₵${fare.toFixed(2)}` : '—'}</Text>
                 {isSelected ? <MaterialIcons name="check-circle" size={20} color={GOLD} /> : <MaterialIcons name="chevron-right" size={22} color={MUTED} />}
               </View>
             </TouchableOpacity>
@@ -2275,7 +2340,7 @@ export default function RiderHomeScreen() {
       </View>
 
       {/* Surge banner — Uber/Bolt style: plain language, no multiplier */}
-      {surge.active && (
+      {quoteSurgeMultiplier > 1 && (
         <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, backgroundColor: "#F59E0B18", borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: "#F59E0B40" }}>
           <MaterialIcons name="bolt" size={18} color="#F59E0B" style={{ marginTop: 1 }} />
           <View style={{ flex: 1 }}>

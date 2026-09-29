@@ -16,6 +16,7 @@ interface StartCardCheckoutInput {
   idToken: string;
   amount: number;
   purpose: CardCheckoutPurpose;
+  quoteId?: string;
   description: string;
 }
 
@@ -70,6 +71,7 @@ export async function payWithHubtelCard(input: StartCardCheckoutInput): Promise<
     body: JSON.stringify({
       amount: input.amount,
       purpose: input.purpose,
+      quoteId: input.quoteId,
       description: input.description,
     }),
   });
