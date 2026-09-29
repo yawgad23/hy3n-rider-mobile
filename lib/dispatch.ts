@@ -10,9 +10,11 @@
  */
 
 import {
+  auth,
   db,
   COLLECTIONS,
 } from './firebase';
+import { getApiBaseUrl } from '@/constants/oauth';
 import {
   collection,
   doc,
@@ -414,10 +416,16 @@ export const dispatchService = {
   /**
    * Cancel a ride with a reason.
    */
-  async cancelRide(rideId: string, reason: string, cancellationFee = 0): Promise<void> {
-    const extra: any = { cancel_reason: reason };
-    if (cancellationFee > 0) extra.cancellation_fee = cancellationFee;
-    await dispatchService.updateRideStatus(rideId, 'cancelled', extra);
+  async cancelRide(rideId: string, reason: string): Promise<void> {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error('Please sign in again before cancelling this ride.');
+    const response = await fetch(`${getApiBaseUrl()}/api/rides/${encodeURIComponent(rideId)}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify({ reason }),
+    });
+    const payload = await response.json().catch(() => null) as { success?: boolean; message?: string } | null;
+    if (!response.ok || !payload?.success) throw new Error(payload?.message || 'Ride cancellation is unavailable right now.');
   },
 
   /**

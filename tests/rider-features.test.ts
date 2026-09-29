@@ -44,7 +44,8 @@ describe("HY3N Rider App feature math", () => {
   it("applies the rider cancellation policy and creates a shareable emergency handoff", () => {
     const matchedAt = new Date(1_000_000).toISOString();
     expect(getCancellationPolicy("matched", matchedAt, 1_000_000 + 30_000).isFree).toBe(true);
-    expect(getCancellationPolicy("matched", matchedAt, 1_000_000 + 180_000).fee).toBe(5);
+    expect(getCancellationPolicy("matched", matchedAt, 1_000_000 + 180_000).fee).toBe(0);
+    expect(getCancellationPolicy("in_progress", matchedAt).message).toContain("cannot be cancelled");
     const message = buildEmergencyAssistMessage({
       rideId: "ride-123",
       pickup: "Osu",

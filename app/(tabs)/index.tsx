@@ -1346,16 +1346,14 @@ export default function RiderHomeScreen() {
   const confirmCancelRide = async () => {
     if (activeRide?.firestoreId) {
       try {
-        const policy = getCancellationPolicy(activeRide.status, activeRide.matchedAt);
         await dispatchService.cancelRide(
           activeRide.firestoreId,
           cancelReason || 'Cancelled by rider',
-          policy.fee,
         );
-        if (!policy.isFree) {
-          Alert.alert('Cancellation Fee Applied', `A GH₵${policy.fee.toFixed(2)} cancellation fee has been charged.`, [{ text: 'OK' }]);
-        }
-      } catch (e) { /* silent */ }
+      } catch (error) {
+        Alert.alert('Cannot Cancel Ride', error instanceof Error ? error.message : 'Ride cancellation is unavailable right now.');
+        return;
+      }
     }
     setShowCancelModal(false);
     removeActiveRide(activeRide?.id);

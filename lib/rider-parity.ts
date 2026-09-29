@@ -35,25 +35,17 @@ export function getCancellationPolicy(
   freeWindowMs = 2 * 60 * 1000,
   cancellationFee = 5,
 ): { isFree: boolean; fee: number; message: string } {
-  if (!matchedAt || !["matched", "driver_arriving", "driver_arrived"].includes(status)) {
-    return { isFree: true, fee: 0, message: "Cancel without a fee before a driver is assigned." };
+  // The server permits cancellation only before Start Trip and records no fare,
+  // waiting fee, or cancellation fee. These retained arguments preserve call
+  // compatibility with older UI code without giving the device fee authority.
+  void matchedAt;
+  void now;
+  void freeWindowMs;
+  void cancellationFee;
+  if (status === "in_progress") {
+    return { isFree: true, fee: 0, message: "Trips cannot be cancelled after Start Trip. Contact support for a fare dispute." };
   }
-
-  const elapsed = Math.max(0, now - new Date(matchedAt).getTime());
-  if (elapsed <= freeWindowMs) {
-    const remainingSeconds = Math.max(0, Math.ceil((freeWindowMs - elapsed) / 1000));
-    return {
-      isFree: true,
-      fee: 0,
-      message: `Free cancellation for ${Math.floor(remainingSeconds / 60)}m ${remainingSeconds % 60}s.`,
-    };
-  }
-
-  return {
-    isFree: false,
-    fee: cancellationFee,
-    message: `A GH₵${cancellationFee.toFixed(2)} cancellation fee applies after the 2-minute free cancellation window.`,
-  };
+  return { isFree: true, fee: 0, message: "Cancel before Start Trip without a charge." };
 }
 
 export type SafetySignal = "clear" | "route_deviation" | "long_stop";
