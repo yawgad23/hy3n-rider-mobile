@@ -51,7 +51,7 @@ import { upsertRide, updateRide, removeRide, countActiveRides } from "@/lib/ride
 import { recoverActiveRides } from "@/lib/rider-active-ride-recovery";
 import { isExpiredRiderSearch } from "@/lib/rider-search-expiry";
 import { expireStaleRiderSearch } from "@/lib/rider-search-expiry-api";
-import { buildEmergencyAssistMessage, getCancellationPolicy, getSafetySignal, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
+import { buildEmergencyAssistMessage, getSafetySignal, requiresCancellationReason, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 import { trpc } from "@/lib/trpc";
 import { type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
@@ -314,6 +314,9 @@ export default function RiderHomeScreen() {
   const [activeRides, setActiveRides] = useState<ActiveRide[]>([]);
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const activeRide = activeRides.find((ride) => ride.id === selectedRideId) ?? activeRides[0] ?? null;
+  const cancellationReasonRequired = activeRide
+    ? requiresCancellationReason(activeRide.status, activeRide.driverId)
+    : false;
   const [shareActionBusy, setShareActionBusy] = useState(false);
   const unreadChatCount = useUnreadChatCount(activeRide?.firestoreId || activeRide?.id || null, user?.uid || '', 'rider');
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -1340,17 +1343,36 @@ export default function RiderHomeScreen() {
       Alert.alert("Cannot Cancel", "You cannot cancel a ride that is already in progress.");
       return;
     }
+    if (!activeRide) return;
     setCancelReason("");
+    if (!cancellationReasonRequired) {
+      Alert.alert(
+        "Cancel ride request?",
+        "No Driver is connected yet. You can cancel this request without selecting a reason.",
+        [
+          { text: "Keep Request", style: "cancel" },
+          { text: "Cancel Ride", style: "destructive", onPress: () => { void confirmCancelRide(); } },
+        ],
+      );
+      return;
+    }
     setShowCancelModal(true);
   };
   const confirmCancelRide = async () => {
+    if (!activeRide) return;
+    if (cancellationReasonRequired && !cancelReason) return;
     if (activeRide?.firestoreId) {
       try {
         await dispatchService.cancelRide(
           activeRide.firestoreId,
-          cancelReason || 'Cancelled by rider',
+          cancellationReasonRequired ? cancelReason : undefined,
         );
       } catch (error) {
+        if ((error as Error & { code?: string })?.code === 'cancellation_reason_required') {
+          setCancelReason("");
+          setShowCancelModal(true);
+          return;
+        }
         Alert.alert('Cannot Cancel Ride', error instanceof Error ? error.message : 'Ride cancellation is unavailable right now.');
         return;
       }
@@ -3003,25 +3025,17 @@ export default function RiderHomeScreen() {
         otherRole="driver"
       />
 
-      {/* Cancel with Reason Modal */}
+      {/* A cancellation reason is collected only after a Driver is assigned. */}
       <Modal visible={showCancelModal} transparent animationType="slide">
         <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
           <View style={{ backgroundColor: CARD, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 }}>
             <Text style={{ color: TEXT, fontWeight: "800", fontSize: 18, marginBottom: 4 }}>Cancel Ride</Text>
-            {(() => {
-              const policy = activeRide
-                ? getCancellationPolicy(activeRide.status, activeRide.matchedAt)
-                : { isFree: true, fee: 0, message: "Cancel without a fee." };
-              return policy.isFree ? (
-                <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>{policy.message} Select a reason for cancelling:</Text>
-              ) : (
-                <View style={{ backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 10, padding: 10, marginBottom: 12 }}>
-                  <Text style={{ color: RED, fontSize: 13, fontWeight: '700' }}>Cancellation fee · GH₵{policy.fee.toFixed(2)}</Text>
-                  <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>{policy.message}</Text>
-                </View>
-              );
-            })()}
-            {CANCEL_REASONS.map((reason) => (
+            <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>
+              {cancellationReasonRequired
+                ? "A Driver is connected. Please select a reason for cancelling."
+                : "No Driver is connected yet. You can cancel this request without selecting a reason."}
+            </Text>
+            {cancellationReasonRequired && CANCEL_REASONS.map((reason) => (
               <TouchableOpacity
                 key={reason}
                 onPress={() => setCancelReason(reason)}
@@ -3042,13 +3056,10 @@ export default function RiderHomeScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={confirmCancelRide}
-                style={{ flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: RED, alignItems: "center" }}
+                disabled={cancellationReasonRequired && !cancelReason}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: RED, alignItems: "center", opacity: cancellationReasonRequired && !cancelReason ? 0.55 : 1 }}
               >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>
-                  {activeRide && !getCancellationPolicy(activeRide.status, activeRide.matchedAt).isFree
-                    ? `Cancel · GH₵${getCancellationPolicy(activeRide.status, activeRide.matchedAt).fee.toFixed(2)}`
-                    : 'Cancel Ride'}
-                </Text>
+                <Text style={{ color: "#fff", fontWeight: "700" }}>Cancel Ride</Text>
               </TouchableOpacity>
             </View>
           </View>

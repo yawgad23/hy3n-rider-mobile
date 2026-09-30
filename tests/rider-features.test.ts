@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { calculateDynamicFare, calculateDistance } from "@/lib/dynamic-pricing";
 import { calculateBearing, estimateETA, interpolatePosition } from "@/lib/driver-tracking";
 import { countActiveRides, removeRide, updateRide, upsertRide, type RideStateRecord } from "@/lib/rider-ride-state";
-import { buildEmergencyAssistMessage, getCancellationPolicy, getSafetySignal, selectedRideOptionLabels } from "@/lib/rider-parity";
+import { buildEmergencyAssistMessage, getCancellationPolicy, getSafetySignal, requiresCancellationReason, selectedRideOptionLabels } from "@/lib/rider-parity";
 import { buildLostItemDescription, buildLostItemSupportMessage, validateLostItemForm } from "@/lib/lost-item-support";
 import { normalizeTicketStatus, ticketProgress, ticketStatusLabel } from "@/lib/support-ticket";
 import { buildReceiptEmailPayload, receiptRequestKey } from "@/lib/receipt-email";
@@ -43,6 +43,10 @@ describe("HY3N Rider App feature math", () => {
 
   it("applies the rider cancellation policy and creates a shareable emergency handoff", () => {
     const matchedAt = new Date(1_000_000).toISOString();
+    expect(requiresCancellationReason("searching")).toBe(false);
+    expect(requiresCancellationReason("searching", "driver-1")).toBe(true);
+    expect(requiresCancellationReason("matched")).toBe(true);
+    expect(requiresCancellationReason("driver_arrived")).toBe(true);
     expect(getCancellationPolicy("matched", matchedAt, 1_000_000 + 30_000).isFree).toBe(true);
     expect(getCancellationPolicy("matched", matchedAt, 1_000_000 + 180_000).fee).toBe(0);
     expect(getCancellationPolicy("in_progress", matchedAt).message).toContain("cannot be cancelled");

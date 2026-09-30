@@ -48,6 +48,13 @@ export function getCancellationPolicy(
   return { isFree: true, fee: 0, message: "Cancel before Start Trip without a charge." };
 }
 
+/** A reason is collected only after the request is connected to a Driver. */
+export function requiresCancellationReason(status: string, driverId?: string): boolean {
+  const normalizedStatus = String(status || '').trim().toLowerCase();
+  return Boolean(String(driverId || '').trim())
+    || ['matched', 'driver_arriving', 'driver_arrived', 'driver_queued'].includes(normalizedStatus);
+}
+
 export type SafetySignal = "clear" | "route_deviation" | "long_stop";
 
 export function getSafetySignal({

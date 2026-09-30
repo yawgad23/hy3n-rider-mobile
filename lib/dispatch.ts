@@ -414,18 +414,23 @@ export const dispatchService = {
   },
 
   /**
-   * Cancel a ride with a reason.
+   * Withdraw a searching request without a reason, or cancel an assigned ride
+   * with the Rider's selected reason. The backend decides which state applies.
    */
-  async cancelRide(rideId: string, reason: string): Promise<void> {
+  async cancelRide(rideId: string, reason?: string): Promise<void> {
     const idToken = await auth.currentUser?.getIdToken();
     if (!idToken) throw new Error('Please sign in again before cancelling this ride.');
     const response = await fetch(`${getApiBaseUrl()}/api/rides/${encodeURIComponent(rideId)}/cancel`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify(reason ? { reason } : {}),
     });
-    const payload = await response.json().catch(() => null) as { success?: boolean; message?: string } | null;
-    if (!response.ok || !payload?.success) throw new Error(payload?.message || 'Ride cancellation is unavailable right now.');
+    const payload = await response.json().catch(() => null) as { success?: boolean; code?: string; message?: string } | null;
+    if (!response.ok || !payload?.success) {
+      const error = new Error(payload?.message || 'Ride cancellation is unavailable right now.') as Error & { code?: string };
+      error.code = payload?.code;
+      throw error;
+    }
   },
 
   /**
