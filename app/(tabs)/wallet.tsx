@@ -15,8 +15,9 @@ import { ScreenContainer } from "@/components/screen-container";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useAuth } from "@/lib/auth-context";
 import { firestoreDB, COLLECTIONS } from "@/lib/firebase";
-import { trpc } from "@/lib/trpc";
 import { useColors } from "@/hooks/use-colors";
+import { startAuthenticatedWalletTopUp } from "@/lib/wallet-topup-api";
+import { getApiBaseUrl } from "@/constants/oauth";
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -100,9 +101,6 @@ export default function WalletScreen() {
   const [showTxDetail, setShowTxDetail] = useState(false);
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
 
-  // tRPC mutation
-  const topupMutation = trpc.wallet.topup.useMutation();
-
   // Load balance from Firestore (real-time)
   useEffect(() => {
     if (!user) return;
@@ -183,13 +181,16 @@ export default function WalletScreen() {
     setTopUpMessage("Contacting Hubtel...");
 
     try {
-      const result = await topupMutation.mutateAsync({
+      // Use the authenticated context user and force a fresh Firebase token.
+      // A long-running native app can otherwise retain an outdated tRPC auth
+      // header even while the visible account remains signed in.
+      const result = await startAuthenticatedWalletTopUp(user, {
         riderId: user.uid,
         riderName: riderProfile?.full_name || user.displayName || "Rider",
         momoNumber: momoNumber.trim(),
         momoNetwork,
         amount,
-      });
+      }, getApiBaseUrl());
 
       if (result.success && result.txId) {
         setPendingTxId(result.txId);
