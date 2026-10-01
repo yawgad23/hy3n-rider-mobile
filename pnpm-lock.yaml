@@ -86,9 +86,6 @@ importers:
       expo-linking:
         specifier: ~8.0.12
         version: 8.0.12(expo@54.0.37)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
-      expo-live-activity:
-        specifier: 0.4.2
-        version: 0.4.2(expo@54.0.37)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       expo-local-authentication:
         specifier: ~17.0.9
         version: 17.0.9(expo@54.0.37)
@@ -133,7 +130,7 @@ importers:
         version: 12.15.0(@react-native-async-storage/async-storage@2.2.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0)))
       hy3n-backend:
         specifier: github:yawgad23/backend
-        version: https://codeload.github.com/yawgad23/backend/tar.gz/33434563f48bf1a4c85481d9fb9d36ad2f008ccf(typescript@5.9.3)
+        version: https://codeload.github.com/yawgad23/backend/tar.gz/5b580459b43b1220df8cc07eb1993652fbcec274(typescript@5.9.3)
       nativewind:
         specifier: 4.1.23
         version: 4.1.23(react-native-reanimated@3.19.1(@babel/core@7.28.5)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-svg@15.12.1(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.2))
@@ -3596,14 +3593,6 @@ packages:
       react: '*'
       react-native: '*'
 
-  expo-live-activity@0.4.2:
-    resolution: {integrity: sha512-b3QdsXAg8dPr6p8w4U4eBYdndArSprCPOJC9U8wovAsOOrCA3eSv4vwfn41XNDmaPTc6gweCABaIIxPaTg2oZQ==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
-    peerDependencies:
-      expo: '*'
-      react: '*'
-      react-native: '*'
-
   expo-local-authentication@17.0.9:
     resolution: {integrity: sha512-Ro2m6JJ7ebaDCMsnh6CeXKqXUdK5xP2lnrJlAopUO2DGqX5693BWC14ANFihFWL6qEV7IIV4hGpdU5RYyBCbuQ==}
     peerDependencies:
@@ -4130,8 +4119,8 @@ packages:
     resolution: {integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==}
     engines: {node: '>= 14'}
 
-  hy3n-backend@https://codeload.github.com/yawgad23/backend/tar.gz/33434563f48bf1a4c85481d9fb9d36ad2f008ccf:
-    resolution: {tarball: https://codeload.github.com/yawgad23/backend/tar.gz/33434563f48bf1a4c85481d9fb9d36ad2f008ccf}
+  hy3n-backend@https://codeload.github.com/yawgad23/backend/tar.gz/5b580459b43b1220df8cc07eb1993652fbcec274:
+    resolution: {tarball: https://codeload.github.com/yawgad23/backend/tar.gz/5b580459b43b1220df8cc07eb1993652fbcec274}
     version: 1.0.0
     engines: {node: '20'}
 
@@ -10322,12 +10311,6 @@ snapshots:
       - expo
       - supports-color
 
-  expo-live-activity@0.4.2(expo@54.0.37)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
-    dependencies:
-      expo: 54.0.37(@babel/core@7.28.5)(@expo/metro-runtime@6.1.2)(expo-router@6.0.24)(react-native-webview@13.15.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
-      react: 19.1.0
-      react-native: 0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0)
-
   expo-local-authentication@17.0.9(expo@54.0.37):
     dependencies:
       expo: 54.0.37(@babel/core@7.28.5)(@expo/metro-runtime@6.1.2)(expo-router@6.0.24)(react-native-webview@13.15.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -11067,7 +11050,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  hy3n-backend@https://codeload.github.com/yawgad23/backend/tar.gz/33434563f48bf1a4c85481d9fb9d36ad2f008ccf(typescript@5.9.3):
+  hy3n-backend@https://codeload.github.com/yawgad23/backend/tar.gz/5b580459b43b1220df8cc07eb1993652fbcec274(typescript@5.9.3):
     dependencies:
       '@trpc/server': 11.7.2(typescript@5.9.3)
       axios: 1.13.2

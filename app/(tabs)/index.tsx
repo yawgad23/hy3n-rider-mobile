@@ -51,7 +51,6 @@ import { type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
 import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-share";
 import { payWithHubtelCard } from "@/lib/card-checkout";
-import { endRiderLiveActivity, syncRiderLiveActivity } from "@/lib/ride-live-activity";
 import { nearbyVehicleFromProfile, type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -379,46 +378,6 @@ export default function RiderHomeScreen() {
       setSelectedRideId(activeRides[0].id);
     }
   }, [activeRides, selectedRideId]);
-
-  // The activity starts while the Rider has HY3N open, then ActivityKit/FCM
-  // keeps its Lock Screen and Dynamic Island state current after backgrounding.
-  // Only a Driver's protected server location meter can change the remote view.
-  useEffect(() => {
-    if (!user || !activeRide) return;
-    const liveRide = {
-      id: activeRide.id,
-      status: activeRide.status,
-      pickup: activeRide.pickup,
-      destination: activeRide.destination,
-      driverName: activeRide.driverName,
-      driverVehicle: activeRide.driverVehicle,
-      eta: activeRide.eta,
-      etaSeconds: activeRide.etaSeconds,
-      routeDurationMinutes: activeRide.routeDurationMinutes,
-    };
-    if (['completed', 'cancelled'].includes(activeRide.status)) {
-      endRiderLiveActivity(user, liveRide).catch((error) => {
-        console.warn('[HY3N] Could not end Rider Live Activity:', error);
-      });
-      return;
-    }
-    if (['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(activeRide.status)) {
-      syncRiderLiveActivity(user, liveRide).catch((error) => {
-        console.warn('[HY3N] Could not update Rider Live Activity:', error);
-      });
-    }
-  }, [
-    user,
-    activeRide?.id,
-    activeRide?.status,
-    activeRide?.pickup,
-    activeRide?.destination?.name,
-    activeRide?.driverName,
-    activeRide?.driverVehicle,
-    activeRide?.eta,
-    activeRide?.etaSeconds,
-    activeRide?.routeDurationMinutes,
-  ]);
 
   // Keep the active ride count available to the tab layout for a persistent badge.
   useEffect(() => {

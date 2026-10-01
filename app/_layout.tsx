@@ -11,7 +11,6 @@ import { ThemeProvider } from "@/lib/theme-provider";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { Notifications, setupNotificationChannels } from '@/lib/notifications';
 import { listenForPushTokenRotation, registerAuthenticatedPushDevice } from '@/lib/push-device';
-import { listenForRiderLiveActivityState, listenForRiderLiveActivityTokens } from '@/lib/ride-live-activity';
 import type { EventSubscription, Notification, NotificationResponse } from 'expo-notifications';
 import {
   SafeAreaFrameContext,
@@ -40,13 +39,9 @@ function RiderPushDeviceRegistration() {
       if (!disposed) console.warn('[HY3N] Rider push registration failed:', error);
     });
     const subscription = listenForPushTokenRotation(user, 'rider');
-    const liveActivitySubscription = listenForRiderLiveActivityTokens(user);
-    const liveActivityStateSubscription = listenForRiderLiveActivityState(user);
     return () => {
       disposed = true;
       subscription?.remove();
-      liveActivitySubscription?.remove();
-      liveActivityStateSubscription?.remove();
     };
   }, [user?.uid]);
 

@@ -63,9 +63,7 @@ const config: ExpoConfig = {
     buildNumber: "73",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     "infoPlist": {
-      "ITSAppUsesNonExemptEncryption": false,
-      "NSSupportsLiveActivities": true,
-      "NSSupportsLiveActivitiesFrequentUpdates": true
+      "ITSAppUsesNonExemptEncryption": false
       }
   },
   android: {
@@ -116,13 +114,6 @@ const config: ExpoConfig = {
     "@react-native-firebase/app",
     "@react-native-firebase/messaging",
     "@react-native-google-signin/google-signin",
-    "./plugins/withLiveActivityReleaseSettings",
-    [
-      "expo-live-activity",
-      {
-        enablePushNotifications: true,
-      },
-    ],
     "expo-video",
     "expo-web-browser",
     [
