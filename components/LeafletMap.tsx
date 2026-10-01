@@ -83,6 +83,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   <style>
     * { box-sizing: border-box; }
     html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; background: #18232f; }
+    body[data-theme="light"], body[data-theme="light"] #map { background: #f3f4f6; }
     .leaflet-control-attribution { font-size: 9px; opacity: .55; background: rgba(24,35,47,.72); color: #d8dee5; }
     .leaflet-control-attribution a { color: #d8dee5; }
     body[data-theme="light"] .leaflet-control-attribution { background: rgba(255,255,255,.82); color: #4b5563; }
@@ -107,7 +108,16 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
 (function () {
   const initialCenter = ${center};
   const initialPayload = ${payload};
-  const map = L.map('map', { zoomControl: false, attributionControl: true, preferCanvas: true }).setView(initialCenter, ${DEFAULT_ZOOM});
+  const map = L.map('map', {
+    zoomControl: false,
+    attributionControl: true,
+    preferCanvas: true,
+    fadeAnimation: false,
+    zoomAnimation: false,
+    markerZoomAnimation: false,
+    inertia: false,
+    trackResize: true,
+  }).setView(initialCenter, ${DEFAULT_ZOOM});
   // Use a restrained basemap that follows the app's active appearance.
   let tileLayer = null;
   let activeTileTheme = null;
@@ -116,7 +126,14 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
     document.body.dataset.theme = theme === 'light' ? 'light' : 'dark';
     if (tileLayer && activeTileTheme === tileTheme) return;
     if (tileLayer) map.removeLayer(tileLayer);
-    tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/' + tileTheme + '/{z}/{x}/{y}{r}.png', { maxZoom: 19, crossOrigin: true, attribution: '&copy; OpenStreetMap contributors &copy; CARTO' }).addTo(map);
+    tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/' + tileTheme + '/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      crossOrigin: true,
+      updateWhenIdle: true,
+      updateWhenZooming: false,
+      keepBuffer: 4,
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+    }).addTo(map);
     activeTileTheme = tileTheme;
   };
   setTileTheme(initialPayload.theme);
@@ -133,6 +150,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   const clearNearby = () => { layers.nearby.forEach((layer) => map.removeLayer(layer)); layers.nearby = []; };
   const draw = (state, fit) => {
     setTileTheme(state.theme);
+    map.invalidateSize(false);
     remove('user'); remove('destination'); remove('driver'); remove('pickup'); remove('route'); clearNearby();
     if (state.user) layers.user = L.marker(point(state.user), { icon: userIcon(), zIndexOffset: 100 }).addTo(map).bindPopup('Your pickup location');
     if (state.destination) layers.destination = L.marker(point(state.destination), { icon: pinIcon('destination'), zIndexOffset: 50 }).addTo(map).bindPopup('Destination');
@@ -158,7 +176,11 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
     }
   };
   draw(initialPayload, false);
-  setTimeout(() => { map.invalidateSize(true); window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'map-ready' })); }, 250);
+  const refreshViewport = () => map.invalidateSize(true);
+  setTimeout(refreshViewport, 100);
+  setTimeout(refreshViewport, 350);
+  setTimeout(refreshViewport, 800);
+  setTimeout(() => { refreshViewport(); window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'map-ready' })); }, 1200);
   document.addEventListener('message', (event) => {
     try { const message = JSON.parse(event.data); if (message.type === 'update') draw(message.payload, false); if (message.type === 'pan') { userMovedMap = true; map.setView(message.point, message.zoom || ${DEFAULT_ZOOM}, { animate: true }); } if (message.type === 'fit') { userMovedMap = true; map.fitBounds(message.points, { paddingTopLeft: [32,80], paddingBottomRight: [32,300], maxZoom: 15, animate: true }); } } catch (_) {}
   });
