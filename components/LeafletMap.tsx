@@ -84,6 +84,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
     * { box-sizing: border-box; }
     html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; background: #18232f; }
     body[data-theme="light"], body[data-theme="light"] #map { background: #f3f4f6; }
+    body[data-theme="dark"] .leaflet-tile { filter: invert(100%) hue-rotate(180deg) brightness(.72) contrast(.9) saturate(.65); }
     .leaflet-control-attribution { font-size: 9px; opacity: .55; background: rgba(24,35,47,.72); color: #d8dee5; }
     .leaflet-control-attribution a { color: #d8dee5; }
     body[data-theme="light"] .leaflet-control-attribution { background: rgba(255,255,255,.82); color: #4b5563; }
@@ -122,17 +123,19 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   let tileLayer = null;
   let activeTileTheme = null;
   const setTileTheme = (theme) => {
-    const tileTheme = theme === 'light' ? 'light_all' : 'dark_all';
+    const tileTheme = theme === 'light' ? 'light' : 'dark';
     document.body.dataset.theme = theme === 'light' ? 'light' : 'dark';
     if (tileLayer && activeTileTheme === tileTheme) return;
     if (tileLayer) map.removeLayer(tileLayer);
-    tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/' + tileTheme + '/{z}/{x}/{y}{r}.png', {
+    // OpenStreetMap is keyless. Dark Mode is applied locally to the tile
+    // pixels, avoiding providers that display an API-key-required watermark.
+    tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       crossOrigin: true,
       updateWhenIdle: true,
       updateWhenZooming: false,
       keepBuffer: 4,
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      attribution: '&copy; OpenStreetMap contributors',
     }).addTo(map);
     activeTileTheme = tileTheme;
   };
