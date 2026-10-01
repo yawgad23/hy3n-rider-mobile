@@ -1,6 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
+import { MAP_MARKER_ASSETS } from "./map-marker-assets";
 
 interface NearbyDriver {
   id: string;
@@ -57,6 +58,13 @@ function normaliseColour(value?: string | null, fallback = "#D4AF37") {
   return /^#[0-9a-fA-F]{6}$/.test(value || "") ? value! : fallback;
 }
 
+function markerKind(value?: string | null): "car" | "okada" | "delivery" {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized.includes("deliver")) return "delivery";
+  if (normalized.includes("okada") || normalized.includes("moto")) return "okada";
+  return "car";
+}
+
 function safeJson(value: unknown) {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
@@ -65,15 +73,16 @@ type MapPayload = {
   theme: "light" | "dark";
   user: [number, number] | null;
   destination: [number, number] | null;
-  driver: { point: [number, number]; colour: string; label: string; bearing: number | null; metric: string } | null;
+  driver: { point: [number, number]; colour: string; label: string; bearing: number | null; metric: string; kind: "car" | "okada" | "delivery" } | null;
   pickup: [number, number] | null;
-  nearby: Array<{ id: string; point: [number, number]; colour: string; label: string; eta: number; bearing: number | null }>;
+  nearby: Array<{ id: string; point: [number, number]; colour: string; label: string; eta: number; bearing: number | null; kind: "car" | "okada" | "delivery" }>;
   route: { points: Array<[number, number]>; colour: string } | null;
 };
 
 function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayload) {
   const center = safeJson(initialCenter);
   const payload = safeJson(initialPayload);
+  const markerAssets = safeJson(MAP_MARKER_ASSETS);
   return `<!doctype html>
 <html>
 <head>
@@ -84,17 +93,14 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
     * { box-sizing: border-box; }
     html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; background: #18232f; }
     body[data-theme="light"], body[data-theme="light"] #map { background: #f3f4f6; }
-    body[data-theme="dark"] .leaflet-tile { filter: invert(100%) hue-rotate(180deg) brightness(.72) contrast(.9) saturate(.65); }
+    body[data-theme="dark"] .leaflet-tile { filter: invert(92%) hue-rotate(180deg) brightness(.68) contrast(.78) saturate(.55); }
     .leaflet-control-attribution { font-size: 9px; opacity: .55; background: rgba(24,35,47,.72); color: #d8dee5; }
     .leaflet-control-attribution a { color: #d8dee5; }
     body[data-theme="light"] .leaflet-control-attribution { background: rgba(255,255,255,.82); color: #4b5563; }
     body[data-theme="light"] .leaflet-control-attribution a { color: #374151; }
     .leaflet-control-zoom { display: none; }
-    .vehicle-icon { width: 42px; height: 42px; position: relative; transform-origin: center; filter: drop-shadow(0 2px 3px rgba(0,0,0,.55)); }
-    .vehicle-icon .body { position: absolute; left: 5px; top: 11px; width: 32px; height: 20px; border-radius: 9px 9px 7px 7px; background: var(--vehicle-color); border: 2px solid white; }
-    .vehicle-icon .roof { position: absolute; left: 11px; top: 5px; width: 20px; height: 13px; border-radius: 9px 9px 2px 2px; background: var(--vehicle-color); border: 2px solid white; }
-    .vehicle-icon .wheel { position: absolute; top: 27px; width: 7px; height: 7px; border-radius: 50%; background: #111; border: 1px solid white; }
-    .vehicle-icon .wheel.left { left: 9px; } .vehicle-icon .wheel.right { right: 9px; }
+    .vehicle-icon { width: 52px; height: 52px; position: relative; transform-origin: center; filter: drop-shadow(0 2px 3px rgba(0,0,0,.55)); }
+    .vehicle-icon .vehicle-art { display: block; width: 52px; height: 52px; object-fit: contain; }
     .vehicle-icon .label { position: absolute; top: -17px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.82); color: white; padding: 3px 6px; border-radius: 6px; font: 600 10px -apple-system,BlinkMacSystemFont,sans-serif; white-space: nowrap; }
     .user-dot { width: 22px; height: 22px; border-radius: 50%; background: #006b3f; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,.5); }
     .destination-pin, .pickup-pin { width: 22px; height: 22px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,.5); }
@@ -109,6 +115,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
 (function () {
   const initialCenter = ${center};
   const initialPayload = ${payload};
+  const markerAssets = ${markerAssets};
   const map = L.map('map', {
     zoomControl: false,
     attributionControl: true,
@@ -148,7 +155,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   const icon = (className, html, size, anchor) => L.divIcon({ className: '', html, iconSize: size, iconAnchor: anchor });
   const userIcon = () => icon('user', '<div class="user-dot"></div>', [22,22], [11,11]);
   const pinIcon = (kind) => icon(kind, '<div class="' + kind + '-pin"></div>', [22,22], [11,22]);
-  const vehicleIcon = (item) => icon('vehicle', '<div class="vehicle-icon" style="--vehicle-color:' + item.colour + '; transform:rotate(' + (Number(item.bearing || 0)) + 'deg)"><div class="label">' + String(item.label || 'HY3N') + '</div><div class="roof"></div><div class="body"></div><div class="wheel left"></div><div class="wheel right"></div></div>', [42,42], [21,21]);
+  const vehicleIcon = (item) => icon('vehicle', '<div class="vehicle-icon" style="transform:rotate(' + (Number(item.bearing || 0)) + 'deg)"><div class="label">' + String(item.label || 'HY3N') + '</div><img class="vehicle-art" src="' + (markerAssets[item.kind || 'car'] || markerAssets.car) + '" alt="HY3N vehicle" /></div>', [52,52], [26,26]);
   const remove = (key) => { if (layers[key]) { map.removeLayer(layers[key]); layers[key] = null; } };
   const clearNearby = () => { layers.nearby.forEach((layer) => map.removeLayer(layer)); layers.nearby = []; };
   const draw = (state, fit) => {
@@ -233,11 +240,12 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       point: driverLocation,
       colour: normaliseColour(driverColourHex, "#006B3F"),
       label: driverVehicle || (driverServiceType ? `${driverServiceType} Driver` : "HY3N Driver"),
+      kind: markerKind(driverServiceType),
       bearing: Number.isFinite(Number(driverBearing)) ? Number(driverBearing) : null,
       metric: Number.isFinite(Number(driverDistanceKm)) && Number(driverDistanceKm) > 0 ? `${Number(driverDistanceKm).toFixed(1)} km away` : Number.isFinite(Number(driverEtaMinutes)) ? `${Math.max(1, Math.round(Number(driverEtaMinutes)))} min away` : "Driver location",
     } : null,
     pickup: driverTracking && isCoordinate(driverTrackingTarget) && tripStatus !== "in_progress" ? driverTrackingTarget : null,
-    nearby: !driverTracking ? nearby.map((driver) => ({ id: driver.id, point: [driver.lat, driver.lng] as [number, number], colour: normaliseColour(driver.vehicleColourHex), label: driver.vehicleLabel || "HY3N vehicle", eta: Math.max(1, Math.round(driver.etaMinutes || 1)), bearing: Number.isFinite(Number(driver.heading)) ? Number(driver.heading) : null })) : [],
+    nearby: !driverTracking ? nearby.map((driver) => ({ id: driver.id, point: [driver.lat, driver.lng] as [number, number], colour: normaliseColour(driver.vehicleColourHex), label: driver.vehicleLabel || "HY3N vehicle", eta: Math.max(1, Math.round(driver.etaMinutes || 1)), bearing: Number.isFinite(Number(driver.heading)) ? Number(driver.heading) : null, kind: markerKind(driver.serviceType) })) : [],
     route: routePoints.length > 1 ? { points: routePoints, colour: driverTracking ? "#006B3F" : "#D4AF37" } : null,
   }), [colorScheme, destination, driverBearing, driverColourHex, driverDistanceKm, driverEtaMinutes, driverLocation, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearby, routePoints, tripStatus, userLocation]);
   const initialHtmlRef = useRef<string | null>(null);
