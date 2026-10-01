@@ -50,6 +50,10 @@ export type RecoveredActiveRide = {
   driverLocation?: { lat: number; lng: number };
   driverBearing?: number;
   driverLocationUpdatedAt?: string;
+  routeDistanceKm?: number;
+  routeDurationMinutes?: number;
+  routePhase?: 'pickup' | 'destination';
+  driverRoutePoints?: [number, number][];
   driverMomoNumber?: string;
   driverMomoNetwork?: string;
   matchedAt?: string;
@@ -100,6 +104,15 @@ const driverPoint = (value: unknown): { lat: number; lng: number } | undefined =
   return Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0) ? { lat, lng } : undefined;
 };
 
+const routePointsFrom = (value: unknown): [number, number][] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((point): point is unknown[] => Array.isArray(point) && point.length >= 2)
+    .map((point) => [Number(point[0]), Number(point[1])] as [number, number])
+    .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180)
+    .slice(0, 180);
+};
+
 const driverPhoto = (value: unknown): string | undefined => {
   const source = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const candidates = [source.photo_url, source.photoUrl, source.avatar_url, source.avatarUrl, source.driver_photo, source.driverPhoto];
@@ -129,6 +142,9 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
   const vehicle = nonEmptyText(rawRide.driver_vehicle, [driver.vehicle_make, driver.vehicle_model].filter(Boolean).join(' '));
   const quote = finiteNumber(rawRide.quoted_fare ?? rawRide.fare ?? rawRide.estimated_fare ?? rawRide.price);
   const ridePin = nonEmptyText(rawRide.pickup_code ?? rawRide.ride_pin);
+  const liveRoute = rawRide.live_route_metrics && typeof rawRide.live_route_metrics === 'object'
+    ? rawRide.live_route_metrics as Record<string, any>
+    : {};
 
   return {
     id,
@@ -163,6 +179,10 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
     driverLocation,
     driverBearing: optionalFiniteNumber(driver.location?.heading ?? rawRide.driver_location?.heading),
     driverLocationUpdatedAt: nonEmptyText(driver.location?.recorded_at ?? rawRide.driver_location_updated_at) || undefined,
+    routeDistanceKm: optionalFiniteNumber(liveRoute.distance_km),
+    routeDurationMinutes: optionalFiniteNumber(liveRoute.duration_minutes),
+    routePhase: liveRoute.phase === 'destination' || liveRoute.phase === 'pickup' ? liveRoute.phase : undefined,
+    driverRoutePoints: routePointsFrom(liveRoute.points),
     driverMomoNumber: nonEmptyText(rawRide.driver_momo_number ?? driver.momo_number) || undefined,
     driverMomoNetwork: nonEmptyText(rawRide.driver_momo_network ?? driver.momo_network) || undefined,
     matchedAt: nonEmptyText(rawRide.matched_at ?? rawRide.accepted_at) || undefined,

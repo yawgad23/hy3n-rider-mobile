@@ -134,6 +134,7 @@ interface ActiveRide {
   routeDistanceKm?: number;
   routeDurationMinutes?: number;
   routePhase?: "pickup" | "destination";
+  driverRoutePoints?: [number, number][];
   waitingFee?: number;
   tipAmount?: number;
   quotedFare?: number;
@@ -642,6 +643,23 @@ export default function RiderHomeScreen() {
             && Number.isFinite(Number(driver.location.lng))
             && (Number(driver.location.lat) !== 0 || Number(driver.location.lng) !== 0),
           );
+          const liveRoute = rawRide.live_route_metrics && typeof rawRide.live_route_metrics === 'object'
+            ? rawRide.live_route_metrics as Record<string, any>
+            : {};
+          const serverRouteDistance = toFiniteNumber(liveRoute.distance_km);
+          const serverRouteDuration = toFiniteNumber(liveRoute.duration_minutes);
+          const serverRoutePhase = liveRoute.phase === 'destination' || liveRoute.phase === 'pickup'
+            ? liveRoute.phase
+            : undefined;
+          const expectedRoutePhase = ride.status === 'in_progress' ? 'destination' : 'pickup';
+          const hasCurrentServerRoute = serverRoutePhase === expectedRoutePhase;
+          const serverRoutePoints = Array.isArray(liveRoute.points)
+            ? liveRoute.points
+              .filter((point: any) => Array.isArray(point) && point.length >= 2)
+              .map((point: any) => [Number(point[0]), Number(point[1])] as [number, number])
+              .filter(([lat, lng]: [number, number]) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180)
+              .slice(0, 180)
+            : undefined;
           const nextDriverLocation = hasDriverLocation
             ? { lat: Number(driver!.location.lat), lng: Number(driver!.location.lng) }
             : prev.driverLocation;
@@ -653,9 +671,11 @@ export default function RiderHomeScreen() {
           const etaTarget = ride.status === 'in_progress'
             ? { lat: prev.destination.lat, lng: prev.destination.lng }
             : { lat: prev.pickupLocation.lat, lng: prev.pickupLocation.lng };
-          const etaMin = driver && nextDriverLocation
-            ? calculateETA(nextDriverLocation, etaTarget)
-            : prev.eta;
+          const etaMin = serverRouteDuration !== null
+            ? Math.max(1, Math.ceil(serverRouteDuration))
+            : driver && nextDriverLocation
+              ? calculateETA(nextDriverLocation, etaTarget)
+              : prev.eta;
           const enteredTrip = ride.status === 'in_progress' && prev.status !== 'in_progress';
           const routeDeviationKm = Number((ride as any).route_deviation_km ?? prev.routeDeviationKm ?? 0);
           const driverStoppedAt = nextDriverLocation && prev.driverLocation && calculateDistance(prev.driverLocation.lat, prev.driverLocation.lng, nextDriverLocation.lat, nextDriverLocation.lng) < 0.01
@@ -711,12 +731,15 @@ export default function RiderHomeScreen() {
             driverLocation: nextDriverLocation,
             driverBearing,
             driverLocationUpdatedAt: String((driver as any)?.location?.recorded_at || (driver as any)?.last_location_update || (ride as any).driver_location_updated_at || prev.driverLocationUpdatedAt || ''),
+            routeDistanceKm: hasCurrentServerRoute ? serverRouteDistance ?? prev.routeDistanceKm : undefined,
+            routeDurationMinutes: hasCurrentServerRoute ? serverRouteDuration ?? prev.routeDurationMinutes : undefined,
+            routePhase: expectedRoutePhase,
+            driverRoutePoints: hasCurrentServerRoute && serverRoutePoints?.length ? serverRoutePoints : undefined,
             safetySignal,
             routeDeviationKm,
             driverStoppedAt,
             eta: etaMin ?? prev.eta,
             etaSeconds: (ride as any).eta_seconds ?? ((etaMin ?? 0) * 60),
-            routePhase: ride.status === 'in_progress' ? 'destination' : 'pickup',
             quotedFare: getQuotedRideFare(ride),
             waitingFee: (ride as any).waiting_fee ?? prev.waitingFee,
             matchedAt: prev.matchedAt ?? ((ride.status === 'driver_arriving' || ride.status === 'matched') ? new Date().toISOString() : prev.matchedAt),
@@ -2600,7 +2623,8 @@ export default function RiderHomeScreen() {
           ? (activeRide.status === 'in_progress'
             ? [activeRide.destination.lat, activeRide.destination.lng] as [number, number]
             : [activeRide.pickupLocation.lat, activeRide.pickupLocation.lng] as [number, number])
-            : null}
+          : null}
+        driverRoutePoints={activeRide?.driverRoutePoints ?? null}
         tripStatus={activeRide?.status ?? null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
         nearbyDrivers={(!activeRide || activeRide.status === "searching")

@@ -30,6 +30,7 @@ interface LeafletMapProps {
   driverDistanceKm?: number | null;
   driverTracking?: boolean;
   driverTrackingTarget?: [number, number] | null;
+  driverRoutePoints?: [number, number][] | null;
   tripStatus?: string | null;
   safetySignal?: "clear" | "route_deviation" | "long_stop";
   nearbyDrivers?: NearbyDriver[];
@@ -274,6 +275,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     driverDistanceKm = null,
     driverTracking = false,
     driverTrackingTarget = null,
+    driverRoutePoints = null,
     tripStatus = null,
     safetySignal: _safetySignal = "clear",
     nearbyDrivers = [],
@@ -288,7 +290,10 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     ? driverTrackingTarget
     : !driverLocation && isCoordinate(userLocation) && isCoordinate(destination) ? destination : null;
   const routeStart = driverTracking && isCoordinate(driverLocation) ? driverLocation : isCoordinate(userLocation) ? userLocation : null;
-  const routePoints = routeStart && routeTarget ? [routeStart, routeTarget] : [];
+  const validServerRoute = (driverRoutePoints || []).filter(isCoordinate);
+  const routePoints = validServerRoute.length > 1
+    ? validServerRoute
+    : routeStart && routeTarget ? [routeStart, routeTarget] : [];
   const payload = useMemo<MapPayload>(() => ({
     theme: colorScheme,
     user: isCoordinate(userLocation) ? userLocation : null,
@@ -308,7 +313,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     pickup: driverTracking && isCoordinate(driverTrackingTarget) && tripStatus !== "in_progress" ? driverTrackingTarget : null,
     nearby: !driverTracking ? nearby.map((driver) => ({ id: driver.id, point: [driver.lat, driver.lng] as [number, number], colour: normaliseColour(driver.vehicleColourHex), label: `${Math.max(1, Math.round(driver.etaMinutes || 1))} min away`, eta: Math.max(1, Math.round(driver.etaMinutes || 1)), bearing: Number.isFinite(Number(driver.heading)) ? Number(driver.heading) : null, kind: markerKind(driver.serviceType) })) : [],
     route: routePoints.length > 1 ? { points: routePoints, colour: driverTracking ? "#006B3F" : "#D4AF37" } : null,
-  }), [colorScheme, destination, driverBearing, driverColourHex, driverDistanceKm, driverEtaMinutes, driverLocation, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearby, routePoints, tripStatus, userLocation]);
+  }), [colorScheme, destination, driverBearing, driverColourHex, driverDistanceKm, driverEtaMinutes, driverLocation, driverRoutePoints, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearby, routePoints, tripStatus, userLocation]);
   const initialHtmlRef = useRef<string | null>(null);
   if (!initialHtmlRef.current) initialHtmlRef.current = buildMapHtml(initialCenter, payload);
 
