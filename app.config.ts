@@ -60,7 +60,7 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    buildNumber: "69",
+    buildNumber: "70",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     "infoPlist": {
       "ITSAppUsesNonExemptEncryption": false,
