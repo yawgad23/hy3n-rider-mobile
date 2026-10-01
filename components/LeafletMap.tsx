@@ -82,7 +82,8 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   <style>
     * { box-sizing: border-box; }
     html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; background: #18232f; }
-    .leaflet-control-attribution { font-size: 9px; opacity: .8; }
+    .leaflet-control-attribution { font-size: 9px; opacity: .55; background: rgba(24,35,47,.72); color: #d8dee5; }
+    .leaflet-control-attribution a { color: #d8dee5; }
     .leaflet-control-zoom { display: none; }
     .vehicle-icon { width: 42px; height: 42px; position: relative; transform-origin: center; filter: drop-shadow(0 2px 3px rgba(0,0,0,.55)); }
     .vehicle-icon .body { position: absolute; left: 5px; top: 11px; width: 32px; height: 20px; border-radius: 9px 9px 7px 7px; background: var(--vehicle-color); border: 2px solid white; }
@@ -104,8 +105,13 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   const initialCenter = ${center};
   const initialPayload = ${payload};
   const map = L.map('map', { zoomControl: false, attributionControl: true, preferCanvas: true }).setView(initialCenter, ${DEFAULT_ZOOM});
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+  // Use a restrained dark basemap: fewer bright labels and less visual noise
+  // behind the booking sheet, similar to the Uber/Bolt map treatment.
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, crossOrigin: true, attribution: '&copy; OpenStreetMap contributors &copy; CARTO' }).addTo(map);
   const layers = { user: null, destination: null, driver: null, pickup: null, nearby: [], route: null };
+  let userMovedMap = false;
+  let lastUserPoint = initialPayload.user;
+  map.on('dragstart zoomstart', () => { userMovedMap = true; });
   const point = (p) => [p[0], p[1]];
   const icon = (className, html, size, anchor) => L.divIcon({ className: '', html, iconSize: size, iconAnchor: anchor });
   const userIcon = () => icon('user', '<div class="user-dot"></div>', [22,22], [11,11]);
@@ -124,6 +130,12 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
       layers.nearby.push(marker);
     });
     if (state.route && state.route.points.length > 1) layers.route = L.polyline(state.route.points.map(point), { color: state.route.colour, weight: 5, opacity: .9 }).addTo(map);
+    if (!userMovedMap && state.user && !state.driver && !state.destination) {
+      const previous = lastUserPoint;
+      const moved = !previous || Math.abs(previous[0] - state.user[0]) > 0.001 || Math.abs(previous[1] - state.user[1]) > 0.001;
+      if (moved) map.setView(point(state.user), 15, { animate: false });
+    }
+    lastUserPoint = state.user || lastUserPoint;
     if (fit) {
       const points = [];
       if (state.user) points.push(point(state.user)); if (state.destination) points.push(point(state.destination)); if (state.driver) points.push(point(state.driver.point)); if (state.pickup) points.push(point(state.pickup));
@@ -135,7 +147,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   draw(initialPayload, false);
   setTimeout(() => { map.invalidateSize(true); window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'map-ready' })); }, 250);
   document.addEventListener('message', (event) => {
-    try { const message = JSON.parse(event.data); if (message.type === 'update') draw(message.payload, false); if (message.type === 'pan') map.setView(message.point, message.zoom || ${DEFAULT_ZOOM}, { animate: true }); if (message.type === 'fit') map.fitBounds(message.points, { paddingTopLeft: [32,80], paddingBottomRight: [32,300], maxZoom: 15, animate: true }); } catch (_) {}
+    try { const message = JSON.parse(event.data); if (message.type === 'update') draw(message.payload, false); if (message.type === 'pan') { userMovedMap = true; map.setView(message.point, message.zoom || ${DEFAULT_ZOOM}, { animate: true }); } if (message.type === 'fit') { userMovedMap = true; map.fitBounds(message.points, { paddingTopLeft: [32,80], paddingBottomRight: [32,300], maxZoom: 15, animate: true }); } } catch (_) {}
   });
   window.addEventListener('message', (event) => { try { const message = JSON.parse(event.data); if (message.type === 'update') draw(message.payload, false); } catch (_) {} });
 })();
