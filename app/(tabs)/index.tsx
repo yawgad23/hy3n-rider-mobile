@@ -2261,7 +2261,7 @@ export default function RiderHomeScreen() {
             </Text>
           </View>
         ) : (
-          <Text style={{ color: MUTED, fontSize: 11, fontWeight: "600" }}>Searching nearby drivers</Text>
+          <Text style={{ color: MUTED, fontSize: 11, fontWeight: "600" }}>No live Driver in this category yet</Text>
         )}
       </View>
       <View style={{ gap: 9, paddingBottom: 14 }}>
@@ -2274,7 +2274,7 @@ export default function RiderHomeScreen() {
             .filter((vehicle) => vehicleServesRideCategory(vehicle, cat.id))
             .map((vehicle) => calculateETA({ lat: vehicle.lat, lng: vehicle.lng }, { lat: userLocation[0], lng: userLocation[1] }));
           const pickupEta = matchingVehicles.length ? Math.min(...matchingVehicles) : null;
-          const driverLabel = `${matchingVehicles.length} ${cat.name} driver${matchingVehicles.length === 1 ? '' : 's'}`;
+          const driverLabel = `${matchingVehicles.length} ${cat.name} Driver${matchingVehicles.length === 1 ? '' : 's'}`;
           const vehicleArtwork = cat.id === "okada"
             ? require("@/assets/images/ride-list-map-okada.png")
             : cat.id === "express_delivery"
@@ -2295,8 +2295,8 @@ export default function RiderHomeScreen() {
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
                   <Text style={{ color: TEXT, fontSize: 16, fontWeight: "800" }} numberOfLines={1}>{cat.name}</Text>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-                    <MaterialIcons name="person" size={13} color={MUTED} />
-                    <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700" }}>{cat.seats || "Parcel"}</Text>
+                    <MaterialIcons name={cat.seats ? "airline-seat-recline-normal" : "inventory-2"} size={13} color={MUTED} />
+                    <Text style={{ color: MUTED, fontSize: 11, fontWeight: "700" }}>{cat.seats ? `${cat.seats} seats` : "Parcel"}</Text>
                   </View>
                 </View>
                 <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{cat.description}</Text>
@@ -2582,7 +2582,7 @@ export default function RiderHomeScreen() {
         tripStatus={activeRide?.status ?? null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
         nearbyDrivers={(!activeRide || activeRide.status === "searching")
-          ? nearbyVehiclesForSelectedCategory.slice(0, 8)
+          ? nearbyVehiclesForSelectedCategory.slice(0, 4)
           : []}
         onRouteMetrics={handleLiveRouteMetrics}
       />

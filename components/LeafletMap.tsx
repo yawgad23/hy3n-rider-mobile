@@ -93,13 +93,15 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   // watermark or provider credential.
   const tileUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
   const tileFilter = isDark
-    ? "invert(.92) hue-rotate(180deg) saturate(.38) brightness(.72) contrast(1.08)"
-    : "none";
+    ? "invert(.92) hue-rotate(180deg) grayscale(.82) saturate(.18) brightness(.60) contrast(.78)"
+    : "grayscale(.75) saturate(.32) brightness(1.08) contrast(.78)";
+  const tileOpacity = isDark ? 0.66 : 0.72;
+  const mapQuietOverlay = isDark ? "rgba(12, 17, 23, .18)" : "rgba(248, 250, 252, .13)";
 
   const mapState = useMemo(() => {
     const normalizedNearby = nearbyDrivers
       .filter((driver) => Number.isFinite(driver.lat) && Number.isFinite(driver.lng))
-      .slice(0, 10)
+      .slice(0, 4)
       .map((driver) => ({
         id: cleanText(driver.id),
         lat: driver.lat,
@@ -194,13 +196,14 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     html, body, #map { width: 100%; height: 100%; margin: 0; background: ${mapBackground}; }
     .leaflet-control-zoom, .leaflet-control-attribution { display: none; }
     .leaflet-tile-pane { filter: ${tileFilter}; }
+    #map::after { content: ''; position: absolute; inset: 0; z-index: 350; pointer-events: none; background: ${mapQuietOverlay}; }
     .hy3n-vehicle-marker { background: transparent; border: 0; }
-    .hy3n-vehicle-wrap { width: 92px; height: 91px; position: relative; display: flex; justify-content: center; align-items: flex-start; pointer-events: none; filter: drop-shadow(0 3px 3px rgba(0,0,0,.32)); }
-    .hy3n-vehicle { width: 58px; height: 72px; position: relative; transform-origin: 50% 48%; transition: transform .7s linear; }
-    .hy3n-vehicle img { width: 58px; height: 72px; display: block; object-fit: contain; position: relative; z-index: 1; }
+    .hy3n-vehicle-wrap { width: 72px; height: 73px; position: relative; display: flex; justify-content: center; align-items: flex-start; pointer-events: none; filter: drop-shadow(0 3px 3px rgba(0,0,0,.32)); }
+    .hy3n-vehicle { width: 43px; height: 54px; position: relative; transform-origin: 50% 48%; transition: transform .7s linear; }
+    .hy3n-vehicle img { width: 43px; height: 54px; display: block; object-fit: contain; position: relative; z-index: 1; }
     .hy3n-colour-tint { position: absolute; inset: 0; z-index: 2; opacity: .38; mix-blend-mode: multiply; pointer-events: none; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; mask-size: contain; mask-repeat: no-repeat; mask-position: center; }
     .hy3n-colour-swatch { position: absolute; z-index: 3; top: 6px; right: 1px; width: 12px; height: 12px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.38); }
-    .hy3n-eta { position: absolute; top: 65px; left: 50%; transform: translateX(-50%); min-width: 42px; padding: 3px 7px; border-radius: 9px; background: rgba(17, 24, 39, .94); border: 1px solid rgba(255,255,255,.78); color: #fff; white-space: nowrap; text-align: center; font: 800 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; letter-spacing: .05px; box-shadow: 0 2px 6px rgba(0,0,0,.28); }
+    .hy3n-eta { position: absolute; top: 49px; left: 50%; transform: translateX(-50%); min-width: 42px; padding: 3px 7px; border-radius: 9px; background: rgba(17, 24, 39, .94); border: 1px solid rgba(255,255,255,.78); color: #fff; white-space: nowrap; text-align: center; font: 800 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; letter-spacing: .05px; box-shadow: 0 2px 6px rgba(0,0,0,.28); }
     .hy3n-eta.assigned { background: #006B3F; }
     .hy3n-safety-banner { position: absolute; top: 14px; left: 14px; right: 14px; z-index: 1000; padding: 10px 12px; border-radius: 12px; color: #fff; font: 700 12px -apple-system, BlinkMacSystemFont, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
     .hy3n-safety-banner.danger { background: rgba(206,17,38,.94); }
@@ -214,7 +217,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     (function() {
       var map = L.map('map', { center: [5.6037, -0.187], zoom: 14, zoomControl: false, attributionControl: false });
       window.hy3nMap = map;
-      L.tileLayer('${tileUrl}', { maxZoom: 19 }).addTo(map);
+      L.tileLayer('${tileUrl}', { maxZoom: 19, opacity: ${tileOpacity} }).addTo(map);
 
       var layers = { user: null, pickup: null, destination: null, route: null, driver: null, tracking: null, nearby: {}, banner: null, nearbyChip: null };
       var lastMode = '';
@@ -243,7 +246,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         var colour = validHex(item.colour);
         var metricHtml = metric ? '<div class="hy3n-eta ' + (assigned ? 'assigned' : '') + '">' + metric + '</div>' : '';
         var iconHtml = '<div class="hy3n-vehicle-wrap" title="' + label + '"><div class="hy3n-vehicle" style="transform:rotate(' + heading + 'deg)"><img src="' + asset + '" alt=""/><div class="hy3n-colour-tint" style="background:' + colour + ';-webkit-mask-image:url(' + asset + ');mask-image:url(' + asset + ');"></div><div class="hy3n-colour-swatch" style="background:' + colour + '"></div></div>' + metricHtml + '</div>';
-        return L.divIcon({ html: iconHtml, iconSize: [92, 91], iconAnchor: [46, 43], className: 'hy3n-vehicle-marker' });
+        return L.divIcon({ html: iconHtml, iconSize: [72, 73], iconAnchor: [36, 35], className: 'hy3n-vehicle-marker' });
       }
       function userIcon() { return L.divIcon({ html: '<div style="width:18px;height:18px;border-radius:50%;background:#006B3F;border:4px solid #fff;box-shadow:0 0 0 3px rgba(0,107,63,.24),0 2px 5px rgba(0,0,0,.32);"></div>', iconSize:[18,18], iconAnchor:[9,9], className:'' }); }
       function pickupIcon() { return L.divIcon({ html: '<div style="width:24px;height:24px;border-radius:50%;background:#006B3F;border:3px solid #fff;box-shadow:0 0 0 4px rgba(0,107,63,.22),0 2px 5px rgba(0,0,0,.32);"></div>', iconSize:[24,24], iconAnchor:[12,12], className:'' }); }
@@ -383,7 +386,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     })();
   </script>
 </body>
-</html>`, [mapBackground, serializedMarkerAssets, tileFilter, tileUrl]);
+</html>`, [mapBackground, mapQuietOverlay, serializedMarkerAssets, tileFilter, tileOpacity, tileUrl]);
 
   // Native Rider apps receive live GPS changes through injectJavaScript. The
   // WebView source must not contain current location data: changing source HTML
