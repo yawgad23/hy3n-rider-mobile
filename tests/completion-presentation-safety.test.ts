@@ -26,14 +26,14 @@ describe('Rider completion presentation safety', () => {
 
   it('does not auto-mount a native rating or receipt modal on the completion snapshot', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
-    const start = source.indexOf('const presentation = passiveCompletionPresentation(activeRide);');
-    const end = source.indexOf('// Rehydrate every non-final ride', start);
+    const start = source.indexOf("if (ride.status === 'completed') {");
+    const end = source.indexOf('updateActiveRide((prev) => {', start);
     const completionBlock = source.slice(start, end);
 
-    expect(completionBlock).toContain('setShowRatingModal(presentation.showRatingModal)');
-    expect(completionBlock).toContain('setShowPostRideModal(presentation.showPostRideModal)');
+    expect(completionBlock).toContain('setTerminalRide(terminal)');
+    expect(completionBlock).toContain('setShowPostRideModal(false)');
+    expect(completionBlock).toContain('setActiveRides((previous) => removeRide(previous, trackedRide.id))');
     expect(completionBlock).not.toContain('setShowRatingModal(true)');
-    expect(completionBlock).not.toContain('setShowPostRideModal(true)');
     expect(completionBlock).not.toContain('setCompletedRideData({');
   });
 });

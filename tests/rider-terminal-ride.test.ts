@@ -25,7 +25,7 @@ const riding = {
 };
 
 describe('Rider terminal snapshot', () => {
-  it('returns before the live GPS and nested React-state updates on completion', () => {
+  it('detaches live subscriptions before GPS parsing on completion', () => {
     const screen = readFileSync(resolve(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
     const start = screen.indexOf('dispatchService.listenToRide(trackedRide.firestoreId!');
     const completionGuard = screen.indexOf("if (ride.status === 'completed') {", start);
@@ -35,7 +35,10 @@ describe('Rider terminal snapshot', () => {
     expect(completionGuard).toBeGreaterThan(start);
     expect(completionGuard).toBeLessThan(liveDriverParsing);
     expect(completionGuard).toBeLessThan(nestedUpdate);
-    expect(screen.slice(completionGuard, liveDriverParsing)).toContain('return applyCompletedRideSnapshot');
+    const completionBlock = screen.slice(completionGuard, liveDriverParsing);
+    expect(completionBlock).toContain('setActiveRides((previous) => removeRide(previous, trackedRide.id))');
+    expect(completionBlock).toContain('setTerminalRide(terminal)');
+    expect(completionBlock).toContain('return;');
   });
 
   it('uses the server final fare and clears only ephemeral tracking state', () => {

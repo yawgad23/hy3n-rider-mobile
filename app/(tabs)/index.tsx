@@ -43,7 +43,7 @@ import { calculateDynamicFare, calculateDistance, RideMetrics } from "@/lib/dyna
 import { getDistanceToPickup, getDistanceToDestination, estimateETA, formatDistance, isDriverNearPickup, calculateBearing } from "@/lib/driver-tracking";
 import { upsertRide, updateRide, removeRide, countActiveRides } from "@/lib/rider-ride-state";
 import { recoverActiveRides } from "@/lib/rider-active-ride-recovery";
-import { applyCompletedRideSnapshot } from "@/lib/rider-terminal-ride";
+import { buildRiderTerminalSummary, type RiderTerminalSummary } from "@/lib/rider-terminal-summary";
 import { isExpiredRiderSearch } from "@/lib/rider-search-expiry";
 import { expireStaleRiderSearch } from "@/lib/rider-search-expiry-api";
 import { buildEmergencyAssistMessage, getSafetySignal, requiresCancellationReason, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
@@ -429,8 +429,10 @@ export default function RiderHomeScreen() {
   const [tipAdded, setTipAdded] = useState(false);
   const [showPostRideModal, setShowPostRideModal] = useState(false);
   const [completedRideData, setCompletedRideData] = useState<any>(null);
+  // Terminal rides must not remain in the live map/chat/call subscription tree.
+  // This summary is intentionally primitive-only and server-fare authoritative.
+  const [terminalRide, setTerminalRide] = useState<RiderTerminalSummary | null>(null);
   const [receiptEmailStatus, setReceiptEmailStatus] = useState<ReceiptEmailStatus>("idle");
-  const completedRidePresentationRef = useRef<string | null>(null);
 
   // Multi-stop
   const [stops, setStops] = useState<(Location | null)[]>([]);
@@ -493,8 +495,6 @@ export default function RiderHomeScreen() {
     "Can you call me?",
     "I'm outside now",
   ];
-  const isWalletPayment = (ride: ActiveRide) => ride.paymentId === "wallet" || ride.payment?.toLowerCase() === "wallet";
-
   useEffect(() => {
     AsyncStorage.getItem("savedPlaces").then((v) => { if (v) setSavedPlaces(JSON.parse(v)); });
     AsyncStorage.getItem("searchHistory").then((v) => { if (v) setSearchHistory(JSON.parse(v)); });
@@ -541,25 +541,6 @@ export default function RiderHomeScreen() {
     return () => clearTimeout(t);
   }, [user?.uid]);
 
-  // A Driver completion is delivered as a Firestore status transition while
-  // the live map and sheet are updating. Keep that transition passive: retain
-  // the completed trip and required-rating state, but do not mount a native
-  // modal or receipt view until the Rider explicitly taps "Rate Driver".
-  // This prevents a presentation transition from racing the live-trip teardown.
-  useEffect(() => {
-    if (!activeRide || activeRide.status !== 'completed') return;
-    if (completedRidePresentationRef.current === activeRide.id) return;
-
-    const presentation = passiveCompletionPresentation(activeRide);
-    completedRidePresentationRef.current = activeRide.id;
-    setRideRated(false);
-    setPendingRatingRideId(presentation.pendingRatingRideId);
-    setPendingRatingDriverName(presentation.pendingRatingDriverName);
-    setShowRatingModal(presentation.showRatingModal);
-    setShowPostRideModal(presentation.showPostRideModal);
-    if (presentation.clearCompletedRidePreview) setCompletedRideData(null);
-  }, [activeRide?.id, activeRide?.status, activeRide?.finalFare, activeRide?.driverName]);
-
   // Rehydrate every non-final ride from Firestore after a close, force-close,
   // or app relaunch. The ongoing trip belongs to the signed-in rider on the
   // server, so it must never depend only on the prior screen's memory.
@@ -600,14 +581,35 @@ export default function RiderHomeScreen() {
     const subscriptions = activeRides
       .filter((ride) => Boolean(ride.firestoreId))
       .map((trackedRide) => dispatchService.listenToRide(trackedRide.firestoreId!, (ride: DispatchRide) => {
+        if (ride.status === 'completed') {
+          const serverSnapshot = ride as unknown as Record<string, unknown>;
+          const terminal = buildRiderTerminalSummary(trackedRide, serverSnapshot);
+          const presentation = passiveCompletionPresentation({
+            id: terminal.id,
+            firestoreId: terminal.firestoreId,
+            driverName: terminal.driverName,
+          });
+
+          // Remove this record from all live subscriptions before the next
+          // render. The terminal screen uses only the primitive summary above.
+          setActiveRides((previous) => removeRide(previous, trackedRide.id));
+          setTerminalRide(terminal);
+          setRideRated(false);
+          setPendingRatingRideId(presentation.pendingRatingRideId);
+          setPendingRatingDriverName(presentation.pendingRatingDriverName);
+          setShowChat(false);
+          setShowTipModal(false);
+          setShowReceipt(false);
+          setShowPostRideModal(false);
+          setCompletedRideData(null);
+          return;
+        }
+
         updateActiveRide((prev) => {
           if (prev.id !== trackedRide.id) return prev;
           // Settlement can remove optional live-location and route fields in
           // the same snapshot that ends the trip. Do not run live GPS/ETA
           // calculations or nested React state setters for terminal rides.
-          if (ride.status === 'completed') {
-            return applyCompletedRideSnapshot(prev, ride as unknown as Record<string, unknown>);
-          }
           const rawRide = ride as any;
           const driver = ride.driver || (
             rawRide.driver_name || rawRide.driver_vehicle || rawRide.driver_vehicle_make || rawRide.driver_plate
@@ -1539,7 +1541,7 @@ export default function RiderHomeScreen() {
 
   const handleFinishRide = async () => {
     // Settle wallet payment: deduct fare from rider, credit driver
-    if (activeRide?.status === 'completed' && isWalletPayment(activeRide) && user) {
+    if (terminalRide && (terminalRide.paymentId === 'wallet' || terminalRide.payment.toLowerCase() === 'wallet') && user) {
       try {
         const apiBase = getApiBaseUrl();
         const token = await auth.currentUser?.getIdToken();
@@ -1549,7 +1551,7 @@ export default function RiderHomeScreen() {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           credentials: 'include',
           body: JSON.stringify({
-            json: { rideId: activeRide.id, riderId: user.uid },
+            json: { rideId: terminalRide.firestoreId, riderId: user.uid },
           }),
         });
       } catch (err: any) {
@@ -1557,38 +1559,90 @@ export default function RiderHomeScreen() {
       }
     }
     // Increment total_rides on the rider's profile when they finish a completed trip
-    if (activeRide?.status === 'completed' && user) {
+    if (terminalRide && user) {
       const newTotal = (riderProfile?.total_rides ?? 0) + 1;
       updateProfile({ total_rides: newTotal }).catch(() => {});
     }
-    removeActiveRide(activeRide?.id);
+    setTerminalRide(null);
+    setCompletedRideData(null);
     resetBookingState();
   };
 
   const openCompletedRideRating = () => {
-    if (!activeRide || activeRide.status !== 'completed') return;
+    if (!terminalRide) return;
     setCompletedRideData({
-      rideId: activeRide.firestoreId || activeRide.id,
-      driverName: activeRide.driverName || 'Driver',
-      driverRating: activeRide.driverRating || 4.8,
-      fare: getFinalRideFare(activeRide),
+      rideId: terminalRide.firestoreId,
+      driverName: terminalRide.driverName,
+      driverRating: terminalRide.driverRating,
+      fare: terminalRide.finalFare,
       tip: tipAmount || 0,
-      distance: activeRide.distance,
-      duration: activeRide.duration,
-      pickupAddress,
-      destinationAddress: activeRide.destination.name,
+      distance: terminalRide.distanceKm,
+      duration: terminalRide.durationMinutes,
+      pickupAddress: terminalRide.pickup,
+      destinationAddress: terminalRide.destination,
+      driverVehicle: terminalRide.driverVehicle,
+      driverPlate: terminalRide.driverPlate,
+      paymentMethod: terminalRide.payment,
+      category: terminalRide.category,
     });
     setShowPostRideModal(true);
   };
 
   const handleBookAnotherRide = async () => {
-    if (activeRide?.status === 'completed' && !rideRated) {
+    if (terminalRide && !rideRated) {
       openCompletedRideRating();
       return;
     }
-    if (activeRide?.status === 'completed') await handleFinishRide();
+    if (terminalRide) await handleFinishRide();
     resetBookingState();
     openLocationSearch('destination');
+  };
+
+  const renderTerminalRide = () => {
+    if (!terminalRide) return null;
+    const tip = Number.isFinite(tipAmount) && (tipAmount ?? 0) > 0 ? tipAmount ?? 0 : 0;
+    const total = terminalRide.finalFare + tip;
+    return (
+      <View style={{ flex: 1, backgroundColor: BG, paddingTop: safeTop + 24, paddingHorizontal: 20, paddingBottom: insets.bottom + 20 }}>
+        <View style={{ alignItems: 'center', paddingTop: 18, paddingBottom: 26 }}>
+          <View style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: `${GREEN}1A`, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+            <MaterialIcons name="check-circle" size={44} color={GREEN} />
+          </View>
+          <Text style={{ color: TEXT, fontSize: 24, fontWeight: '900' }}>Trip complete</Text>
+          <Text style={{ color: MUTED, fontSize: 13, marginTop: 6, textAlign: 'center' }}>Your final fare is confirmed by HY3N.</Text>
+        </View>
+
+        <View style={{ backgroundColor: CARD, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: BORDER }}>
+          <Row label={terminalRide.waitingFee > 0 ? 'Final fare (includes wait)' : 'Final fare'} value={`GH₵${terminalRide.finalFare.toFixed(2)}`} />
+          {terminalRide.waitingFee > 0 && <Row label="Waiting fee" value={`Included · GH₵${terminalRide.waitingFee.toFixed(2)}`} valueColor={MUTED} />}
+          {tip > 0 && <Row label="Tip" value={`+GH₵${tip.toFixed(2)}`} valueColor={GREEN} />}
+          <View style={{ borderTopWidth: 1, borderTopColor: BORDER, marginTop: 8, paddingTop: 10 }}>
+            <Row label="Total" value={`GH₵${total.toFixed(2)}`} valueColor={GOLD} bold />
+          </View>
+          <View style={{ borderTopWidth: 1, borderTopColor: BORDER, marginTop: 8, paddingTop: 10, gap: 4 }}>
+            <Text style={{ color: MUTED, fontSize: 11 }}>From</Text>
+            <Text style={{ color: TEXT, fontSize: 13, fontWeight: '600' }} numberOfLines={2}>{terminalRide.pickup}</Text>
+            <Text style={{ color: MUTED, fontSize: 11, marginTop: 8 }}>To</Text>
+            <Text style={{ color: TEXT, fontSize: 13, fontWeight: '600' }} numberOfLines={2}>{terminalRide.destination}</Text>
+          </View>
+        </View>
+
+        <View style={{ marginTop: 18, gap: 10 }}>
+          {!tipAdded && (
+            <TouchableOpacity onPress={() => setShowTipModal(true)} style={{ borderWidth: 1, borderColor: `${GREEN}66`, borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}>
+              <Text style={{ color: GREEN, fontSize: 14, fontWeight: '800' }}>Add tip</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={openCompletedRideRating} style={{ backgroundColor: GOLD, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}>
+            <Text style={{ color: '#000', fontSize: 15, fontWeight: '900' }}>Rate {terminalRide.driverName}</Text>
+          </TouchableOpacity>
+          {!rideRated && <Text style={{ color: MUTED, fontSize: 12, textAlign: 'center' }}>Rate your Driver before booking your next ride.</Text>}
+          <TouchableOpacity onPress={handleFinishRide} style={{ paddingVertical: 12, alignItems: 'center' }}>
+            <Text style={{ color: MUTED, fontSize: 13, fontWeight: '700' }}>Done for now</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
   };
 
   const renderActiveRide = () => {
@@ -2595,7 +2649,9 @@ export default function RiderHomeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
-      {/* Real map using Leaflet + OpenStreetMap dark tiles — works on Expo Go, web, and production */}
+      {terminalRide ? renderTerminalRide() : <>
+      {/* The live WebView map, route feeds and ride sheet are deliberately
+          unmounted before a completed trip is displayed. */}
       <LeafletMap
         style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
         colorScheme={colorScheme}
@@ -2719,6 +2775,7 @@ export default function RiderHomeScreen() {
           ) : renderBookingSheet()
         ) : renderDefaultSheet()}
       </View>
+      </>}
 
       {/* Search Modal */}
       <Modal visible={searchOpen} animationType="slide" presentationStyle="fullScreen">
@@ -2912,7 +2969,7 @@ export default function RiderHomeScreen() {
             {/* Submit */}
             <TouchableOpacity
               onPress={async () => {
-                const rideId = pendingRatingRideId || activeRide?.firestoreId;
+                const rideId = pendingRatingRideId || terminalRide?.firestoreId || activeRide?.firestoreId;
                 const fullComment = [ratingComment.trim(), ...selectedRatingTags].filter(Boolean).join(" · ");
                 setRideRated(true);
                 setShowRatingModal(false);
@@ -3138,10 +3195,10 @@ export default function RiderHomeScreen() {
           destinationAddress={completedRideData.destinationAddress}
           riderEmail={user?.email || ""}
           riderName={(riderProfile as any)?.full_name || user?.displayName || "HY3N Rider"}
-          driverVehicle={activeRide?.driverVehicle || "HY3N vehicle"}
-          driverPlate={activeRide?.driverPlate || "Not available"}
-          paymentMethod={activeRide?.payment || "Selected method"}
-          category={activeRide?.category || "Ride"}
+          driverVehicle={completedRideData.driverVehicle || terminalRide?.driverVehicle || "HY3N vehicle"}
+          driverPlate={completedRideData.driverPlate || terminalRide?.driverPlate || "Not available"}
+          paymentMethod={completedRideData.paymentMethod || terminalRide?.payment || "Selected method"}
+          category={completedRideData.category || terminalRide?.category || "Ride"}
           completedAt={new Date().toISOString()}
           receiptEmailStatus={receiptEmailStatus}
           onReceiptEmailStatusChange={setReceiptEmailStatus}
