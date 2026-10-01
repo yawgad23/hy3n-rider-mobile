@@ -49,6 +49,13 @@ describe('Rider active ride relaunch recovery', () => {
     })?.driverTotalTrips).toBe(0);
   });
 
+  it('recovers the verified Driver rating count for Rider display', () => {
+    expect(recoverActiveRide({
+      ...activeRide,
+      driver: { ...activeRide.driver, rating: 4.8, rating_count: 17 },
+    })).toMatchObject({ driverRating: 4.8, driverRatingCount: 17 });
+  });
+
   it('does not revive completed or cancelled rides after relaunch', () => {
     expect(recoverActiveRide({ ...activeRide, status: 'completed' })).toBeNull();
     expect(recoverActiveRide({ ...activeRide, status: 'cancelled' })).toBeNull();

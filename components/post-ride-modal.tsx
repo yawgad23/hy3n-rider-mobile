@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { firestoreDB, COLLECTIONS } from '@/lib/firebase';
+import { dispatchService } from '@/lib/dispatch';
 import { trpc } from '@/lib/trpc';
 import { buildReceiptEmailPayload, type ReceiptEmailStatus } from '@/lib/receipt-email';
 
@@ -131,12 +131,7 @@ export function PostRideModal({
   const handleSubmitRating = async () => {
     setIsSubmitting(true);
     try {
-      await firestoreDB.update(COLLECTIONS.RIDES, rideId, {
-        rider_rating: ratingStars,
-        rider_feedback: feedback,
-        rider_feedback_tags: selectedTags,
-        rated_at: new Date().toISOString(),
-      });
+      await dispatchService.rateDriver(rideId, ratingStars, feedback, selectedTags);
       onRatingSubmitted?.();
       Alert.alert('Thank you!', 'Your rating has been submitted.');
       setTimeout(() => onClose(), 500);
@@ -169,10 +164,10 @@ export function PostRideModal({
               <>
                 <View style={{ alignItems: 'center', marginBottom: 24 }}>
                   <Text style={{ color: TEXT, fontSize: 20, fontWeight: '800', marginBottom: 8 }}>
-                    How was your ride?
+                    Rate your Driver
                   </Text>
                   <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>
-                    Rate {driverName} and help us improve
+                    Tell us about {driverName} before your next ride
                   </Text>
 
                   <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
@@ -297,7 +292,7 @@ export function PostRideModal({
                       <ActivityIndicator color="#fff" size="small" />
                     ) : (
                       <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>
-                        Submit Rating
+                        Submit Driver Rating
                       </Text>
                     )}
                   </TouchableOpacity>

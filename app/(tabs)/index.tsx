@@ -34,12 +34,6 @@ import {
   PAYMENT_METHODS,
   FREE_WAITING_MINUTES,
 } from "@/constants/rides";
-import {
-  notifyDriverFound,
-  notifyDriverArriving,
-  notifyTripStarted,
-  notifyTripCompleted,
-} from "@/lib/notifications";
 import { getApiBaseUrl } from "@/constants/oauth";
 import { RideChatModal, useUnreadChatCount } from "@/components/ride-chat-modal";
 import { useVoiceCall } from "@/hooks/use-voice-call";
@@ -118,6 +112,7 @@ interface ActiveRide {
   scheduled?: string | null;
   driverName?: string;
   driverRating?: number;
+  driverRatingCount?: number;
   driverVehicle?: string;
   driverServiceType?: string;
   driverPlate?: string;
@@ -628,6 +623,7 @@ export default function RiderHomeScreen() {
                   id: rawRide.driver_id,
                   name: rawRide.driver_name || rawRide.driverName,
                   rating: rawRide.driver_rating,
+                  rating_count: rawRide.driver_rating_count,
                   total_trips: rawRide.driver_total_trips,
                   vehicle_make: rawRide.driver_vehicle_make || String(rawRide.driver_vehicle || '').split(' ')[0],
                   vehicle_model: rawRide.driver_vehicle_model || String(rawRide.driver_vehicle || '').split(' ').slice(1).join(' '),
@@ -653,6 +649,7 @@ export default function RiderHomeScreen() {
             ? calculateBearing(prev.driverLocation.lat, prev.driverLocation.lng, nextDriverLocation.lat, nextDriverLocation.lng)
             : prev.driverBearing;
           const reportedDriverTripTotal = toFiniteNumber((driver as any)?.total_trips ?? (driver as any)?.total_rides);
+          const reportedDriverRatingCount = toFiniteNumber((driver as any)?.rating_count ?? rawRide.driver_rating_count);
           const etaTarget = ride.status === 'in_progress'
             ? { lat: prev.destination.lat, lng: prev.destination.lng }
             : { lat: prev.pickupLocation.lat, lng: prev.pickupLocation.lng };
@@ -666,16 +663,6 @@ export default function RiderHomeScreen() {
             : undefined;
           const stoppedSeconds = driverStoppedAt ? Math.max(0, Math.floor((Date.now() - driverStoppedAt) / 1000)) : 0;
           const safetySignal = getSafetySignal({ status: ride.status, distanceFromRouteKm: routeDeviationKm, stoppedSeconds });
-
-          if (ride.status !== prev.status) {
-            if (ride.status === 'matched' && driver) notifyDriverFound(driver.name, etaMin ?? 5);
-            if (ride.status === 'driver_arriving' && driver) notifyDriverArriving(driver.name);
-            if (ride.status === 'in_progress') notifyTripStarted(prev.destination.name);
-            // `prev` still carries the booking quote at this point. The backend
-            // writes `status` and `final_fare` together, so the completion alert
-            // must use this completed ride snapshot—not the stale quote.
-            if (ride.status === 'completed') notifyTripCompleted(getFinalRideFare(ride));
-          }
 
           if (trackedRide.id === selectedRideId && nextDriverLocation) {
             setDriverLocation(nextDriverLocation);
@@ -702,6 +689,9 @@ export default function RiderHomeScreen() {
             driverName: driver?.name ?? prev.driverName,
             driverId: driver?.id ?? (ride as any).driver_id ?? prev.driverId,
             driverRating: driver?.rating ?? prev.driverRating,
+            driverRatingCount: reportedDriverRatingCount === null
+              ? prev.driverRatingCount
+              : Math.max(0, Math.floor(reportedDriverRatingCount)),
             driverVehicle: driver ? `${driver.vehicle_make} ${driver.vehicle_model}` : prev.driverVehicle,
             driverServiceType: (driver as any)?.service_type ?? (driver as any)?.serviceType ?? prev.driverServiceType,
             driverPlate: driver?.plate ?? prev.driverPlate,
@@ -1290,6 +1280,9 @@ export default function RiderHomeScreen() {
           driverId: matchedDriver?.id || createdRide.driver_id || undefined,
           driverName: matchedDriver?.name || undefined,
           driverRating: Number.isFinite(Number(matchedDriver?.rating)) ? Number(matchedDriver?.rating) : undefined,
+          driverRatingCount: Number.isFinite(Number(matchedDriver?.rating_count))
+            ? Math.max(0, Math.floor(Number(matchedDriver?.rating_count)))
+            : undefined,
           driverTotalTrips: Number.isFinite(Number(matchedDriver?.total_trips ?? matchedDriver?.total_rides))
             ? Math.max(0, Math.floor(Number(matchedDriver?.total_trips ?? matchedDriver?.total_rides)))
             : undefined,
@@ -1553,6 +1546,32 @@ export default function RiderHomeScreen() {
     resetBookingState();
   };
 
+  const openCompletedRideRating = () => {
+    if (!activeRide || activeRide.status !== 'completed') return;
+    setCompletedRideData({
+      rideId: activeRide.firestoreId || activeRide.id,
+      driverName: activeRide.driverName || 'Driver',
+      driverRating: activeRide.driverRating || 4.8,
+      fare: getFinalRideFare(activeRide),
+      tip: tipAmount || 0,
+      distance: activeRide.distance,
+      duration: activeRide.duration,
+      pickupAddress,
+      destinationAddress: activeRide.destination.name,
+    });
+    setShowPostRideModal(true);
+  };
+
+  const handleBookAnotherRide = async () => {
+    if (activeRide?.status === 'completed' && !rideRated) {
+      openCompletedRideRating();
+      return;
+    }
+    if (activeRide?.status === 'completed') await handleFinishRide();
+    resetBookingState();
+    openLocationSearch('destination');
+  };
+
   const renderActiveRide = () => {
     if (!activeRide) return null;
     const isCompleted = activeRide.status === "completed";
@@ -1740,9 +1759,9 @@ export default function RiderHomeScreen() {
           </View>
         )}
         {activeRides.length === 1 && (
-          <TouchableOpacity onPress={() => { resetBookingState(); openLocationSearch("destination"); }} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: `${GOLD}14`, borderColor: `${GOLD}44`, borderWidth: 1, borderRadius: 11, paddingVertical: 10, marginBottom: 12 }}>
+          <TouchableOpacity onPress={handleBookAnotherRide} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: `${GOLD}14`, borderColor: `${GOLD}44`, borderWidth: 1, borderRadius: 11, paddingVertical: 10, marginBottom: 12 }}>
             <MaterialIcons name="add" size={17} color={GOLD} />
-            <Text style={{ color: GOLD, fontSize: 13, fontWeight: '700' }}>Book another ride</Text>
+            <Text style={{ color: GOLD, fontSize: 13, fontWeight: '700' }}>{activeRide?.status === 'completed' && !rideRated ? 'Rate Driver before another ride' : 'Book another ride'}</Text>
           </TouchableOpacity>
         )}
         {isSearching && (
@@ -1794,6 +1813,11 @@ export default function RiderHomeScreen() {
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 }}>
                       <MaterialIcons name="star" size={15} color={GOLD} />
                       <Text style={{ color: TEXT, fontSize: 12, fontWeight: "800" }}>{Number(activeRide.driverRating ?? 5).toFixed(1)}</Text>
+                      {typeof activeRide.driverRatingCount === 'number' && activeRide.driverRatingCount > 0 && (
+                        <Text style={{ color: MUTED, fontSize: 12 }}>
+                          · {activeRide.driverRatingCount} {activeRide.driverRatingCount === 1 ? 'rating' : 'ratings'}
+                        </Text>
+                      )}
                       {typeof activeRide.driverTotalTrips === 'number' && (
                         <Text style={{ color: MUTED, fontSize: 12 }}>
                           · {activeRide.driverTotalTrips} completed {activeRide.driverTotalTrips === 1 ? 'trip' : 'trips'}
@@ -2079,30 +2103,18 @@ export default function RiderHomeScreen() {
             )}
 
             <TouchableOpacity
-              onPress={() => {
-                setCompletedRideData({
-                  rideId: activeRide.firestoreId || activeRide.id,
-                  driverName: activeRide.driverName || 'Driver',
-                  driverRating: activeRide.driverRating || 4.8,
-                  fare: liveFare,
-                  tip: tipAmount || 0,
-                  distance: activeRide.distance,
-                  duration: activeRide.duration,
-                  pickupAddress: pickupAddress,
-                  destinationAddress: activeRide.destination.name,
-                });
-                setShowPostRideModal(true);
-              }}
+              onPress={openCompletedRideRating}
               style={{ width: "100%", backgroundColor: GOLD, borderRadius: 12, paddingVertical: 14, alignItems: "center", marginBottom: 10, flexDirection: "row", justifyContent: "center", gap: 8 }}
             >
               <MaterialIcons name="star" size={18} color="#000" />
-              <Text style={{ color: "#000", fontWeight: "bold", fontSize: 15 }}>Rate & Share Receipt</Text>
+              <Text style={{ color: "#000", fontWeight: "bold", fontSize: 15 }}>Rate Driver</Text>
             </TouchableOpacity>
+            {!rideRated && <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", marginBottom: 8 }}>Rate your Driver before booking your next ride.</Text>}
             <TouchableOpacity
               onPress={handleFinishRide}
               style={{ width: "100%", alignItems: "center", paddingVertical: 12 }}
             >
-              <Text style={{ color: MUTED, fontSize: 13 }}>Done</Text>
+              <Text style={{ color: MUTED, fontSize: 13 }}>Done for now</Text>
             </TouchableOpacity>
           </View>
         )}

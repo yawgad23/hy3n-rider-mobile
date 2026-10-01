@@ -10,7 +10,9 @@ async function sendTokenToBackend(user: User, role: AccountRole, token: string) 
   const baseUrl = getApiBaseUrl();
   if (!baseUrl || !token) return;
 
-  const idToken = await user.getIdToken();
+  // A newly restored app session can have an expired cached ID token even
+  // though the Rider is visibly signed in. Refresh before registering a token.
+  const idToken = await user.getIdToken(true);
   const response = await fetch(`${baseUrl}/api/notifications/push-device`, {
     method: 'POST',
     headers: {
