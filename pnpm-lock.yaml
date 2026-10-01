@@ -133,7 +133,7 @@ importers:
         version: 12.15.0(@react-native-async-storage/async-storage@2.2.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0)))
       hy3n-backend:
         specifier: github:yawgad23/backend
-        version: https://codeload.github.com/yawgad23/backend/tar.gz/19631533a193b03423cacb79bf1ea8d635cde6cd(typescript@5.9.3)
+        version: https://codeload.github.com/yawgad23/backend/tar.gz/33434563f48bf1a4c85481d9fb9d36ad2f008ccf(typescript@5.9.3)
       nativewind:
         specifier: ^4.2.1
         version: 4.2.1(react-native-reanimated@4.1.6(@babel/core@7.28.5)(react-native-worklets@0.5.1(@babel/core@7.28.5)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native-svg@15.12.1(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.2))
@@ -150,8 +150,8 @@ importers:
         specifier: ~2.28.0
         version: 2.28.0(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react-native-maps:
-        specifier: 1.20.1
-        version: 1.20.1(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+        specifier: 1.26.6
+        version: 1.26.6(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react-native-reanimated:
         specifier: ~4.1.6
         version: 4.1.6(@babel/core@7.28.5)(react-native-worklets@0.5.1(@babel/core@7.28.5)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -4138,8 +4138,8 @@ packages:
     resolution: {integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==}
     engines: {node: '>= 14'}
 
-  hy3n-backend@https://codeload.github.com/yawgad23/backend/tar.gz/19631533a193b03423cacb79bf1ea8d635cde6cd:
-    resolution: {tarball: https://codeload.github.com/yawgad23/backend/tar.gz/19631533a193b03423cacb79bf1ea8d635cde6cd}
+  hy3n-backend@https://codeload.github.com/yawgad23/backend/tar.gz/33434563f48bf1a4c85481d9fb9d36ad2f008ccf:
+    resolution: {tarball: https://codeload.github.com/yawgad23/backend/tar.gz/33434563f48bf1a4c85481d9fb9d36ad2f008ccf}
     version: 1.0.0
     engines: {node: '20'}
 
@@ -5370,12 +5370,12 @@ packages:
       react: '*'
       react-native: '*'
 
-  react-native-maps@1.20.1:
-    resolution: {integrity: sha512-NZI3B5Z6kxAb8gzb2Wxzu/+P2SlFIg1waHGIpQmazDSCRkNoHNY4g96g+xS0QPSaG/9xRBbDNnd2f2/OW6t6LQ==}
-    engines: {node: '>=18'}
+  react-native-maps@1.26.6:
+    resolution: {integrity: sha512-B8uuvkuLvlY+neS+vTZDl6WQ5QaB/XTElrIt7ofleHfXimfVpwmXIa5B1Y+hI6e+nm26OkEs93yPk+gEzqJZUQ==}
+    engines: {node: '>= 20.19.4'}
     peerDependencies:
-      react: '>= 17.0.1'
-      react-native: '>= 0.64.3'
+      react: '>= 18.3.1'
+      react-native: '>= 0.76.0'
       react-native-web: '>= 0.11'
     peerDependenciesMeta:
       react-native-web:
@@ -11148,7 +11148,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  hy3n-backend@https://codeload.github.com/yawgad23/backend/tar.gz/19631533a193b03423cacb79bf1ea8d635cde6cd(typescript@5.9.3):
+  hy3n-backend@https://codeload.github.com/yawgad23/backend/tar.gz/33434563f48bf1a4c85481d9fb9d36ad2f008ccf(typescript@5.9.3):
     dependencies:
       '@trpc/server': 11.7.2(typescript@5.9.3)
       axios: 1.13.2
@@ -12445,7 +12445,7 @@ snapshots:
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0)
 
-  react-native-maps@1.20.1(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+  react-native-maps@1.26.6(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:
       '@types/geojson': 7946.0.16
       react: 19.1.0
