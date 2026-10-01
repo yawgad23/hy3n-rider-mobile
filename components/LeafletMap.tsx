@@ -147,7 +147,9 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
     activeTileTheme = tileTheme;
   };
   setTileTheme(initialPayload.theme);
-  const layers = { user: null, destination: null, driver: null, pickup: null, nearby: [], route: null };
+  const layers = { user: null, destination: null, driver: null, pickup: null, nearby: new Map(), route: null };
+  const animationFrames = new WeakMap();
+  let lastPositionUpdateAt = 0;
   let userMovedMap = false;
   let lastUserPoint = initialPayload.user;
   map.on('dragstart zoomstart', () => { userMovedMap = true; });
@@ -157,18 +159,73 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   const pinIcon = (kind) => icon(kind, '<div class="' + kind + '-pin"></div>', [22,22], [11,22]);
   const vehicleIcon = (item) => icon('vehicle', '<div class="vehicle-icon" style="transform:rotate(' + (Number(item.bearing || 0)) + 'deg)"><div class="label">' + String(item.label || 'HY3N') + '</div><img class="vehicle-art" src="' + (markerAssets[item.kind || 'car'] || markerAssets.car) + '" alt="HY3N vehicle" /></div>', [52,52], [26,26]);
   const remove = (key) => { if (layers[key]) { map.removeLayer(layers[key]); layers[key] = null; } };
-  const clearNearby = () => { layers.nearby.forEach((layer) => map.removeLayer(layer)); layers.nearby = []; };
+  const stopAnimation = (marker) => {
+    const frame = animationFrames.get(marker);
+    if (frame) cancelAnimationFrame(frame);
+    animationFrames.delete(marker);
+  };
+  const animateMarker = (marker, target, duration) => {
+    stopAnimation(marker);
+    const start = marker.getLatLng();
+    const startTime = performance.now();
+    const frame = (now) => {
+      const progress = Math.min(1, (now - startTime) / duration);
+      const eased = progress < 1 ? progress * (2 - progress) : 1;
+      marker.setLatLng([
+        start.lat + (target[0] - start.lat) * eased,
+        start.lng + (target[1] - start.lng) * eased,
+      ]);
+      if (progress < 1) animationFrames.set(marker, requestAnimationFrame(frame));
+      else animationFrames.delete(marker);
+    };
+    animationFrames.set(marker, requestAnimationFrame(frame));
+  };
+  const clearNearby = (nextIds = new Set()) => {
+    layers.nearby.forEach((layer, id) => {
+      if (!nextIds.has(id)) {
+        stopAnimation(layer);
+        map.removeLayer(layer);
+        layers.nearby.delete(id);
+      }
+    });
+  };
   const draw = (state, fit) => {
     setTileTheme(state.theme);
     map.invalidateSize(false);
-    remove('user'); remove('destination'); remove('driver'); remove('pickup'); remove('route'); clearNearby();
+    const now = performance.now();
+    const animationDuration = lastPositionUpdateAt
+      ? Math.max(700, Math.min(4500, (now - lastPositionUpdateAt) * 0.88))
+      : 0;
+    lastPositionUpdateAt = now;
+    remove('user'); remove('destination'); remove('pickup'); remove('route');
     if (state.user) layers.user = L.marker(point(state.user), { icon: userIcon(), zIndexOffset: 100 }).addTo(map).bindPopup('Your pickup location');
     if (state.destination) layers.destination = L.marker(point(state.destination), { icon: pinIcon('destination'), zIndexOffset: 50 }).addTo(map).bindPopup('Destination');
-    if (state.driver) layers.driver = L.marker(point(state.driver.point), { icon: vehicleIcon(state.driver), zIndexOffset: 300 }).addTo(map).bindPopup(state.driver.label);
+    if (state.driver) {
+      if (!layers.driver) {
+        layers.driver = L.marker(point(state.driver.point), { icon: vehicleIcon(state.driver), zIndexOffset: 300 }).addTo(map).bindPopup(state.driver.label);
+      } else {
+        layers.driver.setIcon(vehicleIcon(state.driver));
+        layers.driver.setPopupContent(state.driver.label);
+        if (animationDuration > 0) animateMarker(layers.driver, point(state.driver.point), animationDuration);
+        else layers.driver.setLatLng(point(state.driver.point));
+      }
+    } else {
+      if (layers.driver) stopAnimation(layers.driver);
+      remove('driver');
+    }
     if (state.pickup) layers.pickup = L.marker(point(state.pickup), { icon: pinIcon('pickup'), zIndexOffset: 200 }).addTo(map).bindPopup('Pickup');
+    const nextNearbyIds = new Set((state.nearby || []).map((item) => item.id));
+    clearNearby(nextNearbyIds);
     (state.nearby || []).forEach((item) => {
-      const marker = L.marker(point(item.point), { icon: vehicleIcon(item), zIndexOffset: 150 }).addTo(map).bindPopup(item.label);
-      layers.nearby.push(marker);
+      const existing = layers.nearby.get(item.id);
+      if (existing) {
+        existing.setIcon(vehicleIcon(item));
+        existing.setPopupContent(item.label);
+        if (animationDuration > 0) animateMarker(existing, point(item.point), animationDuration);
+        else existing.setLatLng(point(item.point));
+      } else {
+        layers.nearby.set(item.id, L.marker(point(item.point), { icon: vehicleIcon(item), zIndexOffset: 150 }).addTo(map).bindPopup(item.label));
+      }
     });
     if (state.route && state.route.points.length > 1) layers.route = L.polyline(state.route.points.map(point), { color: state.route.colour, weight: 5, opacity: .9 }).addTo(map);
     if (!userMovedMap && state.user && !state.driver && !state.destination) {
@@ -239,7 +296,11 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     driver: isCoordinate(driverLocation) ? {
       point: driverLocation,
       colour: normaliseColour(driverColourHex, "#006B3F"),
-      label: Number.isFinite(Number(driverEtaMinutes)) ? `${Math.max(1, Math.round(Number(driverEtaMinutes)))} min away` : "Pickup ETA unavailable",
+      label: Number.isFinite(Number(driverEtaMinutes))
+        ? `${Math.max(1, Math.round(Number(driverEtaMinutes)))} min away${Number.isFinite(Number(driverDistanceKm)) && Number(driverDistanceKm) >= 0 ? ` · ${Number(driverDistanceKm).toFixed(1)} km` : ""}`
+        : Number.isFinite(Number(driverDistanceKm)) && Number(driverDistanceKm) >= 0
+          ? `${Number(driverDistanceKm).toFixed(1)} km away`
+          : "Pickup ETA unavailable",
       kind: markerKind(driverServiceType),
       bearing: Number.isFinite(Number(driverBearing)) ? Number(driverBearing) : null,
       metric: Number.isFinite(Number(driverDistanceKm)) && Number(driverDistanceKm) > 0 ? `${Number(driverDistanceKm).toFixed(1)} km away` : Number.isFinite(Number(driverEtaMinutes)) ? `${Math.max(1, Math.round(Number(driverEtaMinutes)))} min away` : "Driver location",
