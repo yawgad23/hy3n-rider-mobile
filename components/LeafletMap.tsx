@@ -164,10 +164,10 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
     remove('user'); remove('destination'); remove('driver'); remove('pickup'); remove('route'); clearNearby();
     if (state.user) layers.user = L.marker(point(state.user), { icon: userIcon(), zIndexOffset: 100 }).addTo(map).bindPopup('Your pickup location');
     if (state.destination) layers.destination = L.marker(point(state.destination), { icon: pinIcon('destination'), zIndexOffset: 50 }).addTo(map).bindPopup('Destination');
-    if (state.driver) layers.driver = L.marker(point(state.driver.point), { icon: vehicleIcon(state.driver), zIndexOffset: 300 }).addTo(map).bindPopup(state.driver.label + '<br>' + state.driver.metric);
+    if (state.driver) layers.driver = L.marker(point(state.driver.point), { icon: vehicleIcon(state.driver), zIndexOffset: 300 }).addTo(map).bindPopup(state.driver.label);
     if (state.pickup) layers.pickup = L.marker(point(state.pickup), { icon: pinIcon('pickup'), zIndexOffset: 200 }).addTo(map).bindPopup('Pickup');
     (state.nearby || []).forEach((item) => {
-      const marker = L.marker(point(item.point), { icon: vehicleIcon(item), zIndexOffset: 150 }).addTo(map).bindPopup(item.label + '<br>' + item.eta + ' min away');
+      const marker = L.marker(point(item.point), { icon: vehicleIcon(item), zIndexOffset: 150 }).addTo(map).bindPopup(item.label);
       layers.nearby.push(marker);
     });
     if (state.route && state.route.points.length > 1) layers.route = L.polyline(state.route.points.map(point), { color: state.route.colour, weight: 5, opacity: .9 }).addTo(map);
@@ -239,13 +239,13 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     driver: isCoordinate(driverLocation) ? {
       point: driverLocation,
       colour: normaliseColour(driverColourHex, "#006B3F"),
-      label: driverVehicle || (driverServiceType ? `${driverServiceType} Driver` : "HY3N Driver"),
+      label: Number.isFinite(Number(driverEtaMinutes)) ? `${Math.max(1, Math.round(Number(driverEtaMinutes)))} min away` : "Pickup ETA unavailable",
       kind: markerKind(driverServiceType),
       bearing: Number.isFinite(Number(driverBearing)) ? Number(driverBearing) : null,
       metric: Number.isFinite(Number(driverDistanceKm)) && Number(driverDistanceKm) > 0 ? `${Number(driverDistanceKm).toFixed(1)} km away` : Number.isFinite(Number(driverEtaMinutes)) ? `${Math.max(1, Math.round(Number(driverEtaMinutes)))} min away` : "Driver location",
     } : null,
     pickup: driverTracking && isCoordinate(driverTrackingTarget) && tripStatus !== "in_progress" ? driverTrackingTarget : null,
-    nearby: !driverTracking ? nearby.map((driver) => ({ id: driver.id, point: [driver.lat, driver.lng] as [number, number], colour: normaliseColour(driver.vehicleColourHex), label: driver.vehicleLabel || "HY3N vehicle", eta: Math.max(1, Math.round(driver.etaMinutes || 1)), bearing: Number.isFinite(Number(driver.heading)) ? Number(driver.heading) : null, kind: markerKind(driver.serviceType) })) : [],
+    nearby: !driverTracking ? nearby.map((driver) => ({ id: driver.id, point: [driver.lat, driver.lng] as [number, number], colour: normaliseColour(driver.vehicleColourHex), label: `${Math.max(1, Math.round(driver.etaMinutes || 1))} min away`, eta: Math.max(1, Math.round(driver.etaMinutes || 1)), bearing: Number.isFinite(Number(driver.heading)) ? Number(driver.heading) : null, kind: markerKind(driver.serviceType) })) : [],
     route: routePoints.length > 1 ? { points: routePoints, colour: driverTracking ? "#006B3F" : "#D4AF37" } : null,
   }), [colorScheme, destination, driverBearing, driverColourHex, driverDistanceKm, driverEtaMinutes, driverLocation, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearby, routePoints, tripStatus, userLocation]);
   const initialHtmlRef = useRef<string | null>(null);
