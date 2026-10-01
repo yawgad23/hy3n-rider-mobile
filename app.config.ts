@@ -52,7 +52,11 @@ const config: ExpoConfig = {
   icon: "./assets/images/rider-ios-icon.png",
   scheme: env.scheme,
   userInterfaceStyle: "automatic",
-  newArchEnabled: true,
+  // TestFlight crash reports for the Rider map builds showed an ObjC
+  // TurboModule abort in the Fabric-native map path. Keep the production app
+  // on the established legacy renderer until that upstream combination has
+  // been proven stable on the supported iOS devices.
+  newArchEnabled: false,
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,

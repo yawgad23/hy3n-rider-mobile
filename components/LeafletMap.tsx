@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import MapView, { Marker, Polyline, type LatLng, type Region } from "react-native-maps";
 
@@ -44,7 +44,13 @@ const FALLBACK_CENTER: [number, number] = [5.6037, -0.187];
 const DEFAULT_DELTA = 0.035;
 
 function isCoordinate(value: [number, number] | null | undefined): value is [number, number] {
-  return Boolean(value && Number.isFinite(value[0]) && Number.isFinite(value[1]));
+  return Boolean(
+    value
+      && Number.isFinite(value[0])
+      && Number.isFinite(value[1])
+      && Math.abs(value[0]) <= 90
+      && Math.abs(value[1]) <= 180,
+  );
 }
 
 function point(value: [number, number]): LatLng {
@@ -64,9 +70,17 @@ function normaliseColour(value?: string | null, fallback = "#F5F5F5") {
 }
 
 /**
- * Native Apple/Google map renderer for Rider. It deliberately avoids WebView,
- * Leaflet, and third-party tile scripts so an external CDN outage cannot leave
- * the booking screen as a blank panel on a production iPhone.
+ * Rider's native map surface.
+ *
+ * Keep this view intentionally conservative: the prior implementation mounted
+ * react-native-maps through Fabric with Android-only/advanced native props and
+ * moved the camera before the iOS map was ready. TestFlight crash reports for
+ * builds 63 and 64 showed an ObjC TurboModule abort during that rollout.
+ *
+ * This component now uses only the cross-platform native MapView contract and
+ * performs camera work only after onMapReady. The app configuration keeps this
+ * package on React Native's stable legacy renderer until the upstream Fabric
+ * path is proven safe on the supported iOS devices.
  */
 const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMap(
   {
@@ -76,7 +90,6 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     userLocation,
     destination = null,
     driverLocation = null,
-    driverBearing = null,
     driverColourHex = null,
     driverVehicle = null,
     driverServiceType = null,
@@ -85,17 +98,18 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     driverTracking = false,
     driverTrackingTarget = null,
     tripStatus = null,
-    safetySignal = "clear",
     nearbyDrivers = [],
   },
   ref,
 ) {
   const mapRef = useRef<MapView>(null);
+  const [mapReady, setMapReady] = useState(false);
   const initialCenter = isCoordinate(userLocation) ? userLocation : (isCoordinate(center) ? center : FALLBACK_CENTER);
 
   const nearby = useMemo(
     () => nearbyDrivers
-      .filter((driver) => Number.isFinite(driver.lat) && Number.isFinite(driver.lng))
+      .filter((driver) => Number.isFinite(driver.lat) && Number.isFinite(driver.lng)
+        && Math.abs(driver.lat) <= 90 && Math.abs(driver.lng) <= 180)
       .slice(0, 4),
     [nearbyDrivers],
   );
@@ -106,19 +120,26 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
       ? userLocation
       : initialCenter;
 
+  const moveTo = useCallback((coordinate: [number, number], duration = 350) => {
+    if (!mapReady || !isCoordinate(coordinate)) return;
+    mapRef.current?.animateToRegion(regionFor(coordinate), duration);
+  }, [mapReady]);
+
   useEffect(() => {
-    mapRef.current?.animateToRegion(regionFor(focusPoint), 450);
-  }, [focusPoint[0], focusPoint[1]]);
+    if (!mapReady) return;
+    const timer = setTimeout(() => moveTo(focusPoint, 450), 0);
+    return () => clearTimeout(timer);
+  }, [focusPoint, mapReady, moveTo]);
 
   useImperativeHandle(ref, () => ({
     panTo(latitude: number, longitude: number) {
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
-      mapRef.current?.animateToRegion(regionFor([latitude, longitude]), 350);
+      moveTo([latitude, longitude]);
     },
     fitBounds(points: [number, number][]) {
+      if (!mapReady) return;
       const coordinates = points.filter(isCoordinate).map(point);
       if (coordinates.length === 1) {
-        mapRef.current?.animateToRegion(regionFor([coordinates[0].latitude, coordinates[0].longitude]), 350);
+        moveTo([coordinates[0].latitude, coordinates[0].longitude]);
         return;
       }
       if (coordinates.length > 1) {
@@ -128,7 +149,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         });
       }
     },
-  }));
+  }), [mapReady, moveTo]);
 
   const routeTarget = driverTracking && isCoordinate(driverLocation) && isCoordinate(driverTrackingTarget)
     ? driverTrackingTarget
@@ -158,12 +179,9 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
         mapType="standard"
         showsCompass={false}
         showsTraffic={false}
-        showsBuildings={false}
-        showsIndoors={false}
         rotateEnabled={false}
         pitchEnabled={false}
-        toolbarEnabled={false}
-        userInterfaceStyle={colorScheme === "dark" ? "dark" : "light"}
+        onMapReady={() => setMapReady(true)}
       >
         {isCoordinate(userLocation) && (
           <Marker coordinate={point(userLocation)} title="Your pickup location" pinColor="#006B3F" />
@@ -177,8 +195,6 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
             title={driverTitle}
             description={metric}
             pinColor={normaliseColour(driverColourHex, "#006B3F")}
-            rotation={Number.isFinite(driverBearing) ? Number(driverBearing) : 0}
-            flat
           />
         )}
         {driverTracking && isCoordinate(driverTrackingTarget) && tripStatus !== "in_progress" && (
@@ -191,12 +207,10 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
             title={driver.vehicleLabel || "Nearby HY3N vehicle"}
             description={`${Math.max(1, Math.round(driver.etaMinutes || 1))} min away`}
             pinColor={normaliseColour(driver.vehicleColourHex, "#D4AF37")}
-            rotation={Number.isFinite(driver.heading) ? Number(driver.heading) : 0}
-            flat
           />
         ))}
         {routeCoordinates.length === 2 && (
-          <Polyline coordinates={routeCoordinates} strokeColor={routeColor} strokeWidth={5} lineDashPattern={[10, 8]} />
+          <Polyline coordinates={routeCoordinates} strokeColor={routeColor} strokeWidth={5} />
         )}
       </MapView>
     </View>
