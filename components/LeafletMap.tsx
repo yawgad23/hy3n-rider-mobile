@@ -1,7 +1,6 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { Platform, View } from "react-native";
-import { WebView } from "react-native-webview";
-import { MAP_MARKER_ASSETS } from "@/components/map-marker-assets";
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
+import { View } from "react-native";
+import MapView, { Marker, Polyline, type LatLng, type Region } from "react-native-maps";
 
 interface NearbyDriver {
   id: string;
@@ -42,28 +41,38 @@ export interface LeafletMapRef {
 }
 
 const FALLBACK_CENTER: [number, number] = [5.6037, -0.187];
-const safeHex = (value?: string | null, fallback = "#F5F5F5") => /^#[0-9a-fA-F]{6}$/.test(value || "") ? value! : fallback;
-const cleanText = (value?: string | null, fallback = "") => String(value || fallback).replace(/[<>&"']/g, "").slice(0, 70);
-const MAP_STATE_PLACEHOLDER = "__HY3N_INITIAL_MAP_STATE__";
-const STATIC_INITIAL_MAP_STATE = JSON.stringify({
-  center: FALLBACK_CENTER,
-  zoom: 14,
-  user: null,
-  destination: null,
-  driver: null,
-  driverTracking: false,
-  trackingTarget: null,
-  trackingPhase: "none",
-  safetySignal: "clear",
-  nearby: [],
-});
+const DEFAULT_DELTA = 0.035;
 
+function isCoordinate(value: [number, number] | null | undefined): value is [number, number] {
+  return Boolean(value && Number.isFinite(value[0]) && Number.isFinite(value[1]));
+}
+
+function point(value: [number, number]): LatLng {
+  return { latitude: value[0], longitude: value[1] };
+}
+
+function regionFor(value: [number, number]): Region {
+  return {
+    ...point(value),
+    latitudeDelta: DEFAULT_DELTA,
+    longitudeDelta: DEFAULT_DELTA,
+  };
+}
+
+function normaliseColour(value?: string | null, fallback = "#F5F5F5") {
+  return /^#[0-9a-fA-F]{6}$/.test(value || "") ? value! : fallback;
+}
+
+/**
+ * Native Apple/Google map renderer for Rider. It deliberately avoids WebView,
+ * Leaflet, and third-party tile scripts so an external CDN outage cannot leave
+ * the booking screen as a blank panel on a production iPhone.
+ */
 const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMap(
   {
     style,
     colorScheme = "dark",
     center = FALLBACK_CENTER,
-    zoom = 14,
     userLocation,
     destination = null,
     driverLocation = null,
@@ -78,361 +87,118 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     tripStatus = null,
     safetySignal = "clear",
     nearbyDrivers = [],
-    onRouteMetrics,
   },
   ref,
 ) {
-  const webViewRef = useRef<WebView>(null);
-  const [mapReady, setMapReady] = useState(false);
-  const isDark = colorScheme === "dark";
-  const mapBackground = isDark ? "#414853" : "#f3f5f7";
-  // Carto's legacy public endpoint can return an "API KEY REQUIRED" image in
-  // an installed iOS WebView, even when its HTTP status is 200. Use one
-  // key-free OSM source in both appearances and apply the dark treatment in
-  // the WebView, so dark mode stays a readable charcoal map without a tile
-  // watermark or provider credential.
-  const tileUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-  const tileFilter = isDark
-    ? "invert(.92) hue-rotate(180deg) grayscale(.82) saturate(.18) brightness(.60) contrast(.78)"
-    : "grayscale(.75) saturate(.32) brightness(1.08) contrast(.78)";
-  const tileOpacity = isDark ? 0.66 : 0.72;
-  const mapQuietOverlay = isDark ? "rgba(12, 17, 23, .18)" : "rgba(248, 250, 252, .13)";
+  const mapRef = useRef<MapView>(null);
+  const initialCenter = isCoordinate(userLocation) ? userLocation : (isCoordinate(center) ? center : FALLBACK_CENTER);
 
-  const mapState = useMemo(() => {
-    const normalizedNearby = nearbyDrivers
+  const nearby = useMemo(
+    () => nearbyDrivers
       .filter((driver) => Number.isFinite(driver.lat) && Number.isFinite(driver.lng))
-      .slice(0, 4)
-      .map((driver) => ({
-        id: cleanText(driver.id),
-        lat: driver.lat,
-        lng: driver.lng,
-        eta: Math.max(1, Math.round(driver.etaMinutes || 1)),
-        heading: Number.isFinite(driver.heading) ? Number(driver.heading) : 0,
-        colour: safeHex(driver.vehicleColourHex, "#F5F5F5"),
-        label: cleanText(driver.vehicleLabel, "HY3N vehicle"),
-        serviceType: cleanText(driver.serviceType, "car").toLowerCase(),
-      }));
-
-    return {
-      center: userLocation || center,
-      zoom,
-      user: userLocation ? { lat: userLocation[0], lng: userLocation[1] } : null,
-      destination: destination ? { lat: destination[0], lng: destination[1] } : null,
-      driver: driverLocation ? {
-        lat: driverLocation[0],
-        lng: driverLocation[1],
-        heading: typeof driverBearing === "number" ? driverBearing : 0,
-        colour: safeHex(driverColourHex, "#F5F5F5"),
-        label: cleanText(driverVehicle, "Driver vehicle"),
-        serviceType: cleanText(driverServiceType, "car").toLowerCase(),
-        eta: Number.isFinite(driverEtaMinutes) ? Math.max(1, Math.round(Number(driverEtaMinutes))) : null,
-        distanceKm: Number.isFinite(driverDistanceKm) && Number(driverDistanceKm) > 0 ? Number(driverDistanceKm) : null,
-      } : null,
-      driverTracking,
-      trackingTarget: driverTrackingTarget ? { lat: driverTrackingTarget[0], lng: driverTrackingTarget[1] } : null,
-      // Before the Driver starts the trip, the only route target shown is the
-      // booked pickup. Destination navigation starts only once the trip is in
-      // progress, matching the Rider's real trip state.
-      trackingPhase: driverTracking && driverLocation
-        ? (tripStatus === "in_progress" ? "destination" : "pickup")
-        : "none",
-      safetySignal,
-      nearby: normalizedNearby,
-    };
-  }, [center, destination, driverBearing, driverColourHex, driverDistanceKm, driverEtaMinutes, driverLocation, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearbyDrivers, safetySignal, tripStatus, userLocation, zoom]);
-
-  const serializedMapState = useMemo(
-    () => JSON.stringify(mapState).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026"),
-    [mapState],
-  );
-  const serializedMarkerAssets = useMemo(
-    () => JSON.stringify(MAP_MARKER_ASSETS).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026"),
-    [],
+      .slice(0, 4),
+    [nearbyDrivers],
   );
 
-  const pushMapState = useCallback(() => {
-    if (Platform.OS === "web" || !mapReady) return;
-    webViewRef.current?.injectJavaScript(`window.updateHy3nMap && window.updateHy3nMap(${serializedMapState}); true;`);
-  }, [mapReady, serializedMapState]);
+  const focusPoint = driverTracking && isCoordinate(driverLocation)
+    ? driverLocation
+    : isCoordinate(userLocation)
+      ? userLocation
+      : initialCenter;
 
   useEffect(() => {
-    pushMapState();
-  }, [pushMapState]);
-
-  const handleMapMessage = useCallback((event: any) => {
-    if (!onRouteMetrics) return;
-    try {
-      const message = JSON.parse(event?.nativeEvent?.data || '{}');
-      if (message?.type !== 'route_metrics') return;
-      const distanceKm = Number(message.distanceKm);
-      const durationMinutes = Number(message.durationMinutes);
-      if (!Number.isFinite(distanceKm) || !Number.isFinite(durationMinutes)) return;
-      if (message.phase !== 'pickup' && message.phase !== 'destination') return;
-      onRouteMetrics({ distanceKm, durationMinutes, phase: message.phase });
-    } catch {
-      // Ignore non-map WebView messages.
-    }
-  }, [onRouteMetrics]);
+    mapRef.current?.animateToRegion(regionFor(focusPoint), 450);
+  }, [focusPoint[0], focusPoint[1]]);
 
   useImperativeHandle(ref, () => ({
-    panTo(lat: number, lng: number) {
-      webViewRef.current?.injectJavaScript(`window.hy3nMap && window.hy3nMap.panTo([${lat}, ${lng}]); true;`);
+    panTo(latitude: number, longitude: number) {
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+      mapRef.current?.animateToRegion(regionFor([latitude, longitude]), 350);
     },
     fitBounds(points: [number, number][]) {
-      const validPoints = points.filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
-      if (!validPoints.length) return;
-      webViewRef.current?.injectJavaScript(`window.hy3nMap && window.hy3nMap.fitBounds(${JSON.stringify(validPoints)}, {padding: [60, 60], maxZoom: 15}); true;`);
+      const coordinates = points.filter(isCoordinate).map(point);
+      if (coordinates.length === 1) {
+        mapRef.current?.animateToRegion(regionFor([coordinates[0].latitude, coordinates[0].longitude]), 350);
+        return;
+      }
+      if (coordinates.length > 1) {
+        mapRef.current?.fitToCoordinates(coordinates, {
+          edgePadding: { top: 96, right: 56, bottom: 300, left: 56 },
+          animated: true,
+        });
+      }
     },
   }));
 
-  const mapHtml = useMemo(() => `<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <style>
-    * { box-sizing: border-box; }
-    html, body, #map { width: 100%; height: 100%; margin: 0; background: ${mapBackground}; }
-    .leaflet-control-zoom, .leaflet-control-attribution { display: none; }
-    .leaflet-tile-pane { filter: ${tileFilter}; }
-    #map::after { content: ''; position: absolute; inset: 0; z-index: 350; pointer-events: none; background: ${mapQuietOverlay}; }
-    .hy3n-vehicle-marker { background: transparent; border: 0; }
-    .hy3n-vehicle-wrap { width: 72px; height: 73px; position: relative; display: flex; justify-content: center; align-items: flex-start; pointer-events: none; filter: drop-shadow(0 3px 3px rgba(0,0,0,.32)); }
-    .hy3n-vehicle { width: 43px; height: 54px; position: relative; transform-origin: 50% 48%; transition: transform .7s linear; }
-    .hy3n-vehicle img { width: 43px; height: 54px; display: block; object-fit: contain; position: relative; z-index: 1; }
-    .hy3n-colour-tint { position: absolute; inset: 0; z-index: 2; opacity: .38; mix-blend-mode: multiply; pointer-events: none; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; -webkit-mask-position: center; mask-size: contain; mask-repeat: no-repeat; mask-position: center; }
-    .hy3n-colour-swatch { position: absolute; z-index: 3; top: 6px; right: 1px; width: 12px; height: 12px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.38); }
-    .hy3n-eta { position: absolute; top: 49px; left: 50%; transform: translateX(-50%); min-width: 42px; padding: 3px 7px; border-radius: 9px; background: rgba(17, 24, 39, .94); border: 1px solid rgba(255,255,255,.78); color: #fff; white-space: nowrap; text-align: center; font: 800 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; letter-spacing: .05px; box-shadow: 0 2px 6px rgba(0,0,0,.28); }
-    .hy3n-eta.assigned { background: #006B3F; }
-    .hy3n-safety-banner { position: absolute; top: 14px; left: 14px; right: 14px; z-index: 1000; padding: 10px 12px; border-radius: 12px; color: #fff; font: 700 12px -apple-system, BlinkMacSystemFont, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
-    .hy3n-safety-banner.danger { background: rgba(206,17,38,.94); }
-    .hy3n-safety-banner.warning { background: rgba(212,175,55,.96); color: #111; }
-    .hy3n-nearby-chip { position: absolute; left: 50%; bottom: 17px; transform: translateX(-50%); z-index: 1000; padding: 8px 12px; border-radius: 16px; background: rgba(17,24,39,.90); border: 1px solid rgba(255,255,255,.3); color: #fff; white-space: nowrap; font: 700 12px -apple-system, BlinkMacSystemFont, sans-serif; box-shadow: 0 3px 12px rgba(0,0,0,.3); }
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-  <script>
-    (function() {
-      var map = L.map('map', { center: [5.6037, -0.187], zoom: 14, zoomControl: false, attributionControl: false });
-      window.hy3nMap = map;
-      L.tileLayer('${tileUrl}', { maxZoom: 19, opacity: ${tileOpacity} }).addTo(map);
-
-      var layers = { user: null, pickup: null, destination: null, route: null, driver: null, tracking: null, nearby: {}, banner: null, nearbyChip: null };
-      var lastMode = '';
-      var trackingRouteKey = '';
-      var trackingRequest = 0;
-      var lastRouteAt = 0;
-      var markerAssets = ${serializedMarkerAssets};
-
-      function validHex(value) { return /^#[0-9a-fA-F]{6}$/.test(value || '') ? value : '#F5F5F5'; }
-      function escapeHtml(value) { return String(value || '').replace(/[&<>"']/g, ''); }
-      function kindFor(serviceType) {
-        var value = String(serviceType || 'car').toLowerCase();
-        if (value.indexOf('okada') >= 0 || value.indexOf('moto') >= 0 || value.indexOf('bike') >= 0 && value.indexOf('delivery') < 0) return 'okada';
-        if (value.indexOf('delivery') >= 0 || value.indexOf('courier') >= 0 || value.indexOf('express') >= 0) return 'delivery';
-        return 'car';
-      }
-      function vehicleIcon(item, assigned) {
-        var kind = kindFor(item.serviceType);
-        var distance = Number(item.distanceKm);
-        var metric = Number.isFinite(distance) && distance > 0
-          ? (distance < 1 ? Math.round(distance * 1000) + ' m' : distance.toFixed(1) + ' km')
-          : (!assigned && item.eta ? String(Math.max(1, Math.round(item.eta)) + ' min') : '');
-        var label = escapeHtml(item.label || 'HY3N vehicle');
-        var heading = Number(item.heading || 0);
-        var asset = markerAssets[kind] || markerAssets.car || '';
-        var colour = validHex(item.colour);
-        var metricHtml = metric ? '<div class="hy3n-eta ' + (assigned ? 'assigned' : '') + '">' + metric + '</div>' : '';
-        var iconHtml = '<div class="hy3n-vehicle-wrap" title="' + label + '"><div class="hy3n-vehicle" style="transform:rotate(' + heading + 'deg)"><img src="' + asset + '" alt=""/><div class="hy3n-colour-tint" style="background:' + colour + ';-webkit-mask-image:url(' + asset + ');mask-image:url(' + asset + ');"></div><div class="hy3n-colour-swatch" style="background:' + colour + '"></div></div>' + metricHtml + '</div>';
-        return L.divIcon({ html: iconHtml, iconSize: [72, 73], iconAnchor: [36, 35], className: 'hy3n-vehicle-marker' });
-      }
-      function userIcon() { return L.divIcon({ html: '<div style="width:18px;height:18px;border-radius:50%;background:#006B3F;border:4px solid #fff;box-shadow:0 0 0 3px rgba(0,107,63,.24),0 2px 5px rgba(0,0,0,.32);"></div>', iconSize:[18,18], iconAnchor:[9,9], className:'' }); }
-      function pickupIcon() { return L.divIcon({ html: '<div style="width:24px;height:24px;border-radius:50%;background:#006B3F;border:3px solid #fff;box-shadow:0 0 0 4px rgba(0,107,63,.22),0 2px 5px rgba(0,0,0,.32);"></div>', iconSize:[24,24], iconAnchor:[12,12], className:'' }); }
-      function destinationIcon() { return L.divIcon({ html: '<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:#D4AF37;border:3px solid #fff;box-shadow:0 2px 5px rgba(0,0,0,.32);transform:rotate(-45deg);"></div>', iconSize:[22,22], iconAnchor:[11,22], className:'' }); }
-      function setMarker(name, position, icon) {
-        if (!layers[name]) { layers[name] = L.marker([position.lat, position.lng], { icon: icon, keyboard: false }).addTo(map); return layers[name]; }
-        animateMarker(layers[name], position.lat, position.lng);
-        layers[name].setIcon(icon);
-        return layers[name];
-      }
-      function removeLayer(name) { if (layers[name]) { map.removeLayer(layers[name]); layers[name] = null; } }
-      function animateMarker(marker, lat, lng) {
-        var from = marker.getLatLng();
-        var to = L.latLng(lat, lng);
-        if (!from || (Math.abs(from.lat - to.lat) < 0.000001 && Math.abs(from.lng - to.lng) < 0.000001)) { marker.setLatLng(to); return; }
-        if (marker._hy3nAnimation) cancelAnimationFrame(marker._hy3nAnimation);
-        var start = performance.now();
-        var duration = Math.min(1300, Math.max(450, map.distance(from, to) * 0.11));
-        function frame(now) {
-          var progress = Math.min(1, (now - start) / duration);
-          var smooth = progress * progress * (3 - 2 * progress);
-          marker.setLatLng([from.lat + (to.lat - from.lat) * smooth, from.lng + (to.lng - from.lng) * smooth]);
-          if (progress < 1) marker._hy3nAnimation = requestAnimationFrame(frame);
-        }
-        marker._hy3nAnimation = requestAnimationFrame(frame);
-      }
-      function updateBanner(signal) {
-        if (layers.banner) { layers.banner.remove(); layers.banner = null; }
-        if (signal !== 'route_deviation' && signal !== 'long_stop') return;
-        var text = signal === 'route_deviation' ? 'Route check: your driver appears to be off the planned route.' : 'Trip check: your driver has been stationary for several minutes.';
-        var element = L.DomUtil.create('div', 'hy3n-safety-banner ' + (signal === 'route_deviation' ? 'danger' : 'warning'));
-        element.textContent = text;
-        layers.banner = L.control({ position: 'topleft' });
-        layers.banner.onAdd = function() { return element; };
-        layers.banner.addTo(map);
-      }
-      function updateNearbyChip(count) {
-        if (layers.nearbyChip) { layers.nearbyChip.remove(); layers.nearbyChip = null; }
-        if (!count) return;
-        var element = L.DomUtil.create('div', 'hy3n-nearby-chip');
-        element.textContent = count === 1 ? '1 nearby vehicle' : count + ' nearby vehicles';
-        layers.nearbyChip = L.control({ position: 'bottomleft' });
-        layers.nearbyChip.onAdd = function() { return element; };
-        layers.nearbyChip.addTo(map);
-      }
-      function updateNearby(items) {
-        var next = {};
-        items.forEach(function(item) {
-          next[item.id] = true;
-          var marker = layers.nearby[item.id];
-          if (!marker) {
-            layers.nearby[item.id] = L.marker([item.lat, item.lng], { icon: vehicleIcon(item, false), keyboard: false }).addTo(map);
-          } else {
-            animateMarker(marker, item.lat, item.lng);
-            marker.setIcon(vehicleIcon(item, false));
-          }
-        });
-        Object.keys(layers.nearby).forEach(function(id) { if (!next[id]) { map.removeLayer(layers.nearby[id]); delete layers.nearby[id]; } });
-      }
-      function clearNearby() { Object.keys(layers.nearby).forEach(function(id) { map.removeLayer(layers.nearby[id]); }); layers.nearby = {}; updateNearbyChip(0); }
-      function postRouteMetrics(distanceKm, durationMinutes, phase) {
-        if (!window.ReactNativeWebView || !window.ReactNativeWebView.postMessage) return;
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'route_metrics', distanceKm: distanceKm, durationMinutes: durationMinutes, phase: phase }));
-      }
-      function drawFallbackTrackingRoute(from, target) {
-        if (layers.tracking) { map.removeLayer(layers.tracking); layers.tracking = null; }
-        layers.tracking = L.polyline([[from.lat, from.lng], [target.lat, target.lng]], { color: '#006B3F', weight: 5, opacity: .84, dashArray: '10, 8' }).addTo(map);
-      }
-      function updateTrackingRoute(state) {
-        if (!state.driverTracking || !state.driver || !state.trackingTarget) {
-          trackingRouteKey = '';
-          if (layers.tracking) { map.removeLayer(layers.tracking); layers.tracking = null; }
-          return;
-        }
-        var from = state.driver;
-        var target = state.trackingTarget;
-        var phase = state.trackingPhase === 'destination' ? 'destination' : 'pickup';
-        var routeKey = phase + ':' + Number(from.lat).toFixed(5) + ',' + Number(from.lng).toFixed(5) + '>' + Number(target.lat).toFixed(5) + ',' + Number(target.lng).toFixed(5);
-        var now = Date.now();
-        if (trackingRouteKey === routeKey || (now - lastRouteAt < 12000 && trackingRouteKey.indexOf(phase + ':') === 0)) return;
-        trackingRouteKey = routeKey;
-        lastRouteAt = now;
-        var requestId = ++trackingRequest;
-        var url = 'https://router.project-osrm.org/route/v1/driving/' + from.lng + ',' + from.lat + ';' + target.lng + ',' + target.lat + '?overview=full&geometries=geojson';
-        fetch(url).then(function(response) { return response.ok ? response.json() : null; }).then(function(data) {
-          if (requestId !== trackingRequest || !data || !data.routes || !data.routes[0]) return;
-          var route = data.routes[0];
-          var coordinates = route.geometry && route.geometry.coordinates;
-          if (!coordinates || !coordinates.length) { drawFallbackTrackingRoute(from, target); return; }
-          if (layers.tracking) { map.removeLayer(layers.tracking); layers.tracking = null; }
-          layers.tracking = L.polyline(coordinates.map(function(point) { return [point[1], point[0]]; }), { color: '#006B3F', weight: 5, opacity: .92, lineCap: 'round', lineJoin: 'round' }).addTo(map);
-          postRouteMetrics(Number(route.distance || 0) / 1000, Math.max(1, Math.ceil(Number(route.duration || 0) / 60)), phase);
-        }).catch(function() {
-          if (requestId === trackingRequest) drawFallbackTrackingRoute(from, target);
-        });
-      }
-      function fitForState(state, mode) {
-        if (lastMode === mode) return;
-        lastMode = mode;
-        var points = [];
-        if (state.user) points.push([state.user.lat, state.user.lng]);
-        if (state.driver) {
-          points.push([state.driver.lat, state.driver.lng]);
-          if (state.driverTracking && state.trackingTarget) points.push([state.trackingTarget.lat, state.trackingTarget.lng]);
-        }
-        else if (state.destination) points.push([state.destination.lat, state.destination.lng]);
-        else state.nearby.slice(0, 6).forEach(function(item) { points.push([item.lat, item.lng]); });
-        if (points.length > 1) map.fitBounds(points, { padding: [58, 68], maxZoom: 15 });
-        else if (points.length === 1) map.setView(points[0], Math.max(state.zoom || 14, 14));
-      }
-      window.updateHy3nMap = function(state) {
-        if (!state) return;
-        if (state.user) setMarker('user', state.user, userIcon()); else removeLayer('user');
-        var showDestination = state.destination && (!state.driver || state.trackingPhase === 'destination');
-        if (showDestination) {
-          setMarker('destination', state.destination, destinationIcon());
-          if (layers.route) map.removeLayer(layers.route);
-          if (!state.driver && state.user) layers.route = L.polyline([[state.user.lat, state.user.lng], [state.destination.lat, state.destination.lng]], { color: '#D4AF37', weight: 3, opacity: .82, dashArray: '9, 7' }).addTo(map);
-        } else { removeLayer('destination'); if (layers.route) { map.removeLayer(layers.route); layers.route = null; } }
-        if (state.driver) {
-          clearNearby();
-          setMarker('driver', state.driver, vehicleIcon({ heading: state.driver.heading, colour: state.driver.colour, label: state.driver.label, serviceType: state.driver.serviceType, eta: state.driver.eta, distanceKm: state.driver.distanceKm }, true));
-          if (state.driverTracking && state.trackingTarget && state.trackingPhase === 'pickup') setMarker('pickup', state.trackingTarget, pickupIcon());
-          else removeLayer('pickup');
-          updateTrackingRoute(state);
-        } else {
-          removeLayer('driver');
-          removeLayer('pickup');
-          if (layers.tracking) { map.removeLayer(layers.tracking); layers.tracking = null; }
-          updateNearby(state.nearby || []);
-          updateNearbyChip((state.nearby || []).length);
-        }
-        updateBanner(state.safetySignal || 'clear');
-        fitForState(state, state.driver ? 'assigned:' + state.trackingPhase : state.destination ? 'booking' : (state.nearby || []).length ? 'nearby' : 'idle');
-      };
-      window.updateHy3nMap(${MAP_STATE_PLACEHOLDER});
-    })();
-  </script>
-</body>
-</html>`, [mapBackground, mapQuietOverlay, serializedMarkerAssets, tileFilter, tileOpacity, tileUrl]);
-
-  // Native Rider apps receive live GPS changes through injectJavaScript. The
-  // WebView source must not contain current location data: changing source HTML
-  // forces iOS/Android to reload Leaflet and makes the map flash on each move.
-  const nativeMapHtml = useMemo(
-    () => mapHtml.replace(MAP_STATE_PLACEHOLDER, STATIC_INITIAL_MAP_STATE),
-    [mapHtml],
-  );
-  const nativeWebViewSource = useMemo(() => ({ html: nativeMapHtml }), [nativeMapHtml]);
-  // The web iframe has no native injectJavaScript bridge, so it retains its
-  // existing document-update path without affecting the installed apps.
-  const webMapHtml = useMemo(
-    () => mapHtml.replace(MAP_STATE_PLACEHOLDER, serializedMapState),
-    [mapHtml, serializedMapState],
-  );
-
-  if (Platform.OS === "web") {
-    return (
-      <View style={[{ flex: 1, overflow: "hidden" }, style]}>
-        <iframe srcDoc={webMapHtml} style={{ width: "100%", height: "100%", border: "none" }} title="HY3N map" />
-      </View>
-    );
-  }
+  const routeTarget = driverTracking && isCoordinate(driverLocation) && isCoordinate(driverTrackingTarget)
+    ? driverTrackingTarget
+    : !driverLocation && isCoordinate(userLocation) && isCoordinate(destination)
+      ? destination
+      : null;
+  const routeStart = driverTracking && isCoordinate(driverLocation)
+    ? driverLocation
+    : isCoordinate(userLocation)
+      ? userLocation
+      : null;
+  const routeCoordinates = routeStart && routeTarget ? [point(routeStart), point(routeTarget)] : [];
+  const routeColor = driverTracking ? "#006B3F" : "#D4AF37";
+  const driverTitle = driverVehicle || (driverServiceType ? `${driverServiceType} Driver` : "HY3N Driver");
+  const metric = Number.isFinite(driverDistanceKm) && Number(driverDistanceKm) > 0
+    ? `${Number(driverDistanceKm).toFixed(1)} km away`
+    : Number.isFinite(driverEtaMinutes)
+      ? `${Math.max(1, Math.round(Number(driverEtaMinutes)))} min away`
+      : "Driver location";
 
   return (
-    <View style={[{ flex: 1 }, style]}>
-      <WebView
-        key={colorScheme}
-        ref={webViewRef}
-        source={nativeWebViewSource}
-        style={{ flex: 1, backgroundColor: mapBackground }}
-        scrollEnabled={false}
-        bounces={false}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-        originWhitelist={["*"]}
-        javaScriptEnabled
-        domStorageEnabled
-        mixedContentMode="always"
-        allowsInlineMediaPlayback
-        startInLoadingState={false}
-        cacheEnabled={false}
-        onMessage={handleMapMessage}
-        onLoadStart={() => setMapReady(false)}
-        onLoadEnd={() => setMapReady(true)}
-      />
+    <View style={[{ flex: 1, backgroundColor: colorScheme === "dark" ? "#18232F" : "#E7EEF2" }, style]}>
+      <MapView
+        ref={mapRef}
+        style={{ flex: 1 }}
+        initialRegion={regionFor(initialCenter)}
+        mapType="standard"
+        showsCompass={false}
+        showsTraffic={false}
+        showsBuildings={false}
+        showsIndoors={false}
+        rotateEnabled={false}
+        pitchEnabled={false}
+        toolbarEnabled={false}
+        userInterfaceStyle={colorScheme === "dark" ? "dark" : "light"}
+      >
+        {isCoordinate(userLocation) && (
+          <Marker coordinate={point(userLocation)} title="Your pickup location" pinColor="#006B3F" />
+        )}
+        {isCoordinate(destination) && (!driverTracking || tripStatus === "in_progress") && (
+          <Marker coordinate={point(destination)} title="Destination" pinColor="#D4AF37" />
+        )}
+        {isCoordinate(driverLocation) && (
+          <Marker
+            coordinate={point(driverLocation)}
+            title={driverTitle}
+            description={metric}
+            pinColor={normaliseColour(driverColourHex, "#006B3F")}
+            rotation={Number.isFinite(driverBearing) ? Number(driverBearing) : 0}
+            flat
+          />
+        )}
+        {driverTracking && isCoordinate(driverTrackingTarget) && tripStatus !== "in_progress" && (
+          <Marker coordinate={point(driverTrackingTarget)} title="Pickup" pinColor="#006B3F" />
+        )}
+        {!driverTracking && nearby.map((driver) => (
+          <Marker
+            key={driver.id}
+            coordinate={{ latitude: driver.lat, longitude: driver.lng }}
+            title={driver.vehicleLabel || "Nearby HY3N vehicle"}
+            description={`${Math.max(1, Math.round(driver.etaMinutes || 1))} min away`}
+            pinColor={normaliseColour(driver.vehicleColourHex, "#D4AF37")}
+            rotation={Number.isFinite(driver.heading) ? Number(driver.heading) : 0}
+            flat
+          />
+        ))}
+        {routeCoordinates.length === 2 && (
+          <Polyline coordinates={routeCoordinates} strokeColor={routeColor} strokeWidth={5} lineDashPattern={[10, 8]} />
+        )}
+      </MapView>
     </View>
   );
 });
