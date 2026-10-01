@@ -43,6 +43,7 @@ import { calculateDynamicFare, calculateDistance, RideMetrics } from "@/lib/dyna
 import { getDistanceToPickup, getDistanceToDestination, estimateETA, formatDistance, isDriverNearPickup, calculateBearing } from "@/lib/driver-tracking";
 import { upsertRide, updateRide, removeRide, countActiveRides } from "@/lib/rider-ride-state";
 import { recoverActiveRides } from "@/lib/rider-active-ride-recovery";
+import { applyCompletedRideSnapshot } from "@/lib/rider-terminal-ride";
 import { isExpiredRiderSearch } from "@/lib/rider-search-expiry";
 import { expireStaleRiderSearch } from "@/lib/rider-search-expiry-api";
 import { buildEmergencyAssistMessage, getSafetySignal, requiresCancellationReason, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
@@ -601,6 +602,12 @@ export default function RiderHomeScreen() {
       .map((trackedRide) => dispatchService.listenToRide(trackedRide.firestoreId!, (ride: DispatchRide) => {
         updateActiveRide((prev) => {
           if (prev.id !== trackedRide.id) return prev;
+          // Settlement can remove optional live-location and route fields in
+          // the same snapshot that ends the trip. Do not run live GPS/ETA
+          // calculations or nested React state setters for terminal rides.
+          if (ride.status === 'completed') {
+            return applyCompletedRideSnapshot(prev, ride as unknown as Record<string, unknown>);
+          }
           const rawRide = ride as any;
           const driver = ride.driver || (
             rawRide.driver_name || rawRide.driver_vehicle || rawRide.driver_vehicle_make || rawRide.driver_plate
@@ -729,10 +736,6 @@ export default function RiderHomeScreen() {
             matchedAt: prev.matchedAt ?? ((ride.status === 'driver_arriving' || ride.status === 'matched') ? new Date().toISOString() : prev.matchedAt),
             trackingStartedAt: enteredTrip ? Date.now() : prev.trackingStartedAt,
             actualDistanceKm: toFiniteNumber((ride as any).actual_distance_km ?? (ride as any).trip_meter?.distance_km) ?? prev.actualDistanceKm ?? 0,
-            // Completion must use the server-stored quote-backed amount, not a
-            // local GPS/time estimate retained from the ride screen.
-            currentFare: ride.status === 'completed' ? getFinalRideFare(ride) : prev.currentFare,
-            finalFare: ride.status === 'completed' ? getFinalRideFare(ride) : prev.finalFare,
             sharingActive: Boolean((ride as any).sharing_active),
             shareExpiresAt: String((ride as any).share_expires_at || '') || undefined,
           };
