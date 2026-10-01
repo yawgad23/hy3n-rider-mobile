@@ -16,6 +16,7 @@ const activeRide = {
     id: 'driver-123',
     name: 'Kofi',
     photo_url: 'https://cdn.example.com/drivers/kofi.jpg',
+    total_trips: 24,
     vehicle_make: 'Toyota',
     vehicle_model: 'Vitz',
     vehicle_colour: 'White',
@@ -34,10 +35,18 @@ describe('Rider active ride relaunch recovery', () => {
       destination: { name: 'Airport', lat: 5.607, lng: -0.171 },
       driverName: 'Kofi',
       driverPhoto: 'https://cdn.example.com/drivers/kofi.jpg',
+      driverTotalTrips: 24,
       driverVehicle: 'Toyota Vitz',
       driverBearing: 0,
       ridePin: '9593',
     });
+  });
+
+  it('preserves a zero completed-trip count instead of treating a new Driver as unknown', () => {
+    expect(recoverActiveRide({
+      ...activeRide,
+      driver: { ...activeRide.driver, total_trips: 0 },
+    })?.driverTotalTrips).toBe(0);
   });
 
   it('does not revive completed or cancelled rides after relaunch', () => {

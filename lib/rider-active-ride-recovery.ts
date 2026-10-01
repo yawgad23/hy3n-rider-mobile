@@ -38,6 +38,7 @@ export type RecoveredActiveRide = {
   driverId?: string;
   driverName?: string;
   driverRating?: number;
+  driverTotalTrips?: number;
   driverVehicle?: string;
   driverServiceType?: string;
   driverPlate?: string;
@@ -149,6 +150,7 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
     driverId: nonEmptyText(driver.id ?? rawRide.driver_id) || undefined,
     driverName: nonEmptyText(driver.name ?? rawRide.driver_name) || undefined,
     driverRating: optionalFiniteNumber(driver.rating ?? rawRide.driver_rating),
+    driverTotalTrips: optionalFiniteNumber(driver.total_trips ?? driver.total_rides ?? rawRide.driver_total_trips),
     driverVehicle: vehicle || undefined,
     driverServiceType: nonEmptyText(driver.service_type ?? driver.serviceType ?? rawRide.driver_service_type) || undefined,
     driverPlate: nonEmptyText(driver.plate ?? rawRide.driver_plate) || undefined,

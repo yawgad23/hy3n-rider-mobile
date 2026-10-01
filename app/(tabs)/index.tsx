@@ -652,6 +652,7 @@ export default function RiderHomeScreen() {
           const driverBearing = nextDriverLocation && prev.driverLocation
             ? calculateBearing(prev.driverLocation.lat, prev.driverLocation.lng, nextDriverLocation.lat, nextDriverLocation.lng)
             : prev.driverBearing;
+          const reportedDriverTripTotal = toFiniteNumber((driver as any)?.total_trips ?? (driver as any)?.total_rides);
           const etaTarget = ride.status === 'in_progress'
             ? { lat: prev.destination.lat, lng: prev.destination.lng }
             : { lat: prev.pickupLocation.lat, lng: prev.pickupLocation.lng };
@@ -706,7 +707,9 @@ export default function RiderHomeScreen() {
             driverPlate: driver?.plate ?? prev.driverPlate,
             driverColour: driver?.vehicle_colour ?? prev.driverColour,
             driverColourHex: driver?.vehicle_colour_hex ?? prev.driverColourHex,
-            driverTotalTrips: driver?.total_trips ?? prev.driverTotalTrips,
+            driverTotalTrips: reportedDriverTripTotal === null
+              ? prev.driverTotalTrips
+              : Math.max(0, Math.floor(reportedDriverTripTotal)),
             driverPhone: driver?.phone ?? prev.driverPhone,
             driverPhoto: driverPhotoUri(driver) ?? driverPhotoUri(rawRide) ?? prev.driverPhoto,
             driverMomoNumber: (ride as any).payment_method === 'mobile_money' || ride.payment === 'mobile_money'
@@ -1287,6 +1290,9 @@ export default function RiderHomeScreen() {
           driverId: matchedDriver?.id || createdRide.driver_id || undefined,
           driverName: matchedDriver?.name || undefined,
           driverRating: Number.isFinite(Number(matchedDriver?.rating)) ? Number(matchedDriver?.rating) : undefined,
+          driverTotalTrips: Number.isFinite(Number(matchedDriver?.total_trips ?? matchedDriver?.total_rides))
+            ? Math.max(0, Math.floor(Number(matchedDriver?.total_trips ?? matchedDriver?.total_rides)))
+            : undefined,
           driverVehicle: matchedDriver ? `${matchedDriver.vehicle_make || ''} ${matchedDriver.vehicle_model || ''}`.trim() : undefined,
           driverServiceType: matchedDriver?.service_type || matchedDriver?.serviceType || selectedCategory.id,
           driverPlate: matchedDriver?.plate || undefined,
@@ -1788,7 +1794,11 @@ export default function RiderHomeScreen() {
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 }}>
                       <MaterialIcons name="star" size={15} color={GOLD} />
                       <Text style={{ color: TEXT, fontSize: 12, fontWeight: "800" }}>{Number(activeRide.driverRating ?? 5).toFixed(1)}</Text>
-                      {activeRide.driverTotalTrips ? <Text style={{ color: MUTED, fontSize: 12 }}>· {activeRide.driverTotalTrips} trips</Text> : null}
+                      {typeof activeRide.driverTotalTrips === 'number' && (
+                        <Text style={{ color: MUTED, fontSize: 12 }}>
+                          · {activeRide.driverTotalTrips} completed {activeRide.driverTotalTrips === 1 ? 'trip' : 'trips'}
+                        </Text>
+                      )}
                     </View>
                   </View>
                   <View style={{ alignItems: "flex-end", gap: 4 }}>
