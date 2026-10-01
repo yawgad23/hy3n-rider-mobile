@@ -19,6 +19,12 @@ export type RiderLiveRide = {
 
 const ACTIVITY_KEY_PREFIX = 'hy3n:rider:live-activity:';
 const ACTIVITY_RIDE_PREFIX = 'hy3n:rider:live-activity-ride:';
+
+// iOS can emit the initial push-token event immediately after startActivity(),
+// before AsyncStorage receives the returned activity ID. Keep that event in
+// memory briefly, then register it as soon as the mapping is persisted.
+const pendingActivityPushTokens = new Map<string, string>();
+
 const LIVE_ACTIVITY_CONFIG: LiveActivity.LiveActivityConfig = {
   backgroundColor: '#080808',
   titleColor: '#FFFFFF',
@@ -84,10 +90,22 @@ async function activityIdForRide(rideId: string) {
   return AsyncStorage.getItem(`${ACTIVITY_KEY_PREFIX}${rideId}`);
 }
 
+async function rideIdForActivity(activityId: string) {
+  return AsyncStorage.getItem(`${ACTIVITY_RIDE_PREFIX}${activityId}`);
+}
+
 async function saveActivityMapping(rideId: string, activityId: string) {
   await AsyncStorage.multiSet([
     [`${ACTIVITY_KEY_PREFIX}${rideId}`, activityId],
     [`${ACTIVITY_RIDE_PREFIX}${activityId}`, rideId],
+  ]);
+}
+
+async function removeActivityMapping(rideId: string, activityId: string) {
+  pendingActivityPushTokens.delete(activityId);
+  await AsyncStorage.multiRemove([
+    `${ACTIVITY_KEY_PREFIX}${rideId}`,
+    `${ACTIVITY_RIDE_PREFIX}${activityId}`,
   ]);
 }
 
@@ -113,19 +131,50 @@ async function registerActivityToken(user: User, rideId: string, activityId: str
   if (!response.ok) throw new Error(`Live Activity token registration failed with ${response.status}`);
 }
 
+async function deactivateActivityToken(user: User, rideId: string, activityId: string) {
+  try {
+    await fetch(`${getApiBaseUrl()}/api/live-activities/token/${encodeURIComponent(rideId)}/${encodeURIComponent(activityId)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${await user.getIdToken()}` },
+    });
+  } catch {
+    // A terminal ActivityKit state must never block Rider completion UI. The
+    // backend also disables the record after sending its completion push.
+  }
+}
+
+async function registerQueuedActivityToken(user: User, rideId: string, activityId: string) {
+  const token = pendingActivityPushTokens.get(activityId);
+  if (!token) return;
+  pendingActivityPushTokens.delete(activityId);
+  try {
+    await registerActivityToken(user, rideId, activityId, token);
+  } catch (error) {
+    console.warn('[HY3N] Live Activity initial token registration failed:', error);
+  }
+}
+
 /** Start or update the local activity while the Rider has the app open. */
 export async function syncRiderLiveActivity(user: User, ride: RiderLiveRide) {
   if (!isSupportedPlatform()) return;
   const state = liveActivityState(ride);
   const existingId = await activityIdForRide(ride.id);
   if (existingId) {
-    await LiveActivity.updateActivity(existingId, state);
-    return;
+    try {
+      await LiveActivity.updateActivity(existingId, state);
+      return;
+    } catch (error) {
+      // A server end event can race the foreground update. Forget the stale ID
+      // and create a fresh activity only while the ride remains active.
+      console.warn('[HY3N] Removing stale Rider Live Activity mapping:', error);
+      await removeActivityMapping(ride.id, existingId);
+    }
   }
 
   const activityId = LiveActivity.startActivity(state, LIVE_ACTIVITY_CONFIG);
   if (!activityId) return;
   await saveActivityMapping(ride.id, activityId);
+  await registerQueuedActivityToken(user, ride.id, activityId);
 }
 
 /** End and retire the Live Activity after cancellation or completed drop-off. */
@@ -133,19 +182,20 @@ export async function endRiderLiveActivity(user: User, ride: RiderLiveRide) {
   if (!isSupportedPlatform()) return;
   const activityId = await activityIdForRide(ride.id);
   if (!activityId) return;
-  await LiveActivity.stopActivity(activityId, {
-    title: ride.status === 'completed' ? 'Trip complete' : 'Ride cancelled',
-    subtitle: ride.status === 'completed' ? 'Thank you for riding with HY3N' : 'Open HY3N to book another ride',
-  });
-  await AsyncStorage.multiRemove([
-    `${ACTIVITY_KEY_PREFIX}${ride.id}`,
-    `${ACTIVITY_RIDE_PREFIX}${activityId}`,
-  ]);
 
-  fetch(`${getApiBaseUrl()}/api/live-activities/token/${encodeURIComponent(ride.id)}/${encodeURIComponent(activityId)}`, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${await user.getIdToken()}` },
-  }).catch(() => {});
+  try {
+    await LiveActivity.stopActivity(activityId, {
+      title: ride.status === 'completed' ? 'Trip complete' : 'Ride cancelled',
+      subtitle: ride.status === 'completed' ? 'Thank you for riding with HY3N' : 'Open HY3N to book another ride',
+    });
+  } catch (error) {
+    // If a remote APNs end arrived first, native code reports that this ID no
+    // longer exists. That is a successful terminal state, not a Rider crash.
+    console.warn('[HY3N] Rider Live Activity was already ended:', error);
+  } finally {
+    await removeActivityMapping(ride.id, activityId);
+    void deactivateActivityToken(user, ride.id, activityId);
+  }
 }
 
 /**
@@ -156,11 +206,31 @@ export async function endRiderLiveActivity(user: User, ride: RiderLiveRide) {
 export function listenForRiderLiveActivityTokens(user: User) {
   if (!isSupportedPlatform()) return undefined;
   return LiveActivity.addActivityTokenListener((event) => {
-    AsyncStorage.getItem(`${ACTIVITY_RIDE_PREFIX}${event.activityID}`)
-      .then((rideId) => {
-        if (!rideId) return;
-        return registerActivityToken(user, rideId, event.activityID, event.activityPushToken);
-      })
-      .catch((error) => console.warn('[HY3N] Live Activity token refresh failed:', error));
+    void (async () => {
+      const rideId = await rideIdForActivity(event.activityID);
+      if (!rideId) {
+        pendingActivityPushTokens.set(event.activityID, event.activityPushToken);
+        return;
+      }
+      await registerActivityToken(user, rideId, event.activityID, event.activityPushToken);
+    })().catch((error) => console.warn('[HY3N] Live Activity token refresh failed:', error));
+  });
+}
+
+/**
+ * Remote completion/dismissal can happen while the app is backgrounded. Remove
+ * stale local mappings once iOS reports the terminal state so a later app open
+ * never attempts to update or stop an already-ended native activity.
+ */
+export function listenForRiderLiveActivityState(user: User) {
+  if (!isSupportedPlatform()) return undefined;
+  return LiveActivity.addActivityUpdatesListener((event) => {
+    if (!['ended', 'dismissed', 'stale'].includes(event.activityState)) return;
+    void (async () => {
+      const rideId = await rideIdForActivity(event.activityID);
+      if (!rideId) return;
+      await removeActivityMapping(rideId, event.activityID);
+      void deactivateActivityToken(user, rideId, event.activityID);
+    })().catch((error) => console.warn('[HY3N] Live Activity terminal cleanup failed:', error));
   });
 }

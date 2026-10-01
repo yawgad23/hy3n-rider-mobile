@@ -469,6 +469,7 @@ export default function RiderHomeScreen() {
   const [showPostRideModal, setShowPostRideModal] = useState(false);
   const [completedRideData, setCompletedRideData] = useState<any>(null);
   const [receiptEmailStatus, setReceiptEmailStatus] = useState<ReceiptEmailStatus>("idle");
+  const completedRidePresentationRef = useRef<string | null>(null);
 
   // Multi-stop
   const [stops, setStops] = useState<(Location | null)[]>([]);
@@ -546,7 +547,10 @@ export default function RiderHomeScreen() {
     });
   }, []);
 
-  // Pending rating check: on app load, look for completed rides in last 24h with no rating
+  // Pending rating check: after a close, force-close, or native ActivityKit
+  // transition, completed rides do not rehydrate as active. Use the server
+  // completion timestamp (not the original booking timestamp) so the Rider is
+  // still taken to the required rating flow after reopening the app.
   useEffect(() => {
     if (!user?.uid) return;
     const checkPendingRating = async () => {
@@ -554,7 +558,8 @@ export default function RiderHomeScreen() {
         const rides = await firestoreDB.list(COLLECTIONS.RIDES, { rider_id: user.uid, status: 'completed' });
         const cutoff = Date.now() - 24 * 60 * 60 * 1000;
         const unrated = rides.filter((r: any) => {
-          const ts = r.created_at ? new Date(r.created_at).getTime() : 0;
+          const completedAt = r.completed_at ?? r.trip_completed_at ?? r.updated_at ?? r.created_at;
+          const ts = completedAt ? new Date(completedAt).getTime() : 0;
           return ts > cutoff && !r.rider_rating;
         });
         if (unrated.length > 0) {
@@ -574,6 +579,33 @@ export default function RiderHomeScreen() {
     const t = setTimeout(checkPendingRating, 2000);
     return () => clearTimeout(t);
   }, [user?.uid]);
+
+  // A Driver completion is delivered as a Firestore status transition. Present
+  // the post-trip flow immediately while foregrounded, rather than leaving the
+  // completed state to depend on a later button press. The ref prevents a
+  // repeated snapshot from reopening the same completion card.
+  useEffect(() => {
+    if (!activeRide || activeRide.status !== 'completed') return;
+    if (completedRidePresentationRef.current === activeRide.id) return;
+
+    completedRidePresentationRef.current = activeRide.id;
+    setRideRated(false);
+    setReceiptEmailStatus('idle');
+    setPendingRatingRideId(activeRide.firestoreId || activeRide.id);
+    setPendingRatingDriverName(activeRide.driverName || 'Your Driver');
+    setCompletedRideData({
+      rideId: activeRide.firestoreId || activeRide.id,
+      driverName: activeRide.driverName || 'Driver',
+      driverRating: Number.isFinite(Number(activeRide.driverRating)) ? Number(activeRide.driverRating) : 4.8,
+      fare: getFinalRideFare(activeRide),
+      tip: activeRide.tipAmount || 0,
+      distance: Number.isFinite(Number(activeRide.actualDistanceKm)) ? Number(activeRide.actualDistanceKm) : activeRide.distance,
+      duration: activeRide.duration,
+      pickupAddress: activeRide.pickup,
+      destinationAddress: activeRide.destination.name,
+    });
+    setShowPostRideModal(true);
+  }, [activeRide?.id, activeRide?.status, activeRide?.finalFare, activeRide?.driverName]);
 
   // Rehydrate every non-final ride from Firestore after a close, force-close,
   // or app relaunch. The ongoing trip belongs to the signed-in rider on the
