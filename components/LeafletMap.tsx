@@ -1,6 +1,6 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
-import MapView, { Marker, Polyline, type LatLng, type Region } from "react-native-maps";
+import { WebView, type WebViewMessageEvent } from "react-native-webview";
 
 interface NearbyDriver {
   id: string;
@@ -41,7 +41,7 @@ export interface LeafletMapRef {
 }
 
 const FALLBACK_CENTER: [number, number] = [5.6037, -0.187];
-const DEFAULT_DELTA = 0.035;
+const DEFAULT_ZOOM = 14;
 
 function isCoordinate(value: [number, number] | null | undefined): value is [number, number] {
   return Boolean(
@@ -53,43 +53,105 @@ function isCoordinate(value: [number, number] | null | undefined): value is [num
   );
 }
 
-function point(value: [number, number]): LatLng {
-  return { latitude: value[0], longitude: value[1] };
-}
-
-function regionFor(value: [number, number]): Region {
-  return {
-    ...point(value),
-    latitudeDelta: DEFAULT_DELTA,
-    longitudeDelta: DEFAULT_DELTA,
-  };
-}
-
-function normaliseColour(value?: string | null, fallback = "#F5F5F5") {
+function normaliseColour(value?: string | null, fallback = "#D4AF37") {
   return /^#[0-9a-fA-F]{6}$/.test(value || "") ? value! : fallback;
 }
 
-/**
- * Rider's native map surface.
- *
- * Keep this view intentionally conservative: the prior implementation mounted
- * react-native-maps through Fabric with Android-only/advanced native props and
- * moved the camera before the iOS map was ready. TestFlight crash reports for
- * builds 63 and 64 showed an ObjC TurboModule abort during that rollout.
- *
- * This component now uses only the cross-platform native MapView contract and
- * performs camera work only after onMapReady. The app configuration keeps this
- * package on React Native's stable legacy renderer until the upstream Fabric
- * path is proven safe on the supported iOS devices.
- */
+function safeJson(value: unknown) {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+type MapPayload = {
+  user: [number, number] | null;
+  destination: [number, number] | null;
+  driver: { point: [number, number]; colour: string; label: string; bearing: number | null; metric: string } | null;
+  pickup: [number, number] | null;
+  nearby: Array<{ id: string; point: [number, number]; colour: string; label: string; eta: number; bearing: number | null }>;
+  route: { points: Array<[number, number]>; colour: string } | null;
+};
+
+function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayload) {
+  const center = safeJson(initialCenter);
+  const payload = safeJson(initialPayload);
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <style>
+    * { box-sizing: border-box; }
+    html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; background: #18232f; }
+    .leaflet-control-attribution { font-size: 9px; opacity: .8; }
+    .leaflet-control-zoom { display: none; }
+    .vehicle-icon { width: 42px; height: 42px; position: relative; transform-origin: center; filter: drop-shadow(0 2px 3px rgba(0,0,0,.55)); }
+    .vehicle-icon .body { position: absolute; left: 5px; top: 11px; width: 32px; height: 20px; border-radius: 9px 9px 7px 7px; background: var(--vehicle-color); border: 2px solid white; }
+    .vehicle-icon .roof { position: absolute; left: 11px; top: 5px; width: 20px; height: 13px; border-radius: 9px 9px 2px 2px; background: var(--vehicle-color); border: 2px solid white; }
+    .vehicle-icon .wheel { position: absolute; top: 27px; width: 7px; height: 7px; border-radius: 50%; background: #111; border: 1px solid white; }
+    .vehicle-icon .wheel.left { left: 9px; } .vehicle-icon .wheel.right { right: 9px; }
+    .vehicle-icon .label { position: absolute; top: -17px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.82); color: white; padding: 3px 6px; border-radius: 6px; font: 600 10px -apple-system,BlinkMacSystemFont,sans-serif; white-space: nowrap; }
+    .user-dot { width: 22px; height: 22px; border-radius: 50%; background: #006b3f; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,.5); }
+    .destination-pin, .pickup-pin { width: 22px; height: 22px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,.5); }
+    .destination-pin { background: #ce1126; } .pickup-pin { background: #006b3f; }
+    .destination-pin::after, .pickup-pin::after { content: ''; position: absolute; width: 6px; height: 6px; border-radius: 50%; background: white; top: 5px; left: 5px; }
+  </style>
+</head>
+<body>
+<div id="map" aria-label="HY3N live map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+(function () {
+  const initialCenter = ${center};
+  const initialPayload = ${payload};
+  const map = L.map('map', { zoomControl: false, attributionControl: true, preferCanvas: true }).setView(initialCenter, ${DEFAULT_ZOOM});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+  const layers = { user: null, destination: null, driver: null, pickup: null, nearby: [], route: null };
+  const point = (p) => [p[0], p[1]];
+  const icon = (className, html, size, anchor) => L.divIcon({ className: '', html, iconSize: size, iconAnchor: anchor });
+  const userIcon = () => icon('user', '<div class="user-dot"></div>', [22,22], [11,11]);
+  const pinIcon = (kind) => icon(kind, '<div class="' + kind + '-pin"></div>', [22,22], [11,22]);
+  const vehicleIcon = (item) => icon('vehicle', '<div class="vehicle-icon" style="--vehicle-color:' + item.colour + '; transform:rotate(' + (Number(item.bearing || 0)) + 'deg)"><div class="label">' + String(item.label || 'HY3N') + '</div><div class="roof"></div><div class="body"></div><div class="wheel left"></div><div class="wheel right"></div></div>', [42,42], [21,21]);
+  const remove = (key) => { if (layers[key]) { map.removeLayer(layers[key]); layers[key] = null; } };
+  const clearNearby = () => { layers.nearby.forEach((layer) => map.removeLayer(layer)); layers.nearby = []; };
+  const draw = (state, fit) => {
+    remove('user'); remove('destination'); remove('driver'); remove('pickup'); remove('route'); clearNearby();
+    if (state.user) layers.user = L.marker(point(state.user), { icon: userIcon(), zIndexOffset: 100 }).addTo(map).bindPopup('Your pickup location');
+    if (state.destination) layers.destination = L.marker(point(state.destination), { icon: pinIcon('destination'), zIndexOffset: 50 }).addTo(map).bindPopup('Destination');
+    if (state.driver) layers.driver = L.marker(point(state.driver.point), { icon: vehicleIcon(state.driver), zIndexOffset: 300 }).addTo(map).bindPopup(state.driver.label + '<br>' + state.driver.metric);
+    if (state.pickup) layers.pickup = L.marker(point(state.pickup), { icon: pinIcon('pickup'), zIndexOffset: 200 }).addTo(map).bindPopup('Pickup');
+    (state.nearby || []).forEach((item) => {
+      const marker = L.marker(point(item.point), { icon: vehicleIcon(item), zIndexOffset: 150 }).addTo(map).bindPopup(item.label + '<br>' + item.eta + ' min away');
+      layers.nearby.push(marker);
+    });
+    if (state.route && state.route.points.length > 1) layers.route = L.polyline(state.route.points.map(point), { color: state.route.colour, weight: 5, opacity: .9 }).addTo(map);
+    if (fit) {
+      const points = [];
+      if (state.user) points.push(point(state.user)); if (state.destination) points.push(point(state.destination)); if (state.driver) points.push(point(state.driver.point)); if (state.pickup) points.push(point(state.pickup));
+      (state.nearby || []).forEach((item) => points.push(point(item.point)));
+      if (points.length > 1) map.fitBounds(points, { paddingTopLeft: [32, 80], paddingBottomRight: [32, 300], maxZoom: 15 });
+      else if (points.length === 1) map.setView(points[0], ${DEFAULT_ZOOM});
+    }
+  };
+  draw(initialPayload, false);
+  setTimeout(() => { map.invalidateSize(true); window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'map-ready' })); }, 250);
+  document.addEventListener('message', (event) => {
+    try { const message = JSON.parse(event.data); if (message.type === 'update') draw(message.payload, false); if (message.type === 'pan') map.setView(message.point, message.zoom || ${DEFAULT_ZOOM}, { animate: true }); if (message.type === 'fit') map.fitBounds(message.points, { paddingTopLeft: [32,80], paddingBottomRight: [32,300], maxZoom: 15, animate: true }); } catch (_) {}
+  });
+  window.addEventListener('message', (event) => { try { const message = JSON.parse(event.data); if (message.type === 'update') draw(message.payload, false); } catch (_) {} });
+})();
+</script>
+</body>
+</html>`;
+}
+
 const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMap(
   {
     style,
-    colorScheme = "dark",
     center = FALLBACK_CENTER,
     userLocation,
     destination = null,
     driverLocation = null,
+    driverBearing = null,
     driverColourHex = null,
     driverVehicle = null,
     driverServiceType = null,
@@ -98,121 +160,82 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     driverTracking = false,
     driverTrackingTarget = null,
     tripStatus = null,
+    safetySignal: _safetySignal = "clear",
     nearbyDrivers = [],
   },
   ref,
 ) {
-  const mapRef = useRef<MapView>(null);
-  const [mapReady, setMapReady] = useState(false);
+  const webViewRef = useRef<WebView>(null);
+  const [webViewReady, setWebViewReady] = useState(false);
   const initialCenter = isCoordinate(userLocation) ? userLocation : (isCoordinate(center) ? center : FALLBACK_CENTER);
-
-  const nearby = useMemo(
-    () => nearbyDrivers
-      .filter((driver) => Number.isFinite(driver.lat) && Number.isFinite(driver.lng)
-        && Math.abs(driver.lat) <= 90 && Math.abs(driver.lng) <= 180)
-      .slice(0, 4),
-    [nearbyDrivers],
-  );
-
-  const focusPoint = driverTracking && isCoordinate(driverLocation)
-    ? driverLocation
-    : isCoordinate(userLocation)
-      ? userLocation
-      : initialCenter;
-
-  const moveTo = useCallback((coordinate: [number, number], duration = 350) => {
-    if (!mapReady || !isCoordinate(coordinate)) return;
-    mapRef.current?.animateToRegion(regionFor(coordinate), duration);
-  }, [mapReady]);
-
-  useEffect(() => {
-    if (!mapReady) return;
-    const timer = setTimeout(() => moveTo(focusPoint, 450), 0);
-    return () => clearTimeout(timer);
-  }, [focusPoint, mapReady, moveTo]);
-
-  useImperativeHandle(ref, () => ({
-    panTo(latitude: number, longitude: number) {
-      moveTo([latitude, longitude]);
-    },
-    fitBounds(points: [number, number][]) {
-      if (!mapReady) return;
-      const coordinates = points.filter(isCoordinate).map(point);
-      if (coordinates.length === 1) {
-        moveTo([coordinates[0].latitude, coordinates[0].longitude]);
-        return;
-      }
-      if (coordinates.length > 1) {
-        mapRef.current?.fitToCoordinates(coordinates, {
-          edgePadding: { top: 96, right: 56, bottom: 300, left: 56 },
-          animated: true,
-        });
-      }
-    },
-  }), [mapReady, moveTo]);
-
+  const nearby = useMemo(() => nearbyDrivers.filter((driver) => isCoordinate([driver.lat, driver.lng])).slice(0, 8), [nearbyDrivers]);
   const routeTarget = driverTracking && isCoordinate(driverLocation) && isCoordinate(driverTrackingTarget)
     ? driverTrackingTarget
-    : !driverLocation && isCoordinate(userLocation) && isCoordinate(destination)
-      ? destination
-      : null;
-  const routeStart = driverTracking && isCoordinate(driverLocation)
-    ? driverLocation
-    : isCoordinate(userLocation)
-      ? userLocation
-      : null;
-  const routeCoordinates = routeStart && routeTarget ? [point(routeStart), point(routeTarget)] : [];
-  const routeColor = driverTracking ? "#006B3F" : "#D4AF37";
-  const driverTitle = driverVehicle || (driverServiceType ? `${driverServiceType} Driver` : "HY3N Driver");
-  const metric = Number.isFinite(driverDistanceKm) && Number(driverDistanceKm) > 0
-    ? `${Number(driverDistanceKm).toFixed(1)} km away`
-    : Number.isFinite(driverEtaMinutes)
-      ? `${Math.max(1, Math.round(Number(driverEtaMinutes)))} min away`
-      : "Driver location";
+    : !driverLocation && isCoordinate(userLocation) && isCoordinate(destination) ? destination : null;
+  const routeStart = driverTracking && isCoordinate(driverLocation) ? driverLocation : isCoordinate(userLocation) ? userLocation : null;
+  const routePoints = routeStart && routeTarget ? [routeStart, routeTarget] : [];
+  const payload = useMemo<MapPayload>(() => ({
+    user: isCoordinate(userLocation) ? userLocation : null,
+    destination: isCoordinate(destination) && (!driverTracking || tripStatus === "in_progress") ? destination : null,
+    driver: isCoordinate(driverLocation) ? {
+      point: driverLocation,
+      colour: normaliseColour(driverColourHex, "#006B3F"),
+      label: driverVehicle || (driverServiceType ? `${driverServiceType} Driver` : "HY3N Driver"),
+      bearing: Number.isFinite(Number(driverBearing)) ? Number(driverBearing) : null,
+      metric: Number.isFinite(Number(driverDistanceKm)) && Number(driverDistanceKm) > 0 ? `${Number(driverDistanceKm).toFixed(1)} km away` : Number.isFinite(Number(driverEtaMinutes)) ? `${Math.max(1, Math.round(Number(driverEtaMinutes)))} min away` : "Driver location",
+    } : null,
+    pickup: driverTracking && isCoordinate(driverTrackingTarget) && tripStatus !== "in_progress" ? driverTrackingTarget : null,
+    nearby: !driverTracking ? nearby.map((driver) => ({ id: driver.id, point: [driver.lat, driver.lng] as [number, number], colour: normaliseColour(driver.vehicleColourHex), label: driver.vehicleLabel || "HY3N vehicle", eta: Math.max(1, Math.round(driver.etaMinutes || 1)), bearing: Number.isFinite(Number(driver.heading)) ? Number(driver.heading) : null })) : [],
+    route: routePoints.length > 1 ? { points: routePoints, colour: driverTracking ? "#006B3F" : "#D4AF37" } : null,
+  }), [destination, driverBearing, driverColourHex, driverDistanceKm, driverEtaMinutes, driverLocation, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearby, routePoints, tripStatus, userLocation]);
+  const initialHtmlRef = useRef<string | null>(null);
+  if (!initialHtmlRef.current) initialHtmlRef.current = buildMapHtml(initialCenter, payload);
+
+  useEffect(() => {
+    if (!webViewReady) return;
+    webViewRef.current?.postMessage(JSON.stringify({ type: "update", payload }));
+  }, [payload, webViewReady]);
+
+  useImperativeHandle(ref, () => ({
+    panTo(latitude, longitude) {
+      if (!isCoordinate([latitude, longitude])) return;
+      webViewRef.current?.postMessage(JSON.stringify({ type: "pan", point: [latitude, longitude], zoom: DEFAULT_ZOOM }));
+    },
+    fitBounds(points) {
+      const valid = points.filter(isCoordinate);
+      if (valid.length === 0) return;
+      webViewRef.current?.postMessage(JSON.stringify({ type: "fit", points: valid }));
+    },
+  }), []);
+
+  const handleMessage = (event: WebViewMessageEvent) => {
+    try {
+      const message = JSON.parse(event.nativeEvent.data);
+      if (message.type === "map-ready") setWebViewReady(true);
+    } catch {
+      // Ignore messages from the tile page that are not JSON.
+    }
+  };
 
   return (
-    <View style={[{ flex: 1, backgroundColor: colorScheme === "dark" ? "#18232F" : "#E7EEF2" }, style]}>
-      <MapView
-        ref={mapRef}
-        style={{ flex: 1 }}
-        initialRegion={regionFor(initialCenter)}
-        mapType="standard"
-        showsCompass={false}
-        showsTraffic={false}
-        rotateEnabled={false}
-        pitchEnabled={false}
-        onMapReady={() => setMapReady(true)}
-      >
-        {isCoordinate(userLocation) && (
-          <Marker coordinate={point(userLocation)} title="Your pickup location" pinColor="#006B3F" />
-        )}
-        {isCoordinate(destination) && (!driverTracking || tripStatus === "in_progress") && (
-          <Marker coordinate={point(destination)} title="Destination" pinColor="#D4AF37" />
-        )}
-        {isCoordinate(driverLocation) && (
-          <Marker
-            coordinate={point(driverLocation)}
-            title={driverTitle}
-            description={metric}
-            pinColor={normaliseColour(driverColourHex, "#006B3F")}
-          />
-        )}
-        {driverTracking && isCoordinate(driverTrackingTarget) && tripStatus !== "in_progress" && (
-          <Marker coordinate={point(driverTrackingTarget)} title="Pickup" pinColor="#006B3F" />
-        )}
-        {!driverTracking && nearby.map((driver) => (
-          <Marker
-            key={driver.id}
-            coordinate={{ latitude: driver.lat, longitude: driver.lng }}
-            title={driver.vehicleLabel || "Nearby HY3N vehicle"}
-            description={`${Math.max(1, Math.round(driver.etaMinutes || 1))} min away`}
-            pinColor={normaliseColour(driver.vehicleColourHex, "#D4AF37")}
-          />
-        ))}
-        {routeCoordinates.length === 2 && (
-          <Polyline coordinates={routeCoordinates} strokeColor={routeColor} strokeWidth={5} />
-        )}
-      </MapView>
+    <View style={[{ flex: 1, backgroundColor: "#18232F" }, style]}>
+      <WebView
+        ref={webViewRef}
+        source={{ html: initialHtmlRef.current || "" }}
+        style={{ flex: 1, backgroundColor: "#18232F" }}
+        originWhitelist={["*"]}
+        javaScriptEnabled
+        domStorageEnabled
+        cacheEnabled
+        scrollEnabled={false}
+        bounces={false}
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        onMessage={handleMessage}
+        onLoadEnd={() => {
+          webViewRef.current?.injectJavaScript("window.dispatchEvent(new Event('resize')); true;");
+        }}
+      />
     </View>
   );
 });
