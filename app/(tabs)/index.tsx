@@ -52,6 +52,7 @@ import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
 import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-share";
 import { payWithHubtelCard } from "@/lib/card-checkout";
 import { nearbyVehicleFromProfile, type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
+import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } from "@/lib/rider-completion-presentation";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -506,10 +507,10 @@ export default function RiderHomeScreen() {
     });
   }, []);
 
-  // Pending rating check: after a close, force-close, or native ActivityKit
-  // transition, completed rides do not rehydrate as active. Use the server
-  // completion timestamp (not the original booking timestamp) so the Rider is
-  // still taken to the required rating flow after reopening the app.
+  // Pending rating check: after a close or force-close, completed rides do not
+  // rehydrate as active. Keep a required rating pending, but do not auto-open a
+  // native modal during app startup; the booking gate presents it only after a
+  // deliberate Rider action.
   useEffect(() => {
     if (!user?.uid) return;
     const checkPendingRating = async () => {
@@ -528,7 +529,7 @@ export default function RiderHomeScreen() {
           setRatingValue(5);
           setRatingComment("");
           setSelectedRatingTags([]);
-          setShowRatingModal(true);
+          setShowRatingModal(false);
         }
       } catch {
         // Silently ignore — don't block app load
@@ -539,31 +540,23 @@ export default function RiderHomeScreen() {
     return () => clearTimeout(t);
   }, [user?.uid]);
 
-  // A Driver completion is delivered as a Firestore status transition. Present
-  // the post-trip flow immediately while foregrounded, rather than leaving the
-  // completed state to depend on a later button press. The ref prevents a
-  // repeated snapshot from reopening the same completion card.
+  // A Driver completion is delivered as a Firestore status transition while
+  // the live map and sheet are updating. Keep that transition passive: retain
+  // the completed trip and required-rating state, but do not mount a native
+  // modal or receipt view until the Rider explicitly taps "Rate Driver".
+  // This prevents a presentation transition from racing the live-trip teardown.
   useEffect(() => {
     if (!activeRide || activeRide.status !== 'completed') return;
     if (completedRidePresentationRef.current === activeRide.id) return;
 
+    const presentation = passiveCompletionPresentation(activeRide);
     completedRidePresentationRef.current = activeRide.id;
     setRideRated(false);
-    setReceiptEmailStatus('idle');
-    setPendingRatingRideId(activeRide.firestoreId || activeRide.id);
-    setPendingRatingDriverName(activeRide.driverName || 'Your Driver');
-    setCompletedRideData({
-      rideId: activeRide.firestoreId || activeRide.id,
-      driverName: activeRide.driverName || 'Driver',
-      driverRating: Number.isFinite(Number(activeRide.driverRating)) ? Number(activeRide.driverRating) : 4.8,
-      fare: getFinalRideFare(activeRide),
-      tip: activeRide.tipAmount || 0,
-      distance: Number.isFinite(Number(activeRide.actualDistanceKm)) ? Number(activeRide.actualDistanceKm) : activeRide.distance,
-      duration: activeRide.duration,
-      pickupAddress: activeRide.pickup,
-      destinationAddress: activeRide.destination.name,
-    });
-    setShowPostRideModal(true);
+    setPendingRatingRideId(presentation.pendingRatingRideId);
+    setPendingRatingDriverName(presentation.pendingRatingDriverName);
+    setShowRatingModal(presentation.showRatingModal);
+    setShowPostRideModal(presentation.showPostRideModal);
+    if (presentation.clearCompletedRidePreview) setCompletedRideData(null);
   }, [activeRide?.id, activeRide?.status, activeRide?.finalFare, activeRide?.driverName]);
 
   // Rehydrate every non-final ride from Firestore after a close, force-close,
@@ -1147,6 +1140,15 @@ export default function RiderHomeScreen() {
 
     if (!user) {
       Alert.alert("Sign in required", "Please sign in before requesting a HY3N ride.");
+      return;
+    }
+
+    // A completed ride can be recovered after a force-close. Keep the rating
+    // requirement, but open its native sheet only after the Rider chooses to
+    // request another trip rather than during a completion/app-start render.
+    if (requiresPendingRatingBeforeBooking(pendingRatingRideId)) {
+      Alert.alert("Rate your Driver first", "Please rate your last completed trip before requesting another HY3N ride.");
+      setShowRatingModal(true);
       return;
     }
     if (!selectedQuote?.quoteId || !selectedQuote.available) {
@@ -3143,9 +3145,13 @@ export default function RiderHomeScreen() {
           onClose={() => {
             setShowPostRideModal(false);
             setRideRated(true);
+            setPendingRatingRideId(null);
+            setPendingRatingDriverName(null);
           }}
           onRatingSubmitted={() => {
             setRideRated(true);
+            setPendingRatingRideId(null);
+            setPendingRatingDriverName(null);
           }}
         />
       )}
