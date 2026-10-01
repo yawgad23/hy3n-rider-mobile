@@ -62,6 +62,7 @@ function safeJson(value: unknown) {
 }
 
 type MapPayload = {
+  theme: "light" | "dark";
   user: [number, number] | null;
   destination: [number, number] | null;
   driver: { point: [number, number]; colour: string; label: string; bearing: number | null; metric: string } | null;
@@ -84,6 +85,8 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
     html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; background: #18232f; }
     .leaflet-control-attribution { font-size: 9px; opacity: .55; background: rgba(24,35,47,.72); color: #d8dee5; }
     .leaflet-control-attribution a { color: #d8dee5; }
+    body[data-theme="light"] .leaflet-control-attribution { background: rgba(255,255,255,.82); color: #4b5563; }
+    body[data-theme="light"] .leaflet-control-attribution a { color: #374151; }
     .leaflet-control-zoom { display: none; }
     .vehicle-icon { width: 42px; height: 42px; position: relative; transform-origin: center; filter: drop-shadow(0 2px 3px rgba(0,0,0,.55)); }
     .vehicle-icon .body { position: absolute; left: 5px; top: 11px; width: 32px; height: 20px; border-radius: 9px 9px 7px 7px; background: var(--vehicle-color); border: 2px solid white; }
@@ -105,9 +108,18 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   const initialCenter = ${center};
   const initialPayload = ${payload};
   const map = L.map('map', { zoomControl: false, attributionControl: true, preferCanvas: true }).setView(initialCenter, ${DEFAULT_ZOOM});
-  // Use a restrained dark basemap: fewer bright labels and less visual noise
-  // behind the booking sheet, similar to the Uber/Bolt map treatment.
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, crossOrigin: true, attribution: '&copy; OpenStreetMap contributors &copy; CARTO' }).addTo(map);
+  // Use a restrained basemap that follows the app's active appearance.
+  let tileLayer = null;
+  let activeTileTheme = null;
+  const setTileTheme = (theme) => {
+    const tileTheme = theme === 'light' ? 'light_all' : 'dark_all';
+    document.body.dataset.theme = theme === 'light' ? 'light' : 'dark';
+    if (tileLayer && activeTileTheme === tileTheme) return;
+    if (tileLayer) map.removeLayer(tileLayer);
+    tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/' + tileTheme + '/{z}/{x}/{y}{r}.png', { maxZoom: 19, crossOrigin: true, attribution: '&copy; OpenStreetMap contributors &copy; CARTO' }).addTo(map);
+    activeTileTheme = tileTheme;
+  };
+  setTileTheme(initialPayload.theme);
   const layers = { user: null, destination: null, driver: null, pickup: null, nearby: [], route: null };
   let userMovedMap = false;
   let lastUserPoint = initialPayload.user;
@@ -120,6 +132,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   const remove = (key) => { if (layers[key]) { map.removeLayer(layers[key]); layers[key] = null; } };
   const clearNearby = () => { layers.nearby.forEach((layer) => map.removeLayer(layer)); layers.nearby = []; };
   const draw = (state, fit) => {
+    setTileTheme(state.theme);
     remove('user'); remove('destination'); remove('driver'); remove('pickup'); remove('route'); clearNearby();
     if (state.user) layers.user = L.marker(point(state.user), { icon: userIcon(), zIndexOffset: 100 }).addTo(map).bindPopup('Your pickup location');
     if (state.destination) layers.destination = L.marker(point(state.destination), { icon: pinIcon('destination'), zIndexOffset: 50 }).addTo(map).bindPopup('Destination');
@@ -161,6 +174,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     style,
     center = FALLBACK_CENTER,
     userLocation,
+    colorScheme = "dark",
     destination = null,
     driverLocation = null,
     driverBearing = null,
@@ -187,6 +201,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   const routeStart = driverTracking && isCoordinate(driverLocation) ? driverLocation : isCoordinate(userLocation) ? userLocation : null;
   const routePoints = routeStart && routeTarget ? [routeStart, routeTarget] : [];
   const payload = useMemo<MapPayload>(() => ({
+    theme: colorScheme,
     user: isCoordinate(userLocation) ? userLocation : null,
     destination: isCoordinate(destination) && (!driverTracking || tripStatus === "in_progress") ? destination : null,
     driver: isCoordinate(driverLocation) ? {
@@ -199,7 +214,7 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
     pickup: driverTracking && isCoordinate(driverTrackingTarget) && tripStatus !== "in_progress" ? driverTrackingTarget : null,
     nearby: !driverTracking ? nearby.map((driver) => ({ id: driver.id, point: [driver.lat, driver.lng] as [number, number], colour: normaliseColour(driver.vehicleColourHex), label: driver.vehicleLabel || "HY3N vehicle", eta: Math.max(1, Math.round(driver.etaMinutes || 1)), bearing: Number.isFinite(Number(driver.heading)) ? Number(driver.heading) : null })) : [],
     route: routePoints.length > 1 ? { points: routePoints, colour: driverTracking ? "#006B3F" : "#D4AF37" } : null,
-  }), [destination, driverBearing, driverColourHex, driverDistanceKm, driverEtaMinutes, driverLocation, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearby, routePoints, tripStatus, userLocation]);
+  }), [colorScheme, destination, driverBearing, driverColourHex, driverDistanceKm, driverEtaMinutes, driverLocation, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearby, routePoints, tripStatus, userLocation]);
   const initialHtmlRef = useRef<string | null>(null);
   if (!initialHtmlRef.current) initialHtmlRef.current = buildMapHtml(initialCenter, payload);
 
