@@ -51,6 +51,7 @@ import { trpc } from "@/lib/trpc";
 import { type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
 import { canRequestServerQuotedRide, canSelectServerQuotedCategory } from "@/lib/rider-quote-selection";
+import { bookingSheetSwipeAction, shouldClaimBookingSheetSwipe } from "@/lib/booking-sheet-gesture";
 import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-share";
 import { payWithHubtelCard } from "@/lib/card-checkout";
 import { nearbyVehicleFromProfile, type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
@@ -2632,20 +2633,28 @@ export default function RiderHomeScreen() {
     </View>
   );
 
+  const canSwipeBookingSheet = Boolean((destination && !activeRide) || (activeRide && activeRide.status !== "completed"));
   const bookingSheetPanResponder = PanResponder.create({
+    // Capture a deliberate handle/header swipe before TouchableOpacity handles
+    // it as a press. This leaves normal taps and the category-list ScrollView
+    // unchanged while making the advertised swipe action reliable on iOS.
+    onMoveShouldSetPanResponderCapture: (_event, gesture) =>
+      canSwipeBookingSheet && shouldClaimBookingSheetSwipe(gesture.dy, gesture.dx),
     onMoveShouldSetPanResponder: (_event, gesture) =>
-      Boolean((destination && !activeRide) || (activeRide && activeRide.status !== "completed")) && Math.abs(gesture.dy) > 6 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+      canSwipeBookingSheet && shouldClaimBookingSheetSwipe(gesture.dy, gesture.dx),
     onPanResponderRelease: (_event, gesture) => {
+      const action = bookingSheetSwipeAction(gesture.dy, gesture.vy);
+      if (!action) return;
       if (activeRide && activeRide.status !== "completed") {
-        if (gesture.dy > 12) setActiveRideSheetCollapsed(true);
-        if (gesture.dy < -12) setActiveRideSheetCollapsed(false);
+        if (action === 'minimize') setActiveRideSheetCollapsed(true);
+        if (action === 'expand') setActiveRideSheetCollapsed(false);
         return;
       }
       if (!destination || activeRide) return;
-      if (gesture.dy > 12) setBookingSheetCollapsed(true);
-      if (gesture.dy < -12) setBookingSheetCollapsed(false);
+      if (action === 'minimize') setBookingSheetCollapsed(true);
+      if (action === 'expand') setBookingSheetCollapsed(false);
     },
-    onPanResponderTerminationRequest: () => true,
+    onPanResponderTerminationRequest: () => false,
   });
 
   const sheetHeight = activeRide
@@ -2739,9 +2748,13 @@ export default function RiderHomeScreen() {
         borderTopColor: BORDER,
         zIndex: 10,
       }}>
-        {/* Drag handle */}
-        <TouchableOpacity
+        {/* The header owns vertical sheet gestures; the button inside still
+            provides the equivalent accessible tap action. */}
+        <View
           {...bookingSheetPanResponder.panHandlers}
+          style={{ minHeight: 36 }}
+        >
+        <TouchableOpacity
           onPress={() => {
             if (activeRide && activeRide.status !== "completed") setActiveRideSheetCollapsed((collapsed) => !collapsed);
             if (destination && !activeRide) setBookingSheetCollapsed((collapsed) => !collapsed);
@@ -2761,6 +2774,7 @@ export default function RiderHomeScreen() {
             </Text>
           )}
         </TouchableOpacity>
+        </View>
         {activeRide ? (
           renderActiveRide()
         ) : destination ? (
