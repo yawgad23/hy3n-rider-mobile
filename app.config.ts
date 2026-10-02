@@ -25,6 +25,13 @@ const bundleId =
 // e.g., "space.manus.my.app.t20240115103045" -> "manus20240115103045"
 const timestamp = bundleId.split(".").pop()?.replace(/^t/, "") ?? "";
 const schemeFromBundleId = `manus${timestamp}`;
+// Native Maps SDK keys are public by design once compiled into an app, so they
+// must be separately restricted in Google Cloud. They are injected only by
+// EAS at build time and must never reuse the server-only Routes API key.
+const nativeGoogleMaps = {
+  iosApiKey: process.env.GOOGLE_MAPS_IOS_API_KEY?.trim() || "",
+  androidApiKey: process.env.GOOGLE_MAPS_ANDROID_API_KEY?.trim() || "",
+};
 
 const env = {
   // App branding - update these values directly (do not use env vars)
@@ -62,6 +69,9 @@ const config: ExpoConfig = {
     bundleIdentifier: env.iosBundleId,
     buildNumber: "81",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
+    ...(nativeGoogleMaps.iosApiKey
+      ? { config: { googleMapsApiKey: nativeGoogleMaps.iosApiKey } }
+      : {}),
     "infoPlist": {
       "ITSAppUsesNonExemptEncryption": false
       }
@@ -80,6 +90,9 @@ const config: ExpoConfig = {
     // version code than every previous artifact for com.hy3n.rider.
     versionCode: 58003,
     googleServicesFile: "./firebase/google-services.json",
+    ...(nativeGoogleMaps.androidApiKey
+      ? { config: { googleMaps: { apiKey: nativeGoogleMaps.androidApiKey } } }
+      : {}),
     permissions: ["POST_NOTIFICATIONS"],
     intentFilters: [
       {
