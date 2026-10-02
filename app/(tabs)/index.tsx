@@ -52,7 +52,7 @@ import { type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
 import { canRequestServerQuotedRide, canSelectServerQuotedCategory } from "@/lib/rider-quote-selection";
 import { bookingSheetSwipeAction, shouldClaimBookingSheetSwipe } from "@/lib/booking-sheet-gesture";
-import { formatLiveDistance } from "@/lib/rider-live-tracking-presentation";
+import { formatLiveDistance, riderPickupStatusLabel } from "@/lib/rider-live-tracking-presentation";
 import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-share";
 import { payWithHubtelCard } from "@/lib/card-checkout";
 import { nearbyVehicleFromProfile, type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
@@ -1736,7 +1736,7 @@ export default function RiderHomeScreen() {
           ? `Dropoff at ${dropoffTimeLabel || '—'}`
           : activeRide.status === "driver_arrived"
             ? "Your driver has arrived"
-            : `Pickup in ${pairingEtaMinutes ?? '—'} min`;
+            : riderPickupStatusLabel(pairingEtaMinutes, livePickupDistanceKm);
       return (
         <View style={{ paddingHorizontal: 16, paddingBottom: 6 }}>
           <TouchableOpacity

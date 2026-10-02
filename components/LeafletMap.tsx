@@ -3,6 +3,7 @@ import { View } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { MAP_MARKER_ASSETS } from "./map-marker-assets";
 import { riderDriverMarkerLabel } from "@/lib/rider-live-tracking-presentation";
+import { matchPointToServerRoute } from "@/lib/rider-route-matching";
 
 interface NearbyDriver {
   id: string;
@@ -322,22 +323,30 @@ const LeafletMap = forwardRef<LeafletMapRef, LeafletMapProps>(function LeafletMa
   const routePoints = validServerRoute.length > 1
     ? validServerRoute
     : routeStart && routeTarget ? [routeStart, routeTarget] : [];
+  // The server route is trusted navigation geometry. A nearby Driver fix is
+  // projected on to that geometry so the vehicle follows the road visually;
+  // a stale or detoured fix stays raw rather than being falsely snapped.
+  const driverRouteMatch = isCoordinate(driverLocation)
+    ? matchPointToServerRoute(driverLocation, validServerRoute)
+    : null;
+  const displayDriverPoint = driverRouteMatch?.point ?? driverLocation;
+  const displayDriverBearing = driverRouteMatch?.bearing ?? driverBearing;
   const payload = useMemo<MapPayload>(() => ({
     theme: colorScheme,
     user: isCoordinate(userLocation) ? userLocation : null,
     destination: isCoordinate(destination) && (!driverTracking || tripStatus === "in_progress") ? destination : null,
-    driver: isCoordinate(driverLocation) ? {
-      point: driverLocation,
+    driver: isCoordinate(displayDriverPoint) ? {
+      point: displayDriverPoint,
       colour: normaliseColour(driverColourHex, "#006B3F"),
       label: riderDriverMarkerLabel({ tripStatus, distanceKm: driverDistanceKm, etaMinutes: driverEtaMinutes }),
       kind: markerKind(driverServiceType),
-      bearing: Number.isFinite(Number(driverBearing)) ? Number(driverBearing) : null,
+      bearing: Number.isFinite(Number(displayDriverBearing)) ? Number(displayDriverBearing) : null,
       metric: riderDriverMarkerLabel({ tripStatus, distanceKm: driverDistanceKm, etaMinutes: driverEtaMinutes }),
     } : null,
     pickup: driverTracking && isCoordinate(driverTrackingTarget) && tripStatus !== "in_progress" ? driverTrackingTarget : null,
     nearby: !driverTracking ? nearby.map((driver) => ({ id: driver.id, point: [driver.lat, driver.lng] as [number, number], colour: normaliseColour(driver.vehicleColourHex), label: `${Math.max(1, Math.round(driver.etaMinutes || 1))} min away`, eta: Math.max(1, Math.round(driver.etaMinutes || 1)), bearing: Number.isFinite(Number(driver.heading)) ? Number(driver.heading) : null, kind: markerKind(driver.serviceType) })) : [],
     route: routePoints.length > 1 ? { points: routePoints, colour: driverTracking ? "#006B3F" : "#D4AF37" } : null,
-  }), [colorScheme, destination, driverBearing, driverColourHex, driverDistanceKm, driverEtaMinutes, driverLocation, driverRoutePoints, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearby, routePoints, tripStatus, userLocation]);
+  }), [colorScheme, destination, displayDriverBearing, displayDriverPoint, driverColourHex, driverDistanceKm, driverEtaMinutes, driverRoutePoints, driverServiceType, driverTracking, driverTrackingTarget, driverVehicle, nearby, routePoints, tripStatus, userLocation]);
   const initialHtmlRef = useRef<string | null>(null);
   if (!initialHtmlRef.current) initialHtmlRef.current = buildMapHtml(initialCenter, payload);
 
