@@ -56,6 +56,7 @@ import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-sha
 import { payWithHubtelCard } from "@/lib/card-checkout";
 import { nearbyVehicleFromProfile, type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
 import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } from "@/lib/rider-completion-presentation";
+import { deliveryRequestDetails, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -448,6 +449,15 @@ export default function RiderHomeScreen() {
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
   const [recipientAddress, setRecipientAddress] = useState("");
+  // Express Delivery uses separate collection and drop-off contacts. These
+  // details accompany the protected quote but never contribute to fare math.
+  const [deliverySenderName, setDeliverySenderName] = useState("");
+  const [deliverySenderPhone, setDeliverySenderPhone] = useState("");
+  const [deliveryRecipientName, setDeliveryRecipientName] = useState("");
+  const [deliveryRecipientPhone, setDeliveryRecipientPhone] = useState("");
+  const [deliveryPackageDescription, setDeliveryPackageDescription] = useState("");
+  const [deliveryPickupInstructions, setDeliveryPickupInstructions] = useState("");
+  const [deliveryDropoffInstructions, setDeliveryDropoffInstructions] = useState("");
 
   // Card details are never collected in HY3N: selecting Card launches
   // Hubtel's hosted, PCI-managed checkout. MoMo is settled directly with the
@@ -1168,9 +1178,40 @@ export default function RiderHomeScreen() {
       return;
     }
 
-    const passengerName = bookForSomeone ? recipientName.trim() : (riderProfile?.full_name || user.displayName || 'Rider');
-    const passengerPhone = bookForSomeone ? recipientPhone.replace(/\s/g, '') : (riderProfile?.phone || user.phoneNumber || '');
-    if (bookForSomeone) {
+    const isExpressDelivery = selectedCategory.id === 'express_delivery';
+    const deliveryValidation = isExpressDelivery
+      ? validateDeliveryBookingDetails({
+          senderName: deliverySenderName,
+          senderPhone: deliverySenderPhone,
+          recipientName: deliveryRecipientName,
+          recipientPhone: deliveryRecipientPhone,
+          packageDescription: deliveryPackageDescription,
+          pickupInstructions: deliveryPickupInstructions,
+          dropoffInstructions: deliveryDropoffInstructions,
+        })
+      : null;
+    if (deliveryValidation) {
+      Alert.alert('Delivery details needed', deliveryValidation);
+      return;
+    }
+    const deliveryDetails = isExpressDelivery
+      ? deliveryRequestDetails({
+          senderName: deliverySenderName,
+          senderPhone: deliverySenderPhone,
+          recipientName: deliveryRecipientName,
+          recipientPhone: deliveryRecipientPhone,
+          packageDescription: deliveryPackageDescription,
+          pickupInstructions: deliveryPickupInstructions,
+          dropoffInstructions: deliveryDropoffInstructions,
+        })
+      : undefined;
+    const passengerName = isExpressDelivery
+      ? deliveryDetails!.sender.name
+      : bookForSomeone ? recipientName.trim() : (riderProfile?.full_name || user.displayName || 'Rider');
+    const passengerPhone = isExpressDelivery
+      ? deliveryDetails!.sender.phone
+      : bookForSomeone ? recipientPhone.replace(/\s/g, '') : (riderProfile?.phone || user.phoneNumber || '');
+    if (bookForSomeone && !isExpressDelivery) {
       const normalizedPassengerPhone = passengerPhone.replace(/\D/g, '');
       const isGhanaPhone = /^0\d{9}$/.test(normalizedPassengerPhone) || /^233\d{9}$/.test(normalizedPassengerPhone);
       if (passengerName.length < 2 || !isGhanaPhone) {
@@ -1251,6 +1292,7 @@ export default function RiderHomeScreen() {
         passengerName,
         passengerPhone,
         passengerPickupNote: bookForSomeone ? recipientAddress.trim() || undefined : undefined,
+        delivery: deliveryDetails,
         category: selectedCategory.id,
         pickup: { lat: userLocation[0], lng: userLocation[1], name: selectedPickupAddress, address: selectedPickupAddress },
         destination: { lat: destination.lat, lng: destination.lng, name: destination.name, address: destination.address || destination.name },
@@ -2423,6 +2465,25 @@ export default function RiderHomeScreen() {
         })}
       </View>
 
+      {selectedCategory.id === "express_delivery" && (
+        <View style={{ backgroundColor: CARD, borderRadius: 18, borderWidth: 1, borderColor: GOLD, marginBottom: 14, padding: 14, gap: 10 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
+            <MaterialIcons name="local-shipping" size={22} color={GOLD} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: TEXT, fontSize: 16, fontWeight: "800" }}>Delivery details</Text>
+              <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>The Driver sees contacts only after accepting this request.</Text>
+            </View>
+          </View>
+          <TextInput value={deliverySenderName} onChangeText={setDeliverySenderName} placeholder="Sender name" placeholderTextColor={MUTED} style={{ backgroundColor: BG, borderRadius: 10, padding: 11, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }} />
+          <TextInput value={deliverySenderPhone} onChangeText={setDeliverySenderPhone} placeholder="Sender phone (e.g., 0501234567)" placeholderTextColor={MUTED} keyboardType="phone-pad" style={{ backgroundColor: BG, borderRadius: 10, padding: 11, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }} />
+          <TextInput value={deliveryRecipientName} onChangeText={setDeliveryRecipientName} placeholder="Recipient name" placeholderTextColor={MUTED} style={{ backgroundColor: BG, borderRadius: 10, padding: 11, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }} />
+          <TextInput value={deliveryRecipientPhone} onChangeText={setDeliveryRecipientPhone} placeholder="Recipient phone (e.g., 0241234567)" placeholderTextColor={MUTED} keyboardType="phone-pad" style={{ backgroundColor: BG, borderRadius: 10, padding: 11, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }} />
+          <TextInput value={deliveryPackageDescription} onChangeText={setDeliveryPackageDescription} placeholder="Package description (e.g., sealed document envelope)" placeholderTextColor={MUTED} multiline numberOfLines={2} style={{ backgroundColor: BG, borderRadius: 10, padding: 11, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }} />
+          <TextInput value={deliveryPickupInstructions} onChangeText={setDeliveryPickupInstructions} placeholder="Collection instructions (optional)" placeholderTextColor={MUTED} multiline numberOfLines={2} style={{ backgroundColor: BG, borderRadius: 10, padding: 11, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }} />
+          <TextInput value={deliveryDropoffInstructions} onChangeText={setDeliveryDropoffInstructions} placeholder="Drop-off instructions (optional)" placeholderTextColor={MUTED} multiline numberOfLines={2} style={{ backgroundColor: BG, borderRadius: 10, padding: 11, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }} />
+        </View>
+      )}
+
       {/* Web-parity passenger switch */}
       <View style={{ backgroundColor: CARD, borderRadius: 18, borderWidth: 1, borderColor: BORDER, marginBottom: 14, overflow: "hidden" }}>
         <TouchableOpacity
@@ -2433,12 +2494,17 @@ export default function RiderHomeScreen() {
         >
           <MaterialIcons name="person-outline" size={25} color={GOLD} />
           <View style={{ flex: 1 }}>
-            <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }}>Book for someone else</Text>
-            <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>Booking for {bookForSomeone ? "another person" : "yourself"}</Text>
+            <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }}>{selectedCategory.id === "express_delivery" ? "Book delivery for someone else" : "Book for someone else"}</Text>
+            <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>{selectedCategory.id === "express_delivery" ? (bookForSomeone ? "Another person is sending this package" : "You are sending this package") : `Booking for ${bookForSomeone ? "another person" : "yourself"}`}</Text>
           </View>
           <MaterialIcons name={bookForSomeone ? "keyboard-arrow-up" : "chevron-right"} size={24} color={MUTED} />
         </TouchableOpacity>
-        {bookForSomeone && (
+        {bookForSomeone && selectedCategory.id === "express_delivery" && (
+          <View style={{ borderTopWidth: 1, borderTopColor: BORDER, padding: 12 }}>
+            <Text style={{ color: MUTED, fontSize: 12, lineHeight: 17 }}>The sender details above identify the person handing the package to the Driver. The recipient details identify the person receiving it.</Text>
+          </View>
+        )}
+        {bookForSomeone && selectedCategory.id !== "express_delivery" && (
           <View style={{ borderTopWidth: 1, borderTopColor: BORDER, padding: 12, gap: 10 }}>
             <TextInput
               value={recipientName}
