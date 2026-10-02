@@ -109,6 +109,9 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
     .destination-pin, .pickup-pin { width: 22px; height: 22px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,.5); }
     .destination-pin { background: #ce1126; } .pickup-pin { background: #006b3f; }
     .destination-pin::after, .pickup-pin::after { content: ''; position: absolute; width: 6px; height: 6px; border-radius: 50%; background: white; top: 5px; left: 5px; }
+    .hy3n-pickup-label { border: 0; border-radius: 7px; background: rgba(255,255,255,.97); color: #111827; box-shadow: 0 2px 8px rgba(0,0,0,.35); font: 700 12px -apple-system,BlinkMacSystemFont,sans-serif; padding: 5px 8px; }
+    .hy3n-pickup-label:before { border-left-color: rgba(255,255,255,.97); }
+    .hy3n-active-route { stroke-linecap: round; stroke-linejoin: round; }
   </style>
 </head>
 <body>
@@ -156,9 +159,15 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   const markerTargets = new WeakMap();
   const markerVisuals = new WeakMap();
   let userMovedMap = false;
+  let programmaticCameraChange = false;
   let lastUserPoint = initialPayload.user;
   let trackingTargetKey = '';
-  map.on('dragstart zoomstart', () => { userMovedMap = true; });
+  const withProgrammaticCamera = (action) => {
+    programmaticCameraChange = true;
+    try { action(); } finally { programmaticCameraChange = false; }
+  };
+  map.on('dragstart', () => { userMovedMap = true; });
+  map.on('zoomstart', () => { if (!programmaticCameraChange) userMovedMap = true; });
   const point = (p) => [p[0], p[1]];
   const icon = (className, html, size, anchor) => L.divIcon({ className: '', html, iconSize: size, iconAnchor: anchor });
   const userIcon = () => icon('user', '<div class="user-dot"></div>', [22,22], [11,11]);
@@ -222,7 +231,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
     const targetKey = targetPoint[0].toFixed(6) + ':' + targetPoint[1].toFixed(6);
     if (targetKey !== trackingTargetKey) {
       trackingTargetKey = targetKey;
-      map.fitBounds([driverPoint, targetPoint], { paddingTopLeft: [32, 88], paddingBottomRight: [32, 340], maxZoom: 17, animate: false });
+      withProgrammaticCamera(() => map.fitBounds([driverPoint, targetPoint], { paddingTopLeft: [32, 88], paddingBottomRight: [32, 340], maxZoom: 17, animate: false }));
       return;
     }
     const size = map.getSize();
@@ -261,7 +270,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
       if (layers.driver) stopAnimation(layers.driver);
       remove('driver');
     }
-    if (state.pickup) layers.pickup = L.marker(point(state.pickup), { icon: pinIcon('pickup'), zIndexOffset: 200 }).addTo(map).bindPopup('Pickup');
+    if (state.pickup) layers.pickup = L.marker(point(state.pickup), { icon: pinIcon('pickup'), zIndexOffset: 200 }).addTo(map).bindTooltip('Pickup spot', { permanent: true, direction: 'left', className: 'hy3n-pickup-label', offset: [-12, -5], opacity: 1 });
     const nextNearbyIds = new Set((state.nearby || []).map((item) => item.id));
     clearNearby(nextNearbyIds);
     (state.nearby || []).forEach((item) => {
@@ -277,7 +286,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
         layers.nearby.set(item.id, marker);
       }
     });
-    if (state.route && state.route.points.length > 1) layers.route = L.polyline(state.route.points.map(point), { color: state.route.colour, weight: 5, opacity: .9 }).addTo(map);
+    if (state.route && state.route.points.length > 1) layers.route = L.polyline(state.route.points.map(point), { color: state.route.colour, weight: 6, opacity: .96, className: 'hy3n-active-route' }).addTo(map);
     updateTrackingCamera(state);
     if (!userMovedMap && state.user && !state.driver && !state.destination) {
       const previous = lastUserPoint;

@@ -15,5 +15,14 @@ describe('Rider live tracking smart camera', () => {
     expect(source).toContain('if (userMovedMap || !state.driver) return;');
     expect(source).toContain('map.panInside(driverPoint');
     expect(source).toContain('updateTrackingCamera(state);');
+    expect(source).toContain('let programmaticCameraChange = false;');
+    expect(source).toContain("map.on('zoomstart', () => { if (!programmaticCameraChange) userMovedMap = true; });");
+  });
+
+  it('keeps the pickup spot labelled and the active road line visually prominent', () => {
+    expect(source).toContain("bindTooltip('Pickup spot', { permanent: true");
+    expect(source).toContain("className: 'hy3n-pickup-label'");
+    expect(source).toContain("className: 'hy3n-active-route'");
+    expect(source).toContain('weight: 6, opacity: .96');
   });
 });
