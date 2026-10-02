@@ -50,6 +50,7 @@ import { buildEmergencyAssistMessage, getSafetySignal, requiresCancellationReaso
 import { trpc } from "@/lib/trpc";
 import { type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
+import { canRequestServerQuotedRide, canSelectServerQuotedCategory } from "@/lib/rider-quote-selection";
 import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-share";
 import { payWithHubtelCard } from "@/lib/card-checkout";
 import { nearbyVehicleFromProfile, type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
@@ -960,6 +961,7 @@ export default function RiderHomeScreen() {
     : 0;
   const duration = Math.round(distance * 3.5 + 5);
   const selectedQuote = destination ? serverQuotes[selectedCategory.id] : undefined;
+  const requestQuoteReady = canRequestServerQuotedRide(selectedQuote, quoteLoading);
   const bookingFare = selectedQuote?.available ? selectedQuote.total : 0;
   const quoteSurgeMultiplier = selectedQuote?.surgeMultiplier ?? surge.multiplier;
   const preTipAmount = selectedTipPercent ? (bookingFare * selectedTipPercent) / 100 : (customTip ? parseFloat(customTip) : 0);
@@ -1020,6 +1022,11 @@ export default function RiderHomeScreen() {
     loadQuotes();
     return () => { cancelled = true; };
   }, [destination?.lat, destination?.lng, destination?.name, destination?.address, user?.uid, userLocation[0], userLocation[1], pickupAddress, stops, distance, duration]);
+
+  const selectRideCategory = useCallback((category: (typeof RIDE_CATEGORIES)[number]) => {
+    if (!canSelectServerQuotedCategory(serverQuotes[category.id])) return;
+    setSelectedCategory(category);
+  }, [serverQuotes]);
 
   const [placeSuggestions, setPlaceSuggestions] = useState<Location[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
@@ -1156,7 +1163,7 @@ export default function RiderHomeScreen() {
       setShowRatingModal(true);
       return;
     }
-    if (!selectedQuote?.quoteId || !selectedQuote.available) {
+    if (!selectedQuote || !requestQuoteReady) {
       Alert.alert("Pricing is updating", "Please wait for the protected server quote before requesting this ride.");
       return;
     }
@@ -2238,7 +2245,7 @@ export default function RiderHomeScreen() {
   const renderRequestAction = () => (
     <TouchableOpacity
       onPress={() => { void handleBook(); }}
-      disabled={bookingLoading || (isScheduled && !scheduledFor)}
+      disabled={bookingLoading || !requestQuoteReady || (isScheduled && !scheduledFor)}
       accessibilityRole="button"
       accessibilityLabel={isScheduled ? "Schedule trip" : `Request HY3N for ${bookingFare.toFixed(2)} Ghana cedis`}
       style={{
@@ -2249,7 +2256,7 @@ export default function RiderHomeScreen() {
         flexDirection: "row",
         justifyContent: "center",
         gap: 8,
-        opacity: (isScheduled && !scheduledFor) ? 0.5 : 1,
+        opacity: (!requestQuoteReady || (isScheduled && !scheduledFor)) ? 0.5 : 1,
       }}
     >
       {bookingLoading ? (
@@ -2378,10 +2385,16 @@ export default function RiderHomeScreen() {
           return (
             <TouchableOpacity
               key={cat.id}
-              onPress={() => isAvailable && setSelectedCategory(cat)}
+              onPressIn={() => selectRideCategory(cat)}
+              onPress={() => {
+                selectRideCategory(cat);
+                if (canSelectServerQuotedCategory(quote)) {
+                  void Haptics.selectionAsync().catch(() => {});
+                }
+              }}
               accessibilityRole="button"
               accessibilityState={{ selected: isSelected, disabled: !isAvailable }}
-              style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 13, borderRadius: 16, opacity: quoteLoading || !isAvailable ? 0.58 : 1, backgroundColor: isSelected ? `${GOLD}1A` : "transparent", borderWidth: isSelected ? 1.8 : 0, borderColor: GOLD }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 13, borderRadius: 16, opacity: !isAvailable ? 0.58 : 1, backgroundColor: isSelected ? `${GOLD}1A` : "transparent", borderWidth: isSelected ? 1.8 : 0, borderColor: GOLD }}
             >
               <View style={{ width: 74, height: 52, alignItems: "center", justifyContent: "center" }}>
                 <Image source={vehicleArtwork} style={{ width: 74, height: 52 }} resizeMode="contain" />
@@ -2396,7 +2409,7 @@ export default function RiderHomeScreen() {
                 </View>
                 <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{cat.description}</Text>
                 <Text style={{ color: !isAvailable ? MUTED : pickupEta !== null ? GREEN : MUTED, fontSize: 11, fontWeight: "800", marginTop: 5 }}>
-                  {!quote ? 'Updating protected fare…' : !isAvailable ? 'Temporarily unavailable' : pickupEta !== null ? `${driverLabel} nearby · ${pickupEta} min pickup` : `No ${cat.name} drivers nearby`}
+                  {!quote ? 'Updating protected fare…' : !isAvailable ? 'Temporarily unavailable' : quoteLoading && isSelected ? 'Refreshing protected fare…' : pickupEta !== null ? `${driverLabel} nearby · ${pickupEta} min pickup` : `No ${cat.name} drivers nearby`}
                 </Text>
               </View>
               <View style={{ alignItems: "flex-end", gap: 7 }}>
@@ -2530,10 +2543,10 @@ export default function RiderHomeScreen() {
         </View>
         <TouchableOpacity
           onPress={() => { void handleBook(); }}
-          disabled={bookingLoading || (isScheduled && !scheduledFor)}
+          disabled={bookingLoading || !requestQuoteReady || (isScheduled && !scheduledFor)}
           accessibilityRole="button"
           accessibilityLabel={isScheduled ? "Schedule trip" : "Request HY3N"}
-          style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 16, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: (isScheduled && !scheduledFor) ? 0.5 : 1 }}
+          style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 16, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, opacity: (!requestQuoteReady || (isScheduled && !scheduledFor)) ? 0.5 : 1 }}
         >
           {bookingLoading ? (
             <ActivityIndicator color="#fff" size="small" />
