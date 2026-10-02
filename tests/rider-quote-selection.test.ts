@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canRequestServerQuotedRide,
   canSelectServerQuotedCategory,
+  isServerQuoteCurrent,
 } from '../lib/rider-quote-selection';
 
 describe('Rider server quote selection', () => {
@@ -22,5 +23,12 @@ describe('Rider server quote selection', () => {
     expect(canRequestServerQuotedRide({ available: true, quoteId: '' }, false)).toBe(false);
     expect(canRequestServerQuotedRide({ available: true }, false)).toBe(false);
     expect(canRequestServerQuotedRide({ available: false, quoteId: 'quote-unavailable' }, false)).toBe(false);
+  });
+
+  it('keeps a current coordinate quote valid when only a pickup label changes', () => {
+    const currentRoute = '5.60000,-0.19000|5.70000,-0.18000|';
+    expect(isServerQuoteCurrent(currentRoute, currentRoute)).toBe(true);
+    expect(isServerQuoteCurrent(currentRoute, '5.60001,-0.19000|5.70000,-0.18000|')).toBe(false);
+    expect(isServerQuoteCurrent(currentRoute, null)).toBe(false);
   });
 });

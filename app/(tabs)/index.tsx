@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -49,7 +49,7 @@ import { buildEmergencyAssistMessage, getSafetySignal, requiresCancellationReaso
 import { trpc } from "@/lib/trpc";
 import { type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
-import { canRequestServerQuotedRide, canSelectServerQuotedCategory } from "@/lib/rider-quote-selection";
+import { canRequestServerQuotedRide, canSelectServerQuotedCategory, isServerQuoteCurrent } from "@/lib/rider-quote-selection";
 import { bookingSheetSwipeAction, shouldClaimBookingSheetSwipe } from "@/lib/booking-sheet-gesture";
 import { formatLiveDistance, riderPickupStatusLabel } from "@/lib/rider-live-tracking-presentation";
 import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-share";
@@ -58,6 +58,7 @@ import { nearbyVehicleFromProfile, type NearbyVehicle, vehicleServesRideCategory
 import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } from "@/lib/rider-completion-presentation";
 import { deliveryRequestDetails, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
+import { destinationArrivalReminder, shouldPromptForDestinationArrival } from "@/lib/rider-trip-feedback";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -323,6 +324,8 @@ export default function RiderHomeScreen() {
   const [bookingLoading, setBookingLoading] = useState(false);
   const [serverQuotes, setServerQuotes] = useState<Record<string, ServerRideQuote>>({});
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quotedRouteKey, setQuotedRouteKey] = useState<string | null>(null);
+  const [quoteRefreshNonce, setQuoteRefreshNonce] = useState(0);
   const nearbyVehiclesForSelectedCategory = nearbyDrivers
     .filter((vehicle) => vehicleServesRideCategory(vehicle, selectedCategory.id))
     .map((vehicle) => ({
@@ -475,6 +478,7 @@ export default function RiderHomeScreen() {
   const [showNearbyAlert, setShowNearbyAlert] = useState(false);
   const nearbyAlertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nearbyAlertRideRef = useRef<string | null>(null);
+  const destinationAlertRideRef = useRef<string | null>(null);
 
   // ─── Mobile-network Driver call ───────────────────────────────────────────────
   const driverName = activeRide?.driverName || 'Driver';
@@ -927,6 +931,33 @@ export default function RiderHomeScreen() {
     };
   }, [activeRide?.firestoreId, activeRide?.id, activeRide?.status, activeRide?.etaSeconds, activeRide?.driverName]);
 
+  // This is a Rider-only courtesy reminder. It is intentionally independent
+  // from the trip state and server fare so it cannot alter settlement.
+  useEffect(() => {
+    const rideKey = activeRide?.firestoreId || activeRide?.id || null;
+    if (
+      rideKey
+      && destinationAlertRideRef.current !== rideKey
+      && shouldPromptForDestinationArrival({
+        tripStatus: activeRide?.status,
+        routeDistanceKm: activeRide?.routeDistanceKm,
+        routeDurationMinutes: activeRide?.routeDurationMinutes,
+      })
+    ) {
+      destinationAlertRideRef.current = rideKey;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      Alert.alert('Almost at your destination', destinationArrivalReminder(activeRide?.destination.name));
+    }
+    if (!activeRide) destinationAlertRideRef.current = null;
+  }, [
+    activeRide?.destination.name,
+    activeRide?.firestoreId,
+    activeRide?.id,
+    activeRide?.routeDistanceKm,
+    activeRide?.routeDurationMinutes,
+    activeRide?.status,
+  ]);
+
   useEffect(() => {
     return () => {
       if (scheduledToastTimerRef.current) {
@@ -973,8 +1004,21 @@ export default function RiderHomeScreen() {
       )
     : 0;
   const duration = Math.round(distance * 3.5 + 5);
+  const quoteStops = useMemo(() => stops
+    .filter(Boolean)
+    .map((stop) => ({ lat: stop!.lat, lng: stop!.lng })), [stops]);
+  const quoteRouteKey = destination
+    ? [
+        userLocation[0].toFixed(5),
+        userLocation[1].toFixed(5),
+        destination.lat.toFixed(5),
+        destination.lng.toFixed(5),
+        quoteStops.map((stop) => `${stop.lat.toFixed(5)},${stop.lng.toFixed(5)}`).join('|'),
+      ].join('~')
+    : null;
   const selectedQuote = destination ? serverQuotes[selectedCategory.id] : undefined;
-  const requestQuoteReady = canRequestServerQuotedRide(selectedQuote, quoteLoading);
+  const requestQuoteReady = isServerQuoteCurrent(quotedRouteKey, quoteRouteKey)
+    && canRequestServerQuotedRide(selectedQuote, quoteLoading);
   const bookingFare = selectedQuote?.available ? selectedQuote.total : 0;
   const quoteSurgeMultiplier = selectedQuote?.surgeMultiplier ?? surge.multiplier;
   const preTipAmount = selectedTipPercent ? (bookingFare * selectedTipPercent) / 100 : (customTip ? parseFloat(customTip) : 0);
@@ -983,14 +1027,16 @@ export default function RiderHomeScreen() {
   // fare locally. A price edit in the admin dashboard applies on this refresh;
   // accepting the ride locks the same server quote into the ride record.
   useEffect(() => {
-    if (!destination || !user) {
+    if (!destination || !user || !quoteRouteKey) {
       setServerQuotes({});
+      setQuotedRouteKey(null);
       setQuoteLoading(false);
       return;
     }
     let cancelled = false;
     const loadQuotes = async () => {
       setQuoteLoading(true);
+      setQuotedRouteKey(null);
       try {
         const idToken = await auth.currentUser?.getIdToken();
         if (!idToken) throw new Error('Session expired');
@@ -1002,20 +1048,22 @@ export default function RiderHomeScreen() {
             pickup: {
               lat: userLocation[0],
               lng: userLocation[1],
-              name: pickupAddress || 'Current Location',
-              address: pickupAddress || 'Current Location',
+              // Address labels can arrive later from reverse geocoding. They
+              // must not continuously invalidate a coordinate-locked fare.
+              name: 'Pickup location',
+              address: 'Pickup location',
             },
             destination: {
               lat: destination.lat,
               lng: destination.lng,
-              name: destination.name,
-              address: destination.address || destination.name,
+              name: 'Destination',
+              address: 'Destination',
             },
-            stops: stops.filter(Boolean).map((stop) => ({
-              lat: stop!.lat,
-              lng: stop!.lng,
-              name: stop!.name,
-              address: stop!.address || stop!.name,
+            stops: quoteStops.map((stop) => ({
+              lat: stop.lat,
+              lng: stop.lng,
+              name: 'Stop',
+              address: 'Stop',
             })),
             distance,
             duration,
@@ -1023,18 +1071,24 @@ export default function RiderHomeScreen() {
         });
         const payload = await response.json().catch(() => null) as { success?: boolean; quotes?: ServerRideQuote[] } | null;
         if (!response.ok || !payload?.success || !Array.isArray(payload.quotes)) throw new Error('Quote unavailable');
-        if (!cancelled) setServerQuotes(Object.fromEntries(payload.quotes.map((quote) => [quote.category, quote])));
+        if (!cancelled) {
+          setServerQuotes(Object.fromEntries(payload.quotes.map((quote) => [quote.category, quote])));
+          setQuotedRouteKey(quoteRouteKey);
+        }
       } catch {
         // Do not use local pricing as a fallback: the Rider must never accept
         // a number that the backend has not calculated.
-        if (!cancelled) setServerQuotes({});
+        if (!cancelled) {
+          setServerQuotes({});
+          setQuotedRouteKey(null);
+        }
       } finally {
         if (!cancelled) setQuoteLoading(false);
       }
     };
     loadQuotes();
     return () => { cancelled = true; };
-  }, [destination?.lat, destination?.lng, destination?.name, destination?.address, user?.uid, userLocation[0], userLocation[1], pickupAddress, stops, distance, duration]);
+  }, [destination?.lat, destination?.lng, user?.uid, userLocation[0], userLocation[1], quoteRouteKey, quoteRefreshNonce]);
 
   const selectRideCategory = useCallback((category: (typeof RIDE_CATEGORIES)[number]) => {
     if (!canSelectServerQuotedCategory(serverQuotes[category.id])) return;
@@ -1314,11 +1368,14 @@ export default function RiderHomeScreen() {
       });
       const result = await response.json().catch(() => null) as {
         success?: boolean;
+        code?: string;
         message?: string;
         ride?: Record<string, any>;
       } | null;
       if (!response.ok || !result?.success || !result.ride?.id) {
-        throw new Error(result?.message || "We could not send your request to drivers.");
+        const requestError = new Error(result?.message || "We could not send your request to drivers.") as Error & { code?: string };
+        requestError.code = result?.code;
+        throw requestError;
       }
       const createdRide = result.ride;
       const matchedDriver = createdRide.driver as Record<string, any> | null;
@@ -1378,6 +1435,16 @@ export default function RiderHomeScreen() {
         }
     } catch (error: any) {
       console.error('[Rider] Ride request failed:', error);
+      if (error?.code === 'expired') {
+        // The server is the sole pricing authority. Discard the expired opaque
+        // ID, obtain a new locked quote for the same coordinates, and leave the
+        // Rider in the booking sheet rather than losing their selected route.
+        setServerQuotes({});
+        setQuotedRouteKey(null);
+        setQuoteRefreshNonce((nonce) => nonce + 1);
+        Alert.alert('Fare refreshed', 'Your protected fare was refreshed. Please tap Request HY3N again once the button becomes active.');
+        return;
+      }
       Alert.alert(
         "Request not sent",
         error?.message || "We could not send your ride request to drivers. Check your connection and try again.",
@@ -1453,6 +1520,7 @@ export default function RiderHomeScreen() {
     removeActiveRide(activeRide?.id);
     resetBookingState();
     setCancelReason("");
+    Alert.alert('Ride cancelled', 'Your ride request was cancelled. No Driver had started this trip and no trip fare was charged.');
   };
 
   const handleCancelBooking = () => {

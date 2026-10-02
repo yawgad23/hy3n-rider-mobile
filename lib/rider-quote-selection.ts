@@ -25,3 +25,14 @@ export function canRequestServerQuotedRide(
     && typeof quote.quoteId === 'string'
     && quote.quoteId.trim().length > 0;
 }
+
+/**
+ * A quote is usable only for the exact coordinate route that created it. Labels
+ * can change during reverse geocoding without making the fare stale.
+ */
+export function isServerQuoteCurrent(
+  quoteRouteKey: string | null | undefined,
+  currentRouteKey: string | null | undefined,
+): boolean {
+  return Boolean(quoteRouteKey && currentRouteKey && quoteRouteKey === currentRouteKey);
+}
