@@ -16,7 +16,7 @@ import {
   Image,
   PanResponder,
 } from "react-native";
-import LeafletMap from "@/components/LeafletMap";
+import NativeGoogleMap from "@/components/NativeGoogleMap";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -100,6 +100,8 @@ interface ServerRideQuote {
   surgeMultiplier: number;
   fareRate: Record<string, unknown>;
   breakdown: Record<string, unknown>;
+  routePoints?: [number, number][];
+  routeSource?: 'google_routes_traffic' | 'osrm';
 }
 
 interface ActiveRide {
@@ -2810,9 +2812,9 @@ export default function RiderHomeScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
       {terminalRide ? renderTerminalRide() : <>
-      {/* The live WebView map, route feeds and ride sheet are deliberately
+      {/* The live native Google map, route feeds and ride sheet are deliberately
           unmounted before a completed trip is displayed. */}
-      <LeafletMap
+      <NativeGoogleMap
         style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
         colorScheme={colorScheme}
         center={userLocation}
@@ -2836,7 +2838,8 @@ export default function RiderHomeScreen() {
             ? [activeRide.destination.lat, activeRide.destination.lng] as [number, number]
             : [activeRide.pickupLocation.lat, activeRide.pickupLocation.lng] as [number, number])
           : null}
-        driverRoutePoints={activeRide?.driverRoutePoints ?? null}
+        driverRoutePoints={activeRide?.driverRoutePoints
+          ?? (!activeRide && selectedQuote?.routePoints ? selectedQuote.routePoints : null)}
         tripStatus={activeRide?.status ?? null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
         nearbyDrivers={(!activeRide || activeRide.status === "searching")
