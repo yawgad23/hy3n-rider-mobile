@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { submitAuthenticatedDriverRating } from '@/lib/driver-rating-api';
+import { DriverRatingRequestError, submitAuthenticatedDriverRating } from '@/lib/driver-rating-api';
 
 describe('authenticated Driver rating client', () => {
   it('uses a refreshed Firebase token and sends only rating content', async () => {
@@ -27,7 +27,11 @@ describe('authenticated Driver rating client', () => {
       { getIdToken: async () => 'token' },
       { rideId: 'ride-1', rating: 5 },
       'https://api.example.test',
-      (async () => ({ ok: false, json: async () => ({ success: false, message: 'Ride not found.' }) }) as Response) as typeof fetch,
-    )).rejects.toThrow('Ride not found.');
+      (async () => ({ ok: false, json: async () => ({ success: false, code: 'ride_not_found', message: 'Ride not found.' }) }) as Response) as typeof fetch,
+    )).rejects.toEqual(expect.objectContaining({
+      name: DriverRatingRequestError.name,
+      code: 'ride_not_found',
+      message: 'Ride not found.',
+    }));
   });
 });

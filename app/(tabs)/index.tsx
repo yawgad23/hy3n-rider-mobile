@@ -36,8 +36,6 @@ import {
 } from "@/constants/rides";
 import { getApiBaseUrl } from "@/constants/oauth";
 import { RideChatModal, useUnreadChatCount } from "@/components/ride-chat-modal";
-import { useVoiceCall } from "@/hooks/use-voice-call";
-import { InCallScreen, IncomingCallModal } from "@/components/in-call-screen";
 import { PostRideModal } from "@/components/post-ride-modal";
 import { calculateDynamicFare, calculateDistance, RideMetrics } from "@/lib/dynamic-pricing";
 import { getDistanceToPickup, getDistanceToDestination, estimateETA, formatDistance, isDriverNearPickup, calculateBearing } from "@/lib/driver-tracking";
@@ -45,6 +43,7 @@ import { upsertRide, updateRide, removeRide, countActiveRides } from "@/lib/ride
 import { recoverActiveRides } from "@/lib/rider-active-ride-recovery";
 import { buildRiderTerminalSummary, type RiderTerminalSummary } from "@/lib/rider-terminal-summary";
 import { isExpiredRiderSearch } from "@/lib/rider-search-expiry";
+import { driverMobileCallUrl } from "@/lib/driver-mobile-call";
 import { expireStaleRiderSearch } from "@/lib/rider-search-expiry-api";
 import { buildEmergencyAssistMessage, getSafetySignal, requiresCancellationReason, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 import { trpc } from "@/lib/trpc";
@@ -466,26 +465,25 @@ export default function RiderHomeScreen() {
   const nearbyAlertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nearbyAlertRideRef = useRef<string | null>(null);
 
-  // ─── Voice Call ───────────────────────────────────────────────────────────────
+  // ─── Mobile-network Driver call ───────────────────────────────────────────────
   const driverName = activeRide?.driverName || 'Driver';
   const driverPhone = (activeRide as any)?.driverPhone;
-  const driverId = (activeRide as any)?.driverId || (activeRide as any)?.driver_id;
-  const riderCall = useVoiceCall({
-    rideId: activeRide?.firestoreId,
-    myId: user?.uid,
-    myName: user?.displayName || 'Rider',
-    myRole: 'rider',
-    otherName: driverName,
-  });
 
-  const handleCallDriver = () => {
+  const handleCallDriver = async () => {
     if (!activeRide) return;
-    if (driverId) {
-      riderCall.startCall(driverId);
-    } else if (driverPhone) {
-      Linking.openURL(`tel:${driverPhone}`);
-    } else {
+    const callUrl = driverMobileCallUrl(driverPhone);
+    if (!callUrl) {
       Alert.alert('Call Driver', 'Driver contact not available yet.');
+      return;
+    }
+    try {
+      if (!await Linking.canOpenURL(callUrl)) {
+        Alert.alert('Call Driver', `Your device cannot start a phone call to ${driverName}.`);
+        return;
+      }
+      await Linking.openURL(callUrl);
+    } catch {
+      Alert.alert('Call Driver', `Unable to start a mobile-network call to ${driverName}. Please try again.`);
     }
   };
   const [chatMessages, setChatMessages] = useState<{ id: string; text: string; fromRider: boolean; time: string }[]>([]);
@@ -3139,20 +3137,6 @@ export default function RiderHomeScreen() {
         />
       )}
 
-      {/* Voice Call — full-screen overlay when in call */}
-      <InCallScreen
-        call={riderCall}
-        otherName={driverName}
-        otherRole="driver"
-        otherPhone={driverPhone}
-      />
-
-      {/* Incoming call modal — shown when driver calls rider */}
-      <IncomingCallModal
-        call={riderCall}
-        otherName={driverName}
-        otherRole="driver"
-      />
 
       {/* A cancellation reason is collected only after a Driver is assigned. */}
       <Modal visible={showCancelModal} transparent animationType="slide">

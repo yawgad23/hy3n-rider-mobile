@@ -14,6 +14,7 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { dispatchService } from '@/lib/dispatch';
 import { trpc } from '@/lib/trpc';
 import { buildReceiptEmailPayload, type ReceiptEmailStatus } from '@/lib/receipt-email';
+import { presentDriverRatingSubmissionError } from '@/lib/rider-rating-presentation';
 
 const GOLD = '#D4AF37';
 const GREEN = '#006B3F';
@@ -136,7 +137,14 @@ export function PostRideModal({
       Alert.alert('Thank you!', 'Your rating has been submitted.');
       setTimeout(() => onClose(), 500);
     } catch (err) {
-      Alert.alert('Error', 'Failed to submit rating. Please try again.');
+      const presentation = presentDriverRatingSubmissionError(err);
+      if (presentation.kind === 'submitted') {
+        onRatingSubmitted?.();
+        Alert.alert(presentation.title, presentation.message);
+        setTimeout(() => onClose(), 500);
+      } else {
+        Alert.alert(presentation.title, presentation.message);
+      }
     } finally {
       setIsSubmitting(false);
     }

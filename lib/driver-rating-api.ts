@@ -17,6 +17,16 @@ export type DriverRatingResult = {
   warnings?: string[];
 };
 
+export class DriverRatingRequestError extends Error {
+  code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = 'DriverRatingRequestError';
+    this.code = code;
+  }
+}
+
 export async function submitAuthenticatedDriverRating(
   user: FirebaseRatingUser,
   input: DriverRatingInput,
@@ -38,9 +48,12 @@ export async function submitAuthenticatedDriverRating(
       tags: input.tags || [],
     }),
   });
-  const payload = await response.json().catch(() => null) as Partial<DriverRatingResult> & { message?: string } | null;
+  const payload = await response.json().catch(() => null) as Partial<DriverRatingResult> & { code?: string; message?: string } | null;
   if (!response.ok || payload?.success !== true) {
-    throw new Error(payload?.message || 'Your rating could not be submitted. Please try again.');
+    throw new DriverRatingRequestError(
+      payload?.message || 'Your rating could not be submitted. Please try again.',
+      payload?.code,
+    );
   }
   return payload as DriverRatingResult;
 }
