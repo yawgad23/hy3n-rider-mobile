@@ -157,6 +157,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   const markerVisuals = new WeakMap();
   let userMovedMap = false;
   let lastUserPoint = initialPayload.user;
+  let trackingTargetKey = '';
   map.on('dragstart zoomstart', () => { userMovedMap = true; });
   const point = (p) => [p[0], p[1]];
   const icon = (className, html, size, anchor) => L.divIcon({ className: '', html, iconSize: size, iconAnchor: anchor });
@@ -212,6 +213,25 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
     };
     animationFrames.set(marker, requestAnimationFrame(frame));
   };
+  const updateTrackingCamera = (state) => {
+    if (userMovedMap || !state.driver) return;
+    const target = state.pickup || state.destination;
+    if (!target) return;
+    const driverPoint = point(state.driver.point);
+    const targetPoint = point(target);
+    const targetKey = targetPoint[0].toFixed(6) + ':' + targetPoint[1].toFixed(6);
+    if (targetKey !== trackingTargetKey) {
+      trackingTargetKey = targetKey;
+      map.fitBounds([driverPoint, targetPoint], { paddingTopLeft: [32, 88], paddingBottomRight: [32, 340], maxZoom: 17, animate: false });
+      return;
+    }
+    const size = map.getSize();
+    const driverScreenPoint = map.latLngToContainerPoint(driverPoint);
+    const left = size.x * .16, right = size.x * .84, top = size.y * .12, bottom = size.y * .58;
+    if (driverScreenPoint.x < left || driverScreenPoint.x > right || driverScreenPoint.y < top || driverScreenPoint.y > bottom) {
+      map.panInside(driverPoint, { paddingTopLeft: [Math.round(size.x * .16), Math.round(size.y * .12)], paddingBottomRight: [Math.round(size.x * .16), Math.round(size.y * .42)], animate: true, duration: .55 });
+    }
+  };
   const clearNearby = (nextIds = new Set()) => {
     layers.nearby.forEach((layer, id) => {
       if (!nextIds.has(id)) {
@@ -258,6 +278,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
       }
     });
     if (state.route && state.route.points.length > 1) layers.route = L.polyline(state.route.points.map(point), { color: state.route.colour, weight: 5, opacity: .9 }).addTo(map);
+    updateTrackingCamera(state);
     if (!userMovedMap && state.user && !state.driver && !state.destination) {
       const previous = lastUserPoint;
       const moved = !previous || Math.abs(previous[0] - state.user[0]) > 0.001 || Math.abs(previous[1] - state.user[1]) > 0.001;

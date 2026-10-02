@@ -21,8 +21,8 @@ export function presentDriverRatingSubmissionError(error: unknown): RatingSubmis
   if (failure.code === 'rating_already_submitted') {
     return {
       kind: 'submitted',
-      title: 'Rating saved',
-      message: 'Your rating for this Driver was already received.',
+      title: 'Thank you!',
+      message: 'Your rating has been received. We appreciate your feedback.',
     };
   }
 

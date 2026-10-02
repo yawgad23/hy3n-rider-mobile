@@ -57,6 +57,7 @@ import { payWithHubtelCard } from "@/lib/card-checkout";
 import { nearbyVehicleFromProfile, type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
 import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } from "@/lib/rider-completion-presentation";
 import { deliveryRequestDetails, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
+import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -783,22 +784,24 @@ export default function RiderHomeScreen() {
 
     return firestoreDB.subscribeDoc(COLLECTIONS.DRIVER_PRESENCE, driverId, (profile: any) => {
       const current = profile?.current_location || profile?.location;
-      const lat = Number(current?.latitude ?? current?.lat);
-      const lng = Number(current?.longitude ?? current?.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      const point = { lat, lng };
+      const incoming = nextRiderDriverLocation(current || profile);
+      if (!incoming) return;
+      const point = { lat: incoming.lat, lng: incoming.lng };
       updateActiveRide((prev) => {
         if (prev.id !== ride.id) return prev;
-        const bearing = Number.isFinite(Number(current?.heading))
-          ? Number(current.heading)
+        const ordered = nextRiderDriverLocation(current || profile, prev.driverLocationUpdatedAt);
+        if (!ordered) return prev;
+        const nextPoint = { lat: ordered.lat, lng: ordered.lng };
+        const bearing = Number.isFinite(Number(ordered.heading))
+          ? Number(ordered.heading)
           : prev.driverLocation
-            ? calculateBearing(prev.driverLocation.lat, prev.driverLocation.lng, lat, lng)
+            ? calculateBearing(prev.driverLocation.lat, prev.driverLocation.lng, nextPoint.lat, nextPoint.lng)
             : prev.driverBearing;
         return {
           ...prev,
-          driverLocation: point,
+          driverLocation: nextPoint,
           driverBearing: bearing,
-          driverLocationUpdatedAt: String(current?.recorded_at || current?.updated_at || profile?.last_location_update || profile?.last_seen_at || profile?.last_seen || prev.driverLocationUpdatedAt || ''),
+          driverLocationUpdatedAt: ordered.updatedAt || prev.driverLocationUpdatedAt,
         };
       });
       if (ride.id === selectedRideId) setDriverLocation(point);

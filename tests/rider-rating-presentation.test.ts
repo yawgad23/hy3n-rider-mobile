@@ -8,8 +8,8 @@ describe('Rider driver-rating submission presentation', () => {
       message: 'You have already rated this Driver for this ride.',
     })).toEqual({
       kind: 'submitted',
-      title: 'Rating saved',
-      message: 'Your rating for this Driver was already received.',
+      title: 'Thank you!',
+      message: 'Your rating has been received. We appreciate your feedback.',
     });
   });
 
