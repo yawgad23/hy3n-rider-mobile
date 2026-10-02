@@ -63,12 +63,12 @@ function safeColour(value: string | null | undefined, fallback: string) {
 function markerAsset(serviceType?: string | null) {
   const type = String(serviceType || '').toLowerCase();
   if (type.includes('okada') || type.includes('motor') || type.includes('bike')) {
-    return require('@/assets/images/map-okada-marker@2x.png');
+    return require('../assets/images/map-okada-marker.png');
   }
   if (type.includes('delivery') || type.includes('parcel') || type.includes('express')) {
-    return require('@/assets/images/map-delivery-marker@2x.png');
+    return require('../assets/images/map-delivery-marker.png');
   }
-  return require('@/assets/images/map-car-marker@2x.png');
+  return require('../assets/images/map-car-marker.png');
 }
 
 function initialRegion(center: NativeMapPoint): Region {
