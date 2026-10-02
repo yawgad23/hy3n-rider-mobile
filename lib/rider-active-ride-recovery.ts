@@ -54,6 +54,7 @@ export type RecoveredActiveRide = {
   routeDurationMinutes?: number;
   routePhase?: 'pickup' | 'destination';
   driverRoutePoints?: [number, number][];
+  bookingRoutePoints?: [number, number][];
   driverMomoNumber?: string;
   driverMomoNetwork?: string;
   matchedAt?: string;
@@ -183,6 +184,7 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
     routeDurationMinutes: optionalFiniteNumber(liveRoute.duration_minutes),
     routePhase: liveRoute.phase === 'destination' || liveRoute.phase === 'pickup' ? liveRoute.phase : undefined,
     driverRoutePoints: routePointsFrom(liveRoute.points),
+    bookingRoutePoints: routePointsFrom(rawRide.booking_route_points),
     driverMomoNumber: nonEmptyText(rawRide.driver_momo_number ?? driver.momo_number) || undefined,
     driverMomoNetwork: nonEmptyText(rawRide.driver_momo_network ?? driver.momo_network) || undefined,
     matchedAt: nonEmptyText(rawRide.matched_at ?? rawRide.accepted_at) || undefined,

@@ -56,6 +56,15 @@ describe('Rider active ride relaunch recovery', () => {
     })).toMatchObject({ driverRating: 4.8, driverRatingCount: 17 });
   });
 
+  it('recovers the protected booking road line while searching for a Driver', () => {
+    expect(recoverActiveRide({
+      ...activeRide,
+      status: 'searching',
+      created_at: new Date().toISOString(),
+      booking_route_points: [[5.605, -0.174], [5.606, -0.173], [5.607, -0.171]],
+    })?.bookingRoutePoints).toEqual([[5.605, -0.174], [5.606, -0.173], [5.607, -0.171]]);
+  });
+
   it('does not revive completed or cancelled rides after relaunch', () => {
     expect(recoverActiveRide({ ...activeRide, status: 'completed' })).toBeNull();
     expect(recoverActiveRide({ ...activeRide, status: 'cancelled' })).toBeNull();

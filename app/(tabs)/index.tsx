@@ -143,6 +143,7 @@ interface ActiveRide {
   routeDurationMinutes?: number;
   routePhase?: "pickup" | "destination";
   driverRoutePoints?: [number, number][];
+  bookingRoutePoints?: [number, number][];
   waitingFee?: number;
   tipAmount?: number;
   quotedFare?: number;
@@ -1428,6 +1429,9 @@ export default function RiderHomeScreen() {
           driverLocation: matchedDriverLocation,
           eta: matchedDriverEta,
           etaSeconds: matchedDriverEta ? matchedDriverEta * 60 : undefined,
+          bookingRoutePoints: Array.isArray(createdRide.booking_route_points)
+            ? createdRide.booking_route_points
+            : selectedQuote?.routePoints,
           matchedAt: createdRide.matched_at || undefined,
         });
         if (isScheduled) {
@@ -1934,6 +1938,7 @@ export default function RiderHomeScreen() {
       );
     }
     return (
+      <View style={{ flex: 1 }}>
       <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
         {activeRides.length > 1 && (
           <View style={{ marginBottom: 12 }}>
@@ -1972,12 +1977,6 @@ export default function RiderHomeScreen() {
               <Row label="Fare" value={`GH₵${activeRide.fare.toFixed(2)}`} valueColor={GOLD} />
               <Row label="Payment" value={activeRide.payment} />
             </View>
-            <TouchableOpacity
-              onPress={handleCancelRide}
-              style={{ marginTop: 16, borderWidth: 1, borderColor: `${RED}66`, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 32 }}
-            >
-              <Text style={{ color: RED, fontWeight: "600", fontSize: 14 }}>Cancel Request</Text>
-            </TouchableOpacity>
           </View>
         )}
 
@@ -2316,6 +2315,19 @@ export default function RiderHomeScreen() {
           </View>
         )}
       </ScrollView>
+      {isSearching && (
+        <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14, backgroundColor: BG, borderTopWidth: 1, borderTopColor: BORDER }}>
+          <TouchableOpacity
+            onPress={handleCancelRide}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel ride request"
+            style={{ borderWidth: 1, borderColor: `${RED}88`, borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}
+          >
+            <Text style={{ color: RED, fontWeight: "800", fontSize: 15 }}>Cancel Request</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      </View>
     );
   };
 
@@ -2839,6 +2851,7 @@ export default function RiderHomeScreen() {
             : [activeRide.pickupLocation.lat, activeRide.pickupLocation.lng] as [number, number])
           : null}
         driverRoutePoints={activeRide?.driverRoutePoints
+          ?? activeRide?.bookingRoutePoints
           ?? (!activeRide && selectedQuote?.routePoints ? selectedQuote.routePoints : null)}
         tripStatus={activeRide?.status ?? null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
