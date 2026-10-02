@@ -52,6 +52,7 @@ import { type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
 import { canRequestServerQuotedRide, canSelectServerQuotedCategory } from "@/lib/rider-quote-selection";
 import { bookingSheetSwipeAction, shouldClaimBookingSheetSwipe } from "@/lib/booking-sheet-gesture";
+import { formatLiveDistance } from "@/lib/rider-live-tracking-presentation";
 import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-share";
 import { payWithHubtelCard } from "@/lib/card-checkout";
 import { nearbyVehicleFromProfile, type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
@@ -1661,13 +1662,15 @@ export default function RiderHomeScreen() {
     const pairingDriverName = activeRide.driverName || "Your driver";
     const pairingVehicle = activeRide.driverVehicle || "HY3N vehicle";
     const pairingVehicleIdentity = [activeRide.driverColour, pairingVehicle].filter(Boolean).join(" ");
-    const pairingEtaMinutes = activeRide.status !== 'in_progress' && activeRide.routePhase === 'pickup' && activeRide.routeDurationMinutes
-      ? activeRide.routeDurationMinutes
-      : activeRide.eta ?? (
-      activeRide.etaSeconds && activeRide.etaSeconds > 0
-        ? Math.max(1, Math.ceil(activeRide.etaSeconds / 60))
-        : null
-    );
+    const pairingEtaMinutes = activeRide.status === 'in_progress'
+      ? null
+      : activeRide.routePhase === 'pickup' && activeRide.routeDurationMinutes
+        ? activeRide.routeDurationMinutes
+        : activeRide.eta ?? (
+          activeRide.etaSeconds && activeRide.etaSeconds > 0
+            ? Math.max(1, Math.ceil(activeRide.etaSeconds / 60))
+            : null
+        );
     const straightLinePickupDistanceKm = activeRide.driverLocation
       ? calculateDistance(
           activeRide.driverLocation.lat,
@@ -1753,7 +1756,7 @@ export default function RiderHomeScreen() {
                       : isSearching
                         ? "Finding the nearest available driver"
                         : livePickupDistanceKm !== null && livePickupDistanceKm !== undefined
-                          ? `${livePickupDistanceKm.toFixed(livePickupDistanceKm < 1 ? 1 : 0)} km by road to your pickup`
+                          ? `${formatLiveDistance(livePickupDistanceKm) || 'Distance unavailable'} by road to your pickup`
                           : `Meet at ${activeRide.pickup}`}
                 </Text>
               </View>
@@ -2690,7 +2693,7 @@ export default function RiderHomeScreen() {
         driverColourHex={activeRide?.driverColourHex ?? null}
         driverVehicle={activeRide?.driverVehicle ?? null}
         driverServiceType={activeRide?.driverServiceType ?? activeRide?.categoryId ?? null}
-        driverEtaMinutes={activeRide?.routePhase === 'pickup' ? (activeRide.routeDurationMinutes ?? activeRide.eta ?? null) : null}
+        driverEtaMinutes={activeRide?.status !== 'in_progress' && activeRide?.routePhase === 'pickup' ? (activeRide.routeDurationMinutes ?? activeRide.eta ?? null) : null}
         driverDistanceKm={activeRide?.routeDistanceKm ?? null}
         driverTracking={Boolean(activeRide && ['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(activeRide.status) && activeRide.driverLocation)}
         driverTrackingTarget={activeRide
