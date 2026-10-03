@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Image, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { matchPointToServerRoute } from '@/lib/rider-route-matching';
 import { isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
@@ -29,6 +29,8 @@ type NativeGoogleMapProps = {
   driverTracking?: boolean;
   driverTrackingTarget?: NativeMapPoint | null;
   driverRoutePoints?: NativeMapPoint[] | null;
+  bookingPickupTimeLabel?: string | null;
+  bookingDropoffTimeLabel?: string | null;
   tripStatus?: string | null;
   safetySignal?: 'clear' | 'route_deviation' | 'long_stop';
   nearbyDrivers?: NearbyDriver[];
@@ -83,6 +85,23 @@ function CompactVehicleMarker({ serviceType, size }: { serviceType?: string | nu
   );
 }
 
+function BookingEndpointMarker({ label, tone }: { label: string; tone: 'pickup' | 'dropoff' }) {
+  const [title, detail] = label.split('\n');
+  const backgroundColor = tone === 'pickup' ? '#007E4F' : '#063D2B';
+  const accentColor = tone === 'pickup' ? '#8FF0BD' : '#D4AF37';
+  return (
+    <View pointerEvents="none" style={styles.bookingEndpoint}>
+      <View style={[styles.bookingCallout, { backgroundColor }]}>
+        <Text style={styles.bookingCalloutTitle}>{title}</Text>
+        <Text style={styles.bookingCalloutDetail}>{detail}</Text>
+      </View>
+      <View style={[styles.bookingMapPin, { borderColor: accentColor }]}>
+        <View style={[styles.bookingMapPinInner, { backgroundColor }]} />
+      </View>
+    </View>
+  );
+}
+
 function initialRegion(center: NativeMapPoint): Region {
   return {
     latitude: center[0],
@@ -110,6 +129,8 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   driverTracking = false,
   driverTrackingTarget = null,
   driverRoutePoints = null,
+  bookingPickupTimeLabel = null,
+  bookingDropoffTimeLabel = null,
   tripStatus = null,
   nearbyDrivers = [],
 }, ref) {
@@ -138,6 +159,13 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const nearby = useMemo(() => nearbyDrivers
     .filter((driver) => isNativeMapPoint([driver.lat, driver.lng]))
     .slice(0, 8), [nearbyDrivers]);
+  const bookingPreview = !driverTracking
+    && isNativeMapPoint(userLocation)
+    && isNativeMapPoint(destination)
+    && Boolean(bookingPickupTimeLabel || bookingDropoffTimeLabel);
+  const routeFrameCoordinates = useMemo(() => bookingPreview
+    ? [...routeCoordinates, coordinate(userLocation!), coordinate(destination!)]
+    : routeCoordinates, [bookingPreview, destination, routeCoordinates, userLocation]);
 
   useEffect(() => {
     if (!displayDriverPoint) return;
@@ -160,9 +188,10 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     // the SDK's whole-world fallback viewport visible behind the home sheet.
     if (!mapReady) return;
     if (userMovedMapRef.current) return;
-    if (!driverTracking && routeCoordinates.length > 1) {
-      mapRef.current?.fitToCoordinates(routeCoordinates, {
-        edgePadding: { top: 128, right: 32, bottom: 360, left: 32 },
+    if (!driverTracking && routeFrameCoordinates.length > 1) {
+      mapRef.current?.fitToCoordinates(routeFrameCoordinates, {
+        // Keep the entire booking route and both time callouts above the sheet.
+        edgePadding: { top: bookingPreview ? 180 : 128, right: 32, bottom: bookingPreview ? 430 : 360, left: 32 },
         animated: true,
       });
       return;
@@ -174,7 +203,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     );
     if (!region) return;
     mapRef.current?.animateToRegion(region, displayDriverPoint && trackedTarget ? 650 : 350);
-  }, [center, displayDriverPoint, driverTracking, mapReady, routeCoordinates, trackedTarget, userLocation]);
+  }, [bookingPreview, center, displayDriverPoint, driverTracking, mapReady, routeFrameCoordinates, trackedTarget, userLocation]);
 
   useImperativeHandle(ref, () => ({
     panTo(latitude, longitude) {
@@ -195,7 +224,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     ? userLocation
     : (isNativeMapPoint(center) ? center : FALLBACK_CENTER);
   const pickupPoint = driverTracking && tripStatus !== 'in_progress' ? trackedTarget : null;
-  const destinationPoint = isNativeMapPoint(destination) && (!driverTracking || tripStatus === 'in_progress') ? destination : null;
+  const destinationPoint = !bookingPreview && isNativeMapPoint(destination) && (!driverTracking || tripStatus === 'in_progress') ? destination : null;
 
   return (
     <View style={[styles.container, style]}>
@@ -215,13 +244,29 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       >
         {routeCoordinates.length > 1 && <Polyline
           coordinates={routeCoordinates}
-          strokeColor={driverTracking ? safeColour(driverColourHex, '#006B3F') : '#D4AF37'}
+          strokeColor={driverTracking ? safeColour(driverColourHex, '#006B3F') : '#007E4F'}
           strokeWidth={6}
           lineCap="round"
           lineJoin="round"
           zIndex={1}
         />}
-        {isNativeMapPoint(userLocation) && <Marker
+        {bookingPreview && isNativeMapPoint(userLocation) && <Marker
+          coordinate={coordinate(userLocation)}
+          anchor={{ x: 0.5, y: 1 }}
+          tracksViewChanges
+          zIndex={7}
+        >
+          <BookingEndpointMarker label={bookingPickupTimeLabel || 'Pickup\nCurrent location'} tone="pickup" />
+        </Marker>}
+        {bookingPreview && isNativeMapPoint(destination) && <Marker
+          coordinate={coordinate(destination)}
+          anchor={{ x: 0.5, y: 1 }}
+          tracksViewChanges
+          zIndex={7}
+        >
+          <BookingEndpointMarker label={bookingDropoffTimeLabel || 'Drop-off\nCalculating'} tone="dropoff" />
+        </Marker>}
+        {!bookingPreview && isNativeMapPoint(userLocation) && <Marker
           coordinate={coordinate(userLocation)}
           pinColor="#006B3F"
           title="Your pickup spot"
@@ -271,6 +316,12 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#e8edf2' },
+  bookingEndpoint: { alignItems: 'center', minWidth: 102 },
+  bookingCallout: { borderRadius: 12, paddingHorizontal: 11, paddingVertical: 8, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
+  bookingCalloutTitle: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  bookingCalloutDetail: { color: '#FFFFFF', fontSize: 21, lineHeight: 24, fontWeight: '900', marginTop: 1 },
+  bookingMapPin: { width: 28, height: 28, borderRadius: 14, borderWidth: 5, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginTop: -2 },
+  bookingMapPinInner: { width: 10, height: 10, borderRadius: 5 },
 });
 
 export default NativeGoogleMap;

@@ -60,6 +60,7 @@ import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } fro
 import { deliveryRequestDetails, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
 import { destinationArrivalReminder, shouldPromptForDestinationArrival } from "@/lib/rider-trip-feedback";
+import { bookingMapTimeLabels } from "@/lib/booking-map-presentation";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -1028,6 +1029,12 @@ export default function RiderHomeScreen() {
       ].join('~')
     : null;
   const selectedQuote = destination ? serverQuotes[selectedCategory.id] : undefined;
+  const bookingMapTimes = destination
+    ? bookingMapTimeLabels({
+        pickupEtaMinutes: closestVehicleEta,
+        routeDurationMinutes: selectedQuote?.durationMinutes,
+      })
+    : null;
   const requestQuoteReady = isServerQuoteCurrent(quotedRouteKey, quoteRouteKey)
     && canRequestServerQuotedRide(selectedQuote, quoteLoading);
   const bookingFare = selectedQuote?.available ? selectedQuote.total : 0;
@@ -2486,10 +2493,24 @@ export default function RiderHomeScreen() {
           ))}
         </View>
         <View style={{ minWidth: 66, alignItems: "flex-end", justifyContent: "center" }}>
-          <Text style={{ color: TEXT, fontSize: 16, fontWeight: "800" }}>{distance.toFixed(1)} km</Text>
-          <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>~{duration} min trip</Text>
+          <Text style={{ color: TEXT, fontSize: 16, fontWeight: "800" }}>{(selectedQuote?.distanceKm ?? distance).toFixed(1)} km</Text>
+          <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>~{selectedQuote?.durationMinutes ?? duration} min trip</Text>
         </View>
       </View>
+
+      {bookingMapTimes && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, backgroundColor: `${GREEN}14`, borderRadius: 12, borderWidth: 1, borderColor: `${GREEN}44`, paddingHorizontal: 12, paddingVertical: 9, marginTop: -4, marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+            <MaterialIcons name="my-location" size={15} color={GREEN} />
+            <Text style={{ color: TEXT, fontSize: 12, fontWeight: '800' }}>{bookingMapTimes.pickup.replace('\n', ' ')}</Text>
+          </View>
+          <MaterialIcons name="arrow-forward" size={16} color={MUTED} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'flex-end' }}>
+            <Text style={{ color: TEXT, fontSize: 12, fontWeight: '800' }}>{bookingMapTimes.dropoff.replace('\n', ' ')}</Text>
+            <MaterialIcons name="place" size={16} color={GOLD} />
+          </View>
+        </View>
+      )}
 
       {/* Ride options use a clear vertical list, like Bolt and Uber, so every
           category can be read and chosen rather than being clipped sideways. */}
@@ -2876,6 +2897,8 @@ export default function RiderHomeScreen() {
         driverRoutePoints={activeRide?.driverRoutePoints
           ?? activeRide?.bookingRoutePoints
           ?? (!activeRide && selectedQuote?.routePoints ? selectedQuote.routePoints : null)}
+        bookingPickupTimeLabel={!activeRide && destination ? bookingMapTimes?.pickup ?? null : null}
+        bookingDropoffTimeLabel={!activeRide && destination ? bookingMapTimes?.dropoff ?? null : null}
         tripStatus={activeRide?.status ?? null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
         nearbyDrivers={(!activeRide || activeRide.status === "searching")

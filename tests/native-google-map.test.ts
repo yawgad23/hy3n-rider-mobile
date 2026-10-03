@@ -30,6 +30,16 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('animateToRegion(region');
   });
 
+  it('renders a green, fully framed booking route with pickup and drop-off times', () => {
+    expect(component).toContain("strokeColor={driverTracking ? safeColour(driverColourHex, '#006B3F') : '#007E4F'}");
+    expect(component).toContain('bookingPickupTimeLabel');
+    expect(component).toContain('bookingDropoffTimeLabel');
+    expect(component).toContain('BookingEndpointMarker');
+    expect(component).toContain('routeFrameCoordinates');
+    expect(component).toContain('Keep the entire booking route and both time callouts above the sheet');
+    expect(screen).toContain('bookingMapTimeLabels');
+  });
+
   it('keeps the Maps stub web-only and resolves native SDK keys for both stores', () => {
     expect(metroConfig).toContain('moduleName === "react-native-maps" && platform === "web"');
     expect(metroConfig).not.toContain('if (moduleName === "react-native-maps") {');
