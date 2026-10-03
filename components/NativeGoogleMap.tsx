@@ -47,6 +47,11 @@ const FALLBACK_CENTER: NativeMapPoint = [5.6037, -0.187];
 // map-appropriate point sizes so a nearby vehicle does not cover roads or pins.
 const ACTIVE_DRIVER_MARKER_SIZE = 38;
 const NEARBY_DRIVER_MARKER_SIZE = 32;
+// On iOS Google Maps, the native bridge creates an initial style span before
+// the JavaScript `strokeColor` arrives. That span otherwise retains the SDK's
+// default blue. Supplying an explicit span for every route point makes the
+// rendered booking and live route unambiguously HY3N green.
+const HY3N_ROUTE_GREEN = '#007E4F';
 const GOOGLE_DARK_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#1f2933' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#d9e2ec' }] },
@@ -244,7 +249,8 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       >
         {routeCoordinates.length > 1 && <Polyline
           coordinates={routeCoordinates}
-          strokeColor={driverTracking ? safeColour(driverColourHex, '#006B3F') : '#007E4F'}
+          strokeColor={HY3N_ROUTE_GREEN}
+          strokeColors={routeCoordinates.map(() => HY3N_ROUTE_GREEN)}
           strokeWidth={6}
           lineCap="round"
           lineJoin="round"

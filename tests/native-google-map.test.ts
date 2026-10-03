@@ -31,7 +31,9 @@ describe('Rider native Google Maps migration', () => {
   });
 
   it('renders a green, fully framed booking route with pickup and drop-off times', () => {
-    expect(component).toContain("strokeColor={driverTracking ? safeColour(driverColourHex, '#006B3F') : '#007E4F'}");
+    expect(component).toContain("const HY3N_ROUTE_GREEN = '#007E4F';");
+    expect(component).toContain('strokeColor={HY3N_ROUTE_GREEN}');
+    expect(component).toContain('strokeColors={routeCoordinates.map(() => HY3N_ROUTE_GREEN)}');
     expect(component).toContain('bookingPickupTimeLabel');
     expect(component).toContain('bookingDropoffTimeLabel');
     expect(component).toContain('BookingEndpointMarker');
