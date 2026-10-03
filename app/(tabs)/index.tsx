@@ -53,6 +53,7 @@ import { type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
 import { canRequestServerQuotedRide, canSelectServerQuotedCategory, isServerQuoteCurrent } from "@/lib/rider-quote-selection";
 import { requestAuthoritativeRideQuotes } from "@/lib/rider-quote-request";
+import { mergeQuoteRecords, prioritizedQuoteCategories, quoteRecordByCategory } from "@/lib/rider-quote-priority";
 import { bookingSheetSwipeAction, shouldClaimBookingSheetSwipe } from "@/lib/booking-sheet-gesture";
 import { formatLiveDistance, riderPickupStatusLabel } from "@/lib/rider-live-tracking-presentation";
 import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-share";
@@ -331,6 +332,7 @@ export default function RiderHomeScreen() {
   const [bookingLoading, setBookingLoading] = useState(false);
   const [serverQuotes, setServerQuotes] = useState<Record<string, ServerRideQuote>>({});
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [backgroundQuoteLoading, setBackgroundQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quotedRouteKey, setQuotedRouteKey] = useState<string | null>(null);
   const [quoteRefreshNonce, setQuoteRefreshNonce] = useState(0);
@@ -1100,42 +1102,67 @@ export default function RiderHomeScreen() {
     let cancelled = false;
     const loadQuotes = async () => {
       setQuoteLoading(true);
+      setBackgroundQuoteLoading(false);
       setQuotedRouteKey(null);
+      setServerQuotes({});
       try {
         const firebaseUser = auth.currentUser ?? user;
-        const quotes = await requestAuthoritativeRideQuotes<ServerRideQuote>({
+        const categoryPriority = prioritizedQuoteCategories(
+          RIDE_CATEGORIES.map((category) => category.id),
+          selectedCategory.id,
+        );
+        const quoteBody = {
+          pickup: {
+            lat: userLocation[0],
+            lng: userLocation[1],
+            // Address labels can arrive later from reverse geocoding. They
+            // must not continuously invalidate a coordinate-locked fare.
+            name: 'Pickup location',
+            address: 'Pickup location',
+          },
+          destination: {
+            lat: destination.lat,
+            lng: destination.lng,
+            name: 'Destination',
+            address: 'Destination',
+          },
+          stops: quoteStops.map((stop) => ({
+            lat: stop.lat,
+            lng: stop.lng,
+            name: 'Stop',
+            address: 'Stop',
+          })),
+          distance,
+          duration,
+        };
+        const requestQuotes = (categories: string[]) => requestAuthoritativeRideQuotes<ServerRideQuote>({
           baseUrl: getApiBaseUrl(),
           getIdToken: (forceRefresh) => firebaseUser.getIdToken(Boolean(forceRefresh)),
-          body: {
-            categories: RIDE_CATEGORIES.map((category) => category.id),
-            pickup: {
-              lat: userLocation[0],
-              lng: userLocation[1],
-              // Address labels can arrive later from reverse geocoding. They
-              // must not continuously invalidate a coordinate-locked fare.
-              name: 'Pickup location',
-              address: 'Pickup location',
-            },
-            destination: {
-              lat: destination.lat,
-              lng: destination.lng,
-              name: 'Destination',
-              address: 'Destination',
-            },
-            stops: quoteStops.map((stop) => ({
-              lat: stop.lat,
-              lng: stop.lng,
-              name: 'Stop',
-              address: 'Stop',
-            })),
-            distance,
-            duration,
-          },
+          body: { ...quoteBody, categories },
         });
+
+        // The chosen category is sufficient to make Request HY3N usable. The
+        // server still owns this quote; less-used categories arrive afterwards.
+        const primaryQuotes = await requestQuotes(categoryPriority.primary);
         if (!cancelled) {
-          setServerQuotes(Object.fromEntries(quotes.map((quote) => [quote.category, quote])));
+          setServerQuotes(quoteRecordByCategory(primaryQuotes));
           setQuotedRouteKey(quoteRouteKey);
           setQuoteError(null);
+          setQuoteLoading(false);
+
+          if (categoryPriority.background.length > 0) {
+            setBackgroundQuoteLoading(true);
+            void requestQuotes(categoryPriority.background)
+              .then((backgroundQuotes) => {
+                if (!cancelled) setServerQuotes((current) => mergeQuoteRecords(current, backgroundQuotes));
+              })
+              // A usable selected quote must never be invalidated because a
+              // non-selected category is slower to calculate.
+              .catch(() => {})
+              .finally(() => {
+                if (!cancelled) setBackgroundQuoteLoading(false);
+              });
+          }
         }
       } catch (error) {
         // Do not use local pricing as a fallback: the Rider must never accept
@@ -1152,11 +1179,19 @@ export default function RiderHomeScreen() {
     };
     loadQuotes();
     return () => { cancelled = true; };
+  // Do not restart an in-flight selected-category quote merely because the
+  // Rider taps another category; already returned background quotes are used.
+  // A route, pickup, stop, session, or explicit retry still refreshes safely.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destination?.lat, destination?.lng, user?.uid, userLocation[0], userLocation[1], quoteRouteKey, quoteRefreshNonce]);
 
   const selectRideCategory = useCallback((category: (typeof RIDE_CATEGORIES)[number]) => {
-    if (!canSelectServerQuotedCategory(serverQuotes[category.id])) return;
+    const quote = serverQuotes[category.id];
+    if (quote?.available === false) return;
     setSelectedCategory(category);
+    // A category that has not returned yet is not unavailable. Prioritise it
+    // immediately rather than making the Rider wait for every other type.
+    if (!quote) setQuoteRefreshNonce((nonce) => nonce + 1);
   }, [serverQuotes]);
 
   const [placeSuggestions, setPlaceSuggestions] = useState<Location[]>([]);
@@ -2592,6 +2627,7 @@ export default function RiderHomeScreen() {
           const quote = serverQuotes[cat.id];
           const fare = quote?.total ?? 0;
           const isAvailable = quote?.available === true;
+          const isConfirmedUnavailable = quote?.available === false;
           const isSelected = selectedCategory.id === cat.id;
           const matchingVehicles = nearbyDrivers
             .filter((vehicle) => vehicleServesRideCategory(vehicle, cat.id))
@@ -2614,8 +2650,8 @@ export default function RiderHomeScreen() {
                 }
               }}
               accessibilityRole="button"
-              accessibilityState={{ selected: isSelected, disabled: !isAvailable }}
-              style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 13, borderRadius: 16, opacity: !isAvailable ? 0.58 : 1, backgroundColor: isSelected ? `${GOLD}1A` : "transparent", borderWidth: isSelected ? 1.8 : 0, borderColor: GOLD }}
+              accessibilityState={{ selected: isSelected, disabled: isConfirmedUnavailable }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 13, borderRadius: 16, opacity: isConfirmedUnavailable ? 0.58 : 1, backgroundColor: isSelected ? `${GOLD}1A` : "transparent", borderWidth: isSelected ? 1.8 : 0, borderColor: GOLD }}
             >
               <View style={{ width: 74, height: 52, alignItems: "center", justifyContent: "center" }}>
                 <Image source={vehicleArtwork} style={{ width: 74, height: 52 }} resizeMode="contain" />
@@ -2630,7 +2666,7 @@ export default function RiderHomeScreen() {
                 </View>
                 <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{cat.description}</Text>
                 <Text style={{ color: !isAvailable ? MUTED : pickupEta !== null ? GREEN : MUTED, fontSize: 11, fontWeight: "800", marginTop: 5 }}>
-                  {!quote ? quoteError ? 'Protected fare needs retry' : 'Updating protected fare…' : !isAvailable ? 'Temporarily unavailable' : quoteLoading && isSelected ? 'Refreshing protected fare…' : pickupEta !== null ? `${driverLabel} nearby · ${pickupEta} min pickup` : nearbyDrivers.length > 0 ? 'Drivers nearby for another ride type' : `No ${cat.name} drivers nearby`}
+                  {!quote ? quoteError ? 'Protected fare needs retry' : backgroundQuoteLoading ? 'Updating protected fare…' : 'Tap to load protected fare' : !isAvailable ? 'Temporarily unavailable' : quoteLoading && isSelected ? 'Refreshing protected fare…' : pickupEta !== null ? `${driverLabel} nearby · ${pickupEta} min pickup` : nearbyDrivers.length > 0 ? 'Drivers nearby for another ride type' : `No ${cat.name} drivers nearby`}
                 </Text>
               </View>
               <View style={{ alignItems: "flex-end", gap: 7 }}>
