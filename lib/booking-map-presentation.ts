@@ -28,8 +28,3 @@ export function bookingMapTimeLabels(input: {
     dropoff: routeMinutes === null ? 'Drop-off\nCalculating' : `Drop-off\n${clockTime(new Date(now.getTime() + routeMinutes * 60_000))}`,
   };
 }
-
-/** A route preview should keep both endpoints visible even when route geometry is incomplete. */
-export function bookingMapFramePoints<T>(route: T[], pickup: T | null, destination: T | null): T[] {
-  return [...route, ...(pickup ? [pickup] : []), ...(destination ? [destination] : [])];
-}

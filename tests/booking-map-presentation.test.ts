@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bookingMapFramePoints, bookingMapTimeLabels } from '@/lib/booking-map-presentation';
+import { bookingMapTimeLabels } from '@/lib/booking-map-presentation';
 
 describe('Rider booking map presentation', () => {
   it('shows nearby Driver pickup time and server-route drop-off clock time', () => {
@@ -18,11 +18,5 @@ describe('Rider booking map presentation', () => {
       pickup: 'Pickup\nFinding Driver',
       dropoff: 'Drop-off\nCalculating',
     });
-  });
-
-  it('keeps pickup and destination in the booking camera frame in addition to route geometry', () => {
-    expect(bookingMapFramePoints(['route-1'], 'pickup', 'destination')).toEqual([
-      'route-1', 'pickup', 'destination',
-    ]);
   });
 });

@@ -30,15 +30,17 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('animateToRegion(region');
   });
 
-  it('renders a green, fully framed booking route with pickup and drop-off times', () => {
+  it('renders a green booking route with pickup-focused camera and time callouts', () => {
     expect(component).toContain("const HY3N_ROUTE_GREEN = '#007E4F';");
     expect(component).toContain('strokeColor={HY3N_ROUTE_GREEN}');
     expect(component).toContain('strokeColors={routeCoordinates.map(() => HY3N_ROUTE_GREEN)}');
     expect(component).toContain('bookingPickupTimeLabel');
     expect(component).toContain('bookingDropoffTimeLabel');
     expect(component).toContain('BookingEndpointMarker');
-    expect(component).toContain('routeFrameCoordinates');
-    expect(component).toContain('Keep the entire booking route and both time callouts above the sheet');
+    expect(component).toContain('bookingPreviewRegion');
+    expect(component).toContain('Do not fit a city-wide pickup-to-drop-off route automatically');
+    expect(component).toContain('mapRef.current?.animateToRegion(region, 420);');
+    expect(component).not.toContain('routeFrameCoordinates');
     expect(screen).toContain('bookingMapTimeLabels');
   });
 

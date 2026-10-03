@@ -2,7 +2,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, use
 import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { matchPointToServerRoute } from '@/lib/rider-route-matching';
-import { isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
+import { bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
 
 export type NearbyDriver = {
   id: string;
@@ -168,9 +168,6 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     && isNativeMapPoint(userLocation)
     && isNativeMapPoint(destination)
     && Boolean(bookingPickupTimeLabel || bookingDropoffTimeLabel);
-  const routeFrameCoordinates = useMemo(() => bookingPreview
-    ? [...routeCoordinates, coordinate(userLocation!), coordinate(destination!)]
-    : routeCoordinates, [bookingPreview, destination, routeCoordinates, userLocation]);
 
   useEffect(() => {
     if (!displayDriverPoint) return;
@@ -193,10 +190,23 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     // the SDK's whole-world fallback viewport visible behind the home sheet.
     if (!mapReady) return;
     if (userMovedMapRef.current) return;
-    if (!driverTracking && routeFrameCoordinates.length > 1) {
-      mapRef.current?.fitToCoordinates(routeFrameCoordinates, {
-        // Keep the entire booking route and both time callouts above the sheet.
-        edgePadding: { top: bookingPreview ? 180 : 128, right: 32, bottom: bookingPreview ? 430 : 360, left: 32 },
+    if (bookingPreview) {
+      const region = bookingPreviewRegion(
+        userLocation,
+        (driverRoutePoints || []).filter(isNativeMapPoint),
+        nearby.map((driver) => [driver.lat, driver.lng] as NativeMapPoint),
+      );
+      if (region) {
+        // Do not fit a city-wide pickup-to-drop-off route automatically: it
+        // makes the pickup car and road detail too small to use. The full
+        // route remains on the map and a Rider gesture keeps full control.
+        mapRef.current?.animateToRegion(region, 420);
+        return;
+      }
+    }
+    if (!driverTracking && routeCoordinates.length > 1) {
+      mapRef.current?.fitToCoordinates(routeCoordinates, {
+        edgePadding: { top: 128, right: 32, bottom: 360, left: 32 },
         animated: true,
       });
       return;
@@ -208,7 +218,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     );
     if (!region) return;
     mapRef.current?.animateToRegion(region, displayDriverPoint && trackedTarget ? 650 : 350);
-  }, [bookingPreview, center, displayDriverPoint, driverTracking, mapReady, routeFrameCoordinates, trackedTarget, userLocation]);
+  }, [bookingPreview, center, displayDriverPoint, driverRoutePoints, driverTracking, mapReady, nearby, routeCoordinates, trackedTarget, userLocation]);
 
   useImperativeHandle(ref, () => ({
     panTo(latitude, longitude) {
