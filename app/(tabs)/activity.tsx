@@ -13,8 +13,6 @@ import {
   Share,
   Linking,
 } from "react-native";
-import * as Print from "expo-print";
-import * as Sharing from "expo-sharing";
 import { ScreenContainer } from "@/components/screen-container";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
@@ -151,10 +149,16 @@ export default function ActivityScreen() {
   }, [loadRides]);
 
   const downloadInvoice = async (ride: Ride) => {
-    const total = ride.fare + (ride.tip || 0);
-    const date = new Date(ride.created_date).toLocaleString("en-GH", { dateStyle: "medium", timeStyle: "short" });
-    const row = (label: string, value: string) => `<tr><td class="label">${escapeHtml(label)}</td><td class="value">${escapeHtml(value)}</td></tr>`;
-    const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    try {
+      // Print/Sharing are optional actions, not dependencies of the History
+      // list or detail sheet. Loading them only here keeps a missing or stale
+      // native invoice module from affecting ordinary History navigation.
+      const Print = await import("expo-print");
+      const Sharing = await import("expo-sharing");
+      const total = ride.fare + (ride.tip || 0);
+      const date = new Date(ride.created_date).toLocaleString("en-GH", { dateStyle: "medium", timeStyle: "short" });
+      const row = (label: string, value: string) => `<tr><td class="label">${escapeHtml(label)}</td><td class="value">${escapeHtml(value)}</td></tr>`;
+      const html = `<!doctype html><html><head><meta charset="utf-8"><style>
       *{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#111827;padding:32px;background:#fff}
       .header{background:#0A0A0A;color:#D4AF37;padding:24px;border-radius:12px 12px 0 0}.brand{font-size:28px;font-weight:800;letter-spacing:2px}.subtitle{color:#D1D5DB;margin-top:5px;font-size:13px}
       .content{border:1px solid #E5E7EB;border-top:0;padding:24px;border-radius:0 0 12px 12px}.total{text-align:center;background:#F9FAFB;border-radius:10px;padding:18px;margin-bottom:22px}.total-label{color:#6B7280;font-size:11px;text-transform:uppercase;letter-spacing:1px}.amount{color:#B8860B;font-size:30px;font-weight:800;margin-top:5px}
@@ -165,7 +169,6 @@ export default function ActivityScreen() {
       <h2>Trip details</h2><table class="details">${row("Date", date)}${row("Category", ride.category)}${row("Distance", `${ride.distance.toFixed(1)} km`)}${row("Duration", `${ride.duration} min`)}${row("Payment", ride.payment)}${row("Trip ID", ride.id)}</table>
       <h2>Fare breakdown</h2><table class="details">${row(`${ride.category} final fare`, `GH₵${ride.fare.toFixed(2)}`)}${ride.waiting_fee ? row("Waiting fee", `Included · GH₵${ride.waiting_fee.toFixed(2)}`) : ""}${ride.tip ? row("Tip", `+GH₵${ride.tip.toFixed(2)}`) : ""}${row("Total paid", `GH₵${total.toFixed(2)}`)}</table>
       <div class="footer">Thank you for riding with HY3N.<br/>Questions? hello@ridehy3n.com</div></div></body></html>`;
-    try {
       const { uri } = await Print.printToFileAsync({ html });
       if (!(await Sharing.isAvailableAsync())) {
         Alert.alert("Invoice ready", `The PDF was created at ${uri}`);
