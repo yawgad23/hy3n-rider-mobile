@@ -40,11 +40,13 @@ import { PostRideModal } from "@/components/post-ride-modal";
 import { calculateDynamicFare, calculateDistance, RideMetrics } from "@/lib/dynamic-pricing";
 import { getDistanceToPickup, getDistanceToDestination, estimateETA, formatDistance, isDriverNearPickup, calculateBearing } from "@/lib/driver-tracking";
 import { upsertRide, updateRide, removeRide, countActiveRides } from "@/lib/rider-ride-state";
-import { recoverActiveRides } from "@/lib/rider-active-ride-recovery";
+import { recoverActiveRide, recoverActiveRides } from "@/lib/rider-active-ride-recovery";
 import { buildRiderTerminalSummary, type RiderTerminalSummary } from "@/lib/rider-terminal-summary";
 import { isExpiredRiderSearch } from "@/lib/rider-search-expiry";
 import { driverMobileCallUrl } from "@/lib/driver-mobile-call";
 import { expireStaleRiderSearch } from "@/lib/rider-search-expiry-api";
+import { getRiderRideStatus } from "@/lib/rider-ride-status-api";
+import { nonRegressiveRideStatus } from "@/lib/rider-ride-status";
 import { buildEmergencyAssistMessage, getSafetySignal, requiresCancellationReason, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 import { trpc } from "@/lib/trpc";
 import { type ReceiptEmailStatus } from "@/lib/receipt-email";
@@ -736,7 +738,7 @@ export default function RiderHomeScreen() {
 
           return {
             ...prev,
-            status: ride.status as ActiveRide['status'],
+            status: nonRegressiveRideStatus(prev.status, ride.status as ActiveRide['status']),
             driverName: driver?.name ?? prev.driverName,
             driverId: driver?.id ?? (ride as any).driver_id ?? prev.driverId,
             driverRating: driver?.rating ?? prev.driverRating,
@@ -783,6 +785,40 @@ export default function RiderHomeScreen() {
       }));
     return () => subscriptions.forEach((unsubscribe) => unsubscribe());
   }, [activeRideKeys, selectedRideId, updateActiveRide]);
+
+  // Firestore is the live transport, but an accepted trip must not remain on
+  // “Searching” if an iOS snapshot is paused or disconnected. Reconcile the
+  // small set of active Rider-owned rides with the server every few seconds.
+  // This reads no other Rider's data and does not change fare or trip state.
+  useEffect(() => {
+    if (!user?.uid || !activeRideKeys) return;
+    let cancelled = false;
+
+    const reconcileStatuses = async () => {
+      const rideIds = activeRideKeys.split('|').filter(Boolean);
+      const responses = await Promise.allSettled(rideIds.map((rideId) => getRiderRideStatus(rideId)));
+      if (cancelled) return;
+
+      const recovered = responses
+        .filter((result): result is PromiseFulfilledResult<Record<string, unknown> | null> => result.status === 'fulfilled')
+        .map((result) => result.value ? recoverActiveRide(result.value as Record<string, any>) : null)
+        .filter((ride): ride is NonNullable<typeof ride> => Boolean(ride));
+
+      if (!recovered.length) return;
+      setActiveRides((current) => current.map((ride) => {
+        const serverRide = recovered.find((candidate) => candidate.id === ride.id);
+        return serverRide ? { ...ride, ...serverRide } : ride;
+      }));
+      setSelectedRideId((current) => current || recovered[0].id);
+    };
+
+    void reconcileStatuses();
+    const timer = setInterval(() => { void reconcileStatuses(); }, 4_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [user?.uid, activeRideKeys]);
 
   // A message becomes delivered once this Rider app receives it, even if the
   // chat sheet is closed. Opening the sheet additionally marks it as read.

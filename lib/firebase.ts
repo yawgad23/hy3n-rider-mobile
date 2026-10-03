@@ -269,6 +269,8 @@ export const firestoreDB = {
     const q = query(colRef, ...constraints);
     return onSnapshot(q, (snap) => {
       callback(snapshotToArray(snap));
+    }, (error) => {
+      console.warn(`[Rider Firestore] Subscription failed for ${collectionName}:`, error);
     });
   },
 
@@ -277,6 +279,8 @@ export const firestoreDB = {
     const docRef = doc(db, collectionName, id);
     return onSnapshot(docRef, (snap) => {
       callback(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+    }, (error) => {
+      console.warn(`[Rider Firestore] Document subscription failed for ${collectionName}/${id}:`, error);
     });
   },
 
