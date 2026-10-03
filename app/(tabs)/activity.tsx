@@ -24,7 +24,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { buildLostItemDescription, buildLostItemSupportMessage, validateLostItemForm, type LostItemContactMethod } from "@/lib/lost-item-support";
 import { buildSupportMailto, buildSupportWhatsAppUrl, SUPPORT_PHONE_E164 } from "@/lib/support-contact";
 import { useColors } from "@/hooks/use-colors";
-import { normalizeRiderHistoryRide, type RiderHistoryRide } from "@/lib/rider-history";
+import {
+  normalizeRiderHistoryRide,
+  riderHistoryStatusLabel,
+  type RiderHistoryRide,
+  type RiderHistoryStatus,
+} from "@/lib/rider-history";
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -47,11 +52,12 @@ const MOCK_RIDES: Ride[] = [
   { id: "r6", status: "completed", category: "Kantanka", destination_address: "West Hills Mall, Weija", pickup_address: "Dansoman, Accra", distance: 6.2, duration: 20, fare: 42.84, payment: "MoMo", driver_name: "Yaa Mensah", driver_rating: 4.6, driver_vehicle: "Kantanka Onantefo (Silver)", driver_plate: "GR 3456-24", rider_rating: 4, created_date: new Date(Date.now() - 7 * 86400000).toISOString() },
 ];
 
-const STATUS_COLORS: Record<string, string> = { completed: GREEN, cancelled: RED, upcoming: GOLD };
+const STATUS_COLORS: Record<RiderHistoryStatus, string> = { completed: GREEN, cancelled: RED, upcoming: GOLD, other: MUTED };
 const REPORT_ISSUES = ["Driver was rude", "Wrong route taken", "Vehicle not clean", "Driver was late", "Overcharged", "Lost item in vehicle", "Safety concern", "Other"];
 
 function formatDate(iso: string) {
   const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "Trip date not recorded";
   const diff = Date.now() - d.getTime();
   const hours = diff / 3600000;
   if (hours < 1) return "Just now";
@@ -125,6 +131,14 @@ export default function ActivityScreen() {
   const [lostItemDescription, setLostItemDescription] = useState("");
   const [lostItemContactMethod, setLostItemContactMethod] = useState<LostItemContactMethod>("whatsapp");
   const [lostItemContactValue, setLostItemContactValue] = useState("");
+
+  const openRideDetails = useCallback((ride: unknown) => {
+    // Re-normalize at the interaction boundary. This covers a persisted list
+    // state from an older app session and any Firestore record variant that
+    // could otherwise reach the native page-sheet unguarded.
+    setSelectedRide(normalizeRiderHistoryRide(ride));
+    setShowDetails(true);
+  }, []);
 
   const pastRides = rides.filter(r => r.status !== "upcoming");
   const upcomingRides = rides.filter(r => r.status === "upcoming");
@@ -276,7 +290,7 @@ export default function ActivityScreen() {
           const sc = STATUS_COLORS[item.status] || MUTED;
           return (
             <TouchableOpacity
-              onPress={() => { setSelectedRide(item); setShowDetails(true); }}
+              onPress={() => openRideDetails(item)}
               style={{ backgroundColor: CARD, borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 0.5, borderColor: BORDER, borderLeftWidth: 3, borderLeftColor: sc }}
             >
               <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
@@ -369,7 +383,7 @@ export default function ActivityScreen() {
                   color={STATUS_COLORS[selectedRide.status]}
                 />
                 <View>
-                  <Text style={{ color: STATUS_COLORS[selectedRide.status], fontWeight: "bold", fontSize: 15, textTransform: "capitalize" }}>{selectedRide.status}</Text>
+                  <Text style={{ color: STATUS_COLORS[selectedRide.status], fontWeight: "bold", fontSize: 15, textTransform: "capitalize" }}>{riderHistoryStatusLabel(selectedRide.status)}</Text>
                   <Text style={{ color: MUTED, fontSize: 12 }}>{formatDate(selectedRide.created_date)}</Text>
                 </View>
               </View>

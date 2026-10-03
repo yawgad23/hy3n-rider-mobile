@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeRiderHistoryRide } from "@/lib/rider-history";
+import { normalizeRiderHistoryRide, riderHistoryStatus, riderHistoryStatusLabel } from "@/lib/rider-history";
 
 describe("Rider history normalization", () => {
   it("converts legacy string amounts and route metrics before detail rendering", () => {
@@ -52,5 +52,36 @@ describe("Rider history normalization", () => {
     expect(ride.created_date).toBe(new Date(0).toISOString());
     expect(() => ride.fare.toFixed(2)).not.toThrow();
     expect(() => ride.distance.toFixed(1)).not.toThrow();
+  });
+
+  it("normalizes again safely at the detail boundary, including unsupported statuses", () => {
+    const ride = normalizeRiderHistoryRide({
+      id: 42,
+      status: "ride_ended",
+      final_fare: { unexpected: true },
+      tip: Infinity,
+      pickup: ["not", "a", "location"],
+      destination: null,
+      created_at: { seconds: "not-a-number" },
+    });
+
+    expect(ride.id).toBe("unknown-ride");
+    expect(ride.status).toBe("other");
+    expect(riderHistoryStatus(ride.status)).toBe("other");
+    expect(riderHistoryStatusLabel(ride.status)).toBe("Ride recorded");
+    expect(ride.fare).toBe(0);
+    expect(ride.tip).toBe(0);
+    expect(ride.created_date).toBe(new Date(0).toISOString());
+    expect(() => ride.fare.toFixed(2)).not.toThrow();
+  });
+
+  it("does not throw when an invalid history payload reaches the detail boundary", () => {
+    expect(() => normalizeRiderHistoryRide(null)).not.toThrow();
+    expect(normalizeRiderHistoryRide(null)).toMatchObject({
+      id: "unknown-ride",
+      status: "completed",
+      fare: 0,
+      distance: 0,
+    });
   });
 });

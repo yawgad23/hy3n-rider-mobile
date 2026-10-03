@@ -1,8 +1,10 @@
 import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
 
+export type RiderHistoryStatus = 'completed' | 'cancelled' | 'upcoming' | 'other';
+
 export type RiderHistoryRide = {
   id: string;
-  status: string;
+  status: RiderHistoryStatus;
   category: string;
   destination_address: string;
   pickup_address: string;
@@ -45,6 +47,25 @@ function text(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() || fallback : fallback;
 }
 
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+/** The detail sheet must always receive one of its supported visual statuses. */
+export function riderHistoryStatus(value: unknown): RiderHistoryStatus {
+  const status = text(value, 'completed').toLowerCase();
+  if (status === 'cancelled' || status === 'canceled') return 'cancelled';
+  if (status === 'upcoming' || status === 'scheduled') return 'upcoming';
+  if (status === 'completed' || status === 'complete' || status === 'ended') return 'completed';
+  return 'other';
+}
+
+export function riderHistoryStatusLabel(status: RiderHistoryStatus): string {
+  return status === 'other' ? 'Ride recorded' : status;
+}
+
 function dateFrom(value: unknown): Date | null {
   if (value instanceof Date && Number.isFinite(value.getTime())) return value;
   if (typeof value === "string" || typeof value === "number") {
@@ -73,44 +94,45 @@ function safeDate(value: unknown): string {
  * Firestore timestamps. Every rendered total and distance is normalized here
  * before a user taps a past trip, preventing `.toFixed` runtime crashes.
  */
-export function normalizeRiderHistoryRide(record: Record<string, unknown>): RiderHistoryRide {
-  const destination = record.destination;
-  const pickup = record.pickup;
-  const finalFare = getFinalRideFare(record);
-  const quotedFare = getQuotedRideFare(record);
-  const status = text(record.status, "completed").toLowerCase();
+export function normalizeRiderHistoryRide(value: unknown): RiderHistoryRide {
+  const source = record(value);
+  const destination = source.destination;
+  const pickup = source.pickup;
+  const finalFare = getFinalRideFare(source);
+  const quotedFare = getQuotedRideFare(source);
+  const status = riderHistoryStatus(source.status);
 
   return {
-    id: text(record.id, text(record.ride_id, "unknown-ride")),
+    id: text(source.id, text(source.ride_id, "unknown-ride")),
     status,
-    category: text(record.category, "Ride"),
-    destination_address: text(record.destination_address)
+    category: text(source.category, "Ride"),
+    destination_address: text(source.destination_address)
       || (destination && typeof destination === "object"
         ? text((destination as Record<string, unknown>).address) || text((destination as Record<string, unknown>).name)
         : text(destination))
       || "Destination not recorded",
-    pickup_address: text(record.pickup_address)
+    pickup_address: text(source.pickup_address)
       || (pickup && typeof pickup === "object"
         ? text((pickup as Record<string, unknown>).address) || text((pickup as Record<string, unknown>).name)
         : text(pickup))
       || "Pickup not recorded",
-    distance: nonNegativeNumber(record.actual_distance_km ?? record.distance_km ?? record.distance),
-    duration: nonNegativeNumber(record.actual_duration_min ?? record.duration_minutes ?? record.duration_min ?? record.duration),
+    distance: nonNegativeNumber(source.actual_distance_km ?? source.distance_km ?? source.distance),
+    duration: nonNegativeNumber(source.actual_duration_min ?? source.duration_minutes ?? source.duration_min ?? source.duration),
     fare: nonNegativeNumber(finalFare),
     quoted_fare: nonNegativeNumber(quotedFare),
-    final_fare: nonNegativeNumber(record.final_fare ?? record.finalFare ?? finalFare),
-    payment: text(record.payment ?? record.payment_method, "Not recorded"),
-    driver_name: text(record.driver_name ?? record.driverName) || undefined,
-    driver_rating: nonNegativeNumber(record.driver_rating ?? record.driverRating) || undefined,
-    driver_vehicle: text(record.driver_vehicle ?? record.driverVehicle) || undefined,
-    driver_plate: text(record.driver_plate ?? record.driverPlate) || undefined,
-    rider_rating: nonNegativeNumber(record.rider_rating ?? record.riderRating) || undefined,
-    tip: nonNegativeNumber(record.tip ?? record.tip_amount),
-    waiting_fee: nonNegativeNumber(record.waiting_fee ?? record.waitingFee),
-    created_date: safeDate(record.created_date ?? record.created_at ?? record.completed_at ?? record.updated_date),
-    scheduled_for: text(record.scheduled_for) || undefined,
-    promo_code: text(record.promo_code) || undefined,
-    discount: nonNegativeNumber(record.discount) || undefined,
-    driver_id: text(record.driver_id ?? record.driverId) || undefined,
+    final_fare: nonNegativeNumber(source.final_fare ?? source.finalFare ?? finalFare),
+    payment: text(source.payment ?? source.payment_method, "Not recorded"),
+    driver_name: text(source.driver_name ?? source.driverName) || undefined,
+    driver_rating: nonNegativeNumber(source.driver_rating ?? source.driverRating) || undefined,
+    driver_vehicle: text(source.driver_vehicle ?? source.driverVehicle) || undefined,
+    driver_plate: text(source.driver_plate ?? source.driverPlate) || undefined,
+    rider_rating: nonNegativeNumber(source.rider_rating ?? source.riderRating) || undefined,
+    tip: nonNegativeNumber(source.tip ?? source.tip_amount),
+    waiting_fee: nonNegativeNumber(source.waiting_fee ?? source.waitingFee),
+    created_date: safeDate(source.created_date ?? source.created_at ?? source.completed_at ?? source.updated_date),
+    scheduled_for: text(source.scheduled_for) || undefined,
+    promo_code: text(source.promo_code) || undefined,
+    discount: nonNegativeNumber(source.discount) || undefined,
+    driver_id: text(source.driver_id ?? source.driverId) || undefined,
   };
 }
