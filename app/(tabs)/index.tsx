@@ -64,6 +64,11 @@ import { deliveryRequestDetails, validateDeliveryBookingDetails } from "@/lib/de
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
 import { destinationArrivalReminder, shouldPromptForDestinationArrival } from "@/lib/rider-trip-feedback";
 import { bookingMapTimeLabels } from "@/lib/booking-map-presentation";
+import {
+  parseRiderStoredRebookDestination,
+  parseRiderStoredSavedPlaces,
+  parseRiderStoredSearchHistory,
+} from "@/lib/rider-persisted-location";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -555,16 +560,22 @@ export default function RiderHomeScreen() {
     "I'm outside now",
   ];
   useEffect(() => {
-    AsyncStorage.getItem("savedPlaces").then((v) => { if (v) setSavedPlaces(JSON.parse(v)); });
-    AsyncStorage.getItem("searchHistory").then((v) => { if (v) setSearchHistory(JSON.parse(v)); });
+    AsyncStorage.getItem("savedPlaces").then((value) => {
+      setSavedPlaces(parseRiderStoredSavedPlaces(value));
+    }).catch(() => setSavedPlaces([]));
+    AsyncStorage.getItem("searchHistory").then((value) => {
+      setSearchHistory(parseRiderStoredSearchHistory(value));
+    }).catch(() => setSearchHistory([]));
     // Rebook pre-fill: if activity screen stored a destination, auto-open booking
-    AsyncStorage.getItem("rebookDestination").then((v) => {
-      if (v) {
-        const loc: Location = JSON.parse(v);
+    AsyncStorage.getItem("rebookDestination").then((value) => {
+      const loc = parseRiderStoredRebookDestination(value);
+      if (loc) {
         setDestination(loc);
-        AsyncStorage.removeItem("rebookDestination");
       }
-    });
+      // A consumed or corrupt rebook payload must never be retried on every
+      // application launch.
+      if (value) void AsyncStorage.removeItem("rebookDestination");
+    }).catch(() => {});
   }, []);
 
   // Pending rating check: after a close or force-close, completed rides do not

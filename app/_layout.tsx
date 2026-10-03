@@ -21,6 +21,7 @@ import {
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
+import { RiderErrorBoundary } from "@/components/RiderErrorBoundary";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -120,27 +121,29 @@ export default function RootLayout() {
 
   const content = (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <trpc.Provider client={trpcClient} queryClient={queryClient}>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <RiderPushDeviceRegistration />
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="onboarding" />
-              <Stack.Screen name="privacy" options={{ presentation: "modal" }} />
-              <Stack.Screen name="login" />
-              <Stack.Screen name="register" />
-              <Stack.Screen name="forgot-password" />
-              <Stack.Screen name="oauth/callback" />
-              <Stack.Screen name="safety" options={{ presentation: "modal" }} />
-              <Stack.Screen name="scheduled" options={{ presentation: "modal" }} />
-              <Stack.Screen name="support" options={{ presentation: "modal" }} />
+      <RiderErrorBoundary>
+        <trpc.Provider client={trpcClient} queryClient={queryClient}>
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <RiderPushDeviceRegistration />
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="onboarding" />
+                <Stack.Screen name="privacy" options={{ presentation: "modal" }} />
+                <Stack.Screen name="login" />
+                <Stack.Screen name="register" />
+                <Stack.Screen name="forgot-password" />
+                <Stack.Screen name="oauth/callback" />
+                <Stack.Screen name="safety" options={{ presentation: "modal" }} />
+                <Stack.Screen name="scheduled" options={{ presentation: "modal" }} />
+                <Stack.Screen name="support" options={{ presentation: "modal" }} />
 
-            </Stack>
-            <StatusBar style="auto" />
-          </AuthProvider>
-        </QueryClientProvider>
-      </trpc.Provider>
+              </Stack>
+              <StatusBar style="auto" />
+            </AuthProvider>
+          </QueryClientProvider>
+        </trpc.Provider>
+      </RiderErrorBoundary>
     </GestureHandlerRootView>
   );
 
