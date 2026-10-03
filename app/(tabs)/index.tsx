@@ -46,7 +46,7 @@ import { isExpiredRiderSearch } from "@/lib/rider-search-expiry";
 import { driverMobileCallUrl } from "@/lib/driver-mobile-call";
 import { expireStaleRiderSearch } from "@/lib/rider-search-expiry-api";
 import { getRiderRideStatus } from "@/lib/rider-ride-status-api";
-import { nonRegressiveRideStatus } from "@/lib/rider-ride-status";
+import { nonRegressiveRideStatus, riderTerminalStatus } from "@/lib/rider-ride-status";
 import { buildEmergencyAssistMessage, getSafetySignal, requiresCancellationReason, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 import { trpc } from "@/lib/trpc";
 import { type ReceiptEmailStatus } from "@/lib/receipt-email";
@@ -398,6 +398,29 @@ export default function RiderHomeScreen() {
     setSelectedRideId((current) => current === rideId ? null : current);
   }, []);
 
+  // Firestore snapshots are normally instantaneous. When iOS pauses that
+  // channel, the authenticated status fallback is equally authoritative and
+  // must take a completed ride out of the live map immediately.
+  const presentCompletedRide = useCallback((trackedRide: ActiveRide, serverSnapshot: Record<string, unknown>) => {
+    const terminal = buildRiderTerminalSummary(trackedRide, serverSnapshot);
+    const presentation = passiveCompletionPresentation({
+      id: terminal.id,
+      firestoreId: terminal.firestoreId,
+      driverName: terminal.driverName,
+    });
+
+    setActiveRides((previous) => removeRide(previous, trackedRide.id));
+    setTerminalRide(terminal);
+    setRideRated(false);
+    setPendingRatingRideId(presentation.pendingRatingRideId);
+    setPendingRatingDriverName(presentation.pendingRatingDriverName);
+    setShowChat(false);
+    setShowTipModal(false);
+    setShowReceipt(false);
+    setShowPostRideModal(false);
+    setCompletedRideData(null);
+  }, []);
+
   useEffect(() => {
     if (activeRides.length === 0) {
       setSelectedRideId(null);
@@ -617,27 +640,13 @@ export default function RiderHomeScreen() {
     const subscriptions = activeRides
       .filter((ride) => Boolean(ride.firestoreId))
       .map((trackedRide) => dispatchService.listenToRide(trackedRide.firestoreId!, (ride: DispatchRide) => {
-        if (ride.status === 'completed') {
-          const serverSnapshot = ride as unknown as Record<string, unknown>;
-          const terminal = buildRiderTerminalSummary(trackedRide, serverSnapshot);
-          const presentation = passiveCompletionPresentation({
-            id: terminal.id,
-            firestoreId: terminal.firestoreId,
-            driverName: terminal.driverName,
-          });
-
-          // Remove this record from all live subscriptions before the next
-          // render. The terminal screen uses only the primitive summary above.
-          setActiveRides((previous) => removeRide(previous, trackedRide.id));
-          setTerminalRide(terminal);
-          setRideRated(false);
-          setPendingRatingRideId(presentation.pendingRatingRideId);
-          setPendingRatingDriverName(presentation.pendingRatingDriverName);
-          setShowChat(false);
-          setShowTipModal(false);
-          setShowReceipt(false);
-          setShowPostRideModal(false);
-          setCompletedRideData(null);
+        const terminalStatus = riderTerminalStatus(ride.status);
+        if (terminalStatus === 'completed') {
+          presentCompletedRide(trackedRide, ride as unknown as Record<string, unknown>);
+          return;
+        }
+        if (terminalStatus === 'cancelled') {
+          removeActiveRide(trackedRide.id);
           return;
         }
 
@@ -786,7 +795,7 @@ export default function RiderHomeScreen() {
         });
       }));
     return () => subscriptions.forEach((unsubscribe) => unsubscribe());
-  }, [activeRideKeys, selectedRideId, updateActiveRide]);
+  }, [activeRideKeys, selectedRideId, updateActiveRide, removeActiveRide, presentCompletedRide]);
 
   // Firestore is the live transport, but an accepted trip must not remain on
   // “Searching” if an iOS snapshot is paused or disconnected. Reconcile the
@@ -801,9 +810,28 @@ export default function RiderHomeScreen() {
       const responses = await Promise.allSettled(rideIds.map((rideId) => getRiderRideStatus(rideId)));
       if (cancelled) return;
 
-      const recovered = responses
-        .filter((result): result is PromiseFulfilledResult<Record<string, unknown> | null> => result.status === 'fulfilled')
-        .map((result) => result.value ? recoverActiveRide(result.value as Record<string, any>) : null)
+      const serverSnapshots = responses
+        .map((result, index) => ({
+          rideId: rideIds[index],
+          ride: result.status === 'fulfilled' ? result.value : null,
+        }))
+        .filter((result): result is { rideId: string; ride: Record<string, unknown> } => Boolean(result.ride));
+
+      // Do this before recoverActiveRide: recovery correctly returns null for
+      // completed/cancelled records, but treating that null as “no update” is
+      // what left the live map running after the server had sent the receipt.
+      serverSnapshots.forEach(({ rideId, ride }) => {
+        const terminalStatus = riderTerminalStatus(ride.status);
+        if (!terminalStatus) return;
+        const trackedRide = activeRides.find((candidate) => candidate.id === rideId || candidate.firestoreId === rideId);
+        if (!trackedRide) return;
+        if (terminalStatus === 'completed') presentCompletedRide(trackedRide, ride);
+        else removeActiveRide(trackedRide.id);
+      });
+
+      const recovered = serverSnapshots
+        .filter(({ ride }) => !riderTerminalStatus(ride.status))
+        .map(({ ride }) => recoverActiveRide(ride as Record<string, any>))
         .filter((ride): ride is NonNullable<typeof ride> => Boolean(ride));
 
       if (!recovered.length) return;
@@ -820,7 +848,7 @@ export default function RiderHomeScreen() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [user?.uid, activeRideKeys]);
+  }, [user?.uid, activeRideKeys, activeRides, removeActiveRide, presentCompletedRide]);
 
   // A message becomes delivered once this Rider app receives it, even if the
   // chat sheet is closed. Opening the sheet additionally marks it as read.

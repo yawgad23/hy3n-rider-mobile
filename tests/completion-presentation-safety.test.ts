@@ -26,8 +26,8 @@ describe('Rider completion presentation safety', () => {
 
   it('does not auto-mount a native rating or receipt modal on the completion snapshot', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
-    const start = source.indexOf("if (ride.status === 'completed') {");
-    const end = source.indexOf('updateActiveRide((prev) => {', start);
+    const start = source.indexOf('const presentCompletedRide = useCallback');
+    const end = source.indexOf('  useEffect(() => {', start);
     const completionBlock = source.slice(start, end);
 
     expect(completionBlock).toContain('setTerminalRide(terminal)');
@@ -35,5 +35,17 @@ describe('Rider completion presentation safety', () => {
     expect(completionBlock).toContain('setActiveRides((previous) => removeRide(previous, trackedRide.id))');
     expect(completionBlock).not.toContain('setShowRatingModal(true)');
     expect(completionBlock).not.toContain('setCompletedRideData({');
+  });
+
+  it('uses the authenticated status fallback to clear a completed ride when the Firestore listener is paused', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
+    const start = source.indexOf('const reconcileStatuses = async () => {');
+    const end = source.indexOf('  // A message becomes delivered', start);
+    const fallbackBlock = source.slice(start, end);
+
+    expect(fallbackBlock).toContain('riderTerminalStatus(ride.status)');
+    expect(fallbackBlock).toContain("if (terminalStatus === 'completed') presentCompletedRide(trackedRide, ride)");
+    expect(fallbackBlock).toContain('else removeActiveRide(trackedRide.id)');
+    expect(fallbackBlock).toContain('!riderTerminalStatus(ride.status)');
   });
 });

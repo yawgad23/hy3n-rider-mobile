@@ -27,18 +27,23 @@ const riding = {
 describe('Rider terminal snapshot', () => {
   it('detaches live subscriptions before GPS parsing on completion', () => {
     const screen = readFileSync(resolve(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
+    const presenterStart = screen.indexOf('const presentCompletedRide = useCallback');
     const start = screen.indexOf('dispatchService.listenToRide(trackedRide.firestoreId!');
-    const completionGuard = screen.indexOf("if (ride.status === 'completed') {", start);
+    const completionGuard = screen.indexOf("if (terminalStatus === 'completed') {", start);
     const liveDriverParsing = screen.indexOf('const rawRide = ride as any;', start);
     const nestedUpdate = screen.indexOf('setDriverLocation(nextDriverLocation);', start);
+    const presenterEnd = screen.indexOf('  useEffect(() => {', presenterStart);
+    const presenter = screen.slice(presenterStart, presenterEnd);
+    const subscriptionGuard = screen.slice(completionGuard, liveDriverParsing);
+    expect(presenterStart).toBeGreaterThanOrEqual(0);
     expect(start).toBeGreaterThanOrEqual(0);
     expect(completionGuard).toBeGreaterThan(start);
     expect(completionGuard).toBeLessThan(liveDriverParsing);
     expect(completionGuard).toBeLessThan(nestedUpdate);
-    const completionBlock = screen.slice(completionGuard, liveDriverParsing);
-    expect(completionBlock).toContain('setActiveRides((previous) => removeRide(previous, trackedRide.id))');
-    expect(completionBlock).toContain('setTerminalRide(terminal)');
-    expect(completionBlock).toContain('return;');
+    expect(subscriptionGuard).toContain('presentCompletedRide(trackedRide');
+    expect(subscriptionGuard).toContain('return;');
+    expect(presenter).toContain('setActiveRides((previous) => removeRide(previous, trackedRide.id))');
+    expect(presenter).toContain('setTerminalRide(terminal)');
   });
 
   it('uses the server final fare and clears only ephemeral tracking state', () => {
