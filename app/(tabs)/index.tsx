@@ -1982,9 +1982,11 @@ export default function RiderHomeScreen() {
         ? GOLD
         : RED;
 
-    // Keep the map useful while a ride is active. The expanded details remain
-    // one tap away, but the default minimized state shows only live status.
+    // Keep the map useful while a ride is active. A searching request is
+    // special: its cancellation action must remain visible without asking the
+    // Rider to expand or scroll the sheet.
     if (activeRideSheetCollapsed && !isCompleted) {
+      if (isSearching) return renderCompactSearchingRide();
       const statusLabel = isSearching
         ? "Searching for a driver"
         : activeRide.status === "in_progress"
@@ -2472,39 +2474,37 @@ export default function RiderHomeScreen() {
   const renderCompactSearchingRide = () => {
     if (!activeRide) return null;
     return (
-      <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 6 }}>
+      <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 8 }}>
         <TouchableOpacity
           onPress={() => setActiveRideSheetCollapsed(false)}
           accessibilityRole="button"
           accessibilityLabel="Expand ride request details"
-          style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 2, paddingBottom: 9 }}
+          accessibilityHint="Shows destination, distance, fare, and payment details"
+          style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 2, paddingBottom: 10 }}
         >
-          <ActivityIndicator size="small" color={GOLD} />
+          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: `${GOLD}1F`, alignItems: "center", justifyContent: "center" }}>
+            <ActivityIndicator size="small" color={GOLD} />
+          </View>
           <View style={{ flex: 1 }}>
             <Text style={{ color: TEXT, fontSize: 14, fontWeight: "800" }}>Searching for a driver</Text>
             <Text style={{ color: MUTED, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
-              {activeRide.destination.name} · {activeRide.distance.toFixed(1)} km · ~{activeRide.duration} min
+              {activeRide.destination.name} · We will notify you when a Driver accepts
             </Text>
           </View>
           <View style={{ alignItems: "flex-end" }}>
             <Text style={{ color: GOLD, fontSize: 15, fontWeight: "900" }}>GH₵{activeRide.fare.toFixed(2)}</Text>
-            <Text style={{ color: MUTED, fontSize: 10, marginTop: 1 }}>Tap to expand</Text>
+            <Text style={{ color: MUTED, fontSize: 10, marginTop: 1 }}>View details</Text>
           </View>
         </TouchableOpacity>
-        <View style={{ flexDirection: "row", gap: 9 }}>
-          <TouchableOpacity
-            onPress={() => setActiveRideSheetCollapsed(false)}
-            style={{ flex: 1, borderRadius: 10, borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center", paddingVertical: 10 }}
-          >
-            <Text style={{ color: TEXT, fontSize: 12, fontWeight: "700" }}>View request</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleCancelRide}
-            style={{ flex: 1, borderRadius: 10, borderWidth: 1, borderColor: `${RED}66`, alignItems: "center", justifyContent: "center", paddingVertical: 10 }}
-          >
-            <Text style={{ color: RED, fontSize: 12, fontWeight: "700" }}>Cancel request</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={handleCancelRide}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel ride request"
+          accessibilityHint="Cancels this request before a Driver starts the trip"
+          style={{ width: "100%", borderRadius: 12, borderWidth: 1.5, borderColor: `${RED}B8`, alignItems: "center", justifyContent: "center", paddingVertical: 12, backgroundColor: `${RED}0A` }}
+        >
+          <Text style={{ color: RED, fontSize: 14, fontWeight: "900" }}>Cancel Request</Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -2980,7 +2980,11 @@ export default function RiderHomeScreen() {
     ? (activeRide.status === "completed"
       ? SCREEN_HEIGHT * 0.75
       : activeRideSheetCollapsed
-        ? (['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(activeRide.status) ? SCREEN_HEIGHT * 0.31 : SCREEN_HEIGHT * 0.18)
+        ? (activeRide.status === "searching"
+          ? SCREEN_HEIGHT * 0.27
+          : ['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(activeRide.status)
+            ? SCREEN_HEIGHT * 0.31
+            : SCREEN_HEIGHT * 0.18)
         : activeRide.status === "searching"
           ? SCREEN_HEIGHT * 0.42
           : SCREEN_HEIGHT * 0.58)

@@ -15,6 +15,18 @@ describe('Rider searching request sheet', () => {
     expect(staticCancel).toBeGreaterThan(activeScrollClose);
   });
 
+  it('keeps Cancel Request visible when a searching sheet is minimized', () => {
+    const compactStart = screen.indexOf('const renderCompactSearchingRide');
+    const compactEnd = screen.indexOf('const renderRequestAction', compactStart);
+    const compactSearchSheet = screen.slice(compactStart, compactEnd);
+
+    expect(screen).toContain('if (isSearching) return renderCompactSearchingRide();');
+    expect(compactSearchSheet).toContain('accessibilityLabel="Cancel ride request"');
+    expect(compactSearchSheet).toContain('accessibilityHint="Cancels this request before a Driver starts the trip"');
+    expect(compactSearchSheet).not.toContain('<ScrollView');
+    expect(screen).toMatch(/activeRide\.status === "searching"\s*\? SCREEN_HEIGHT \* 0\.27/);
+  });
+
   it('keeps a protected booking route visible after the request is created', () => {
     expect(screen).toContain('bookingRoutePoints: Array.isArray(createdRide.booking_route_points)');
     expect(screen).toContain('activeRide?.bookingRoutePoints');
