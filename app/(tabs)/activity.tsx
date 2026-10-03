@@ -24,7 +24,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { buildLostItemDescription, buildLostItemSupportMessage, validateLostItemForm, type LostItemContactMethod } from "@/lib/lost-item-support";
 import { buildSupportMailto, buildSupportWhatsAppUrl, SUPPORT_PHONE_E164 } from "@/lib/support-contact";
 import { useColors } from "@/hooks/use-colors";
-import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
+import { normalizeRiderHistoryRide, type RiderHistoryRide } from "@/lib/rider-history";
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -36,30 +36,7 @@ const BORDER = "#2A2A2A";
 const TEXT = "#FAFAFA";
 const MUTED = "#9CA3AF";
 
-interface Ride {
-  id: string;
-  status: "completed" | "cancelled" | "upcoming";
-  category: string;
-  destination_address: string;
-  pickup_address: string;
-  distance: number;
-  duration: number;
-  fare: number;
-  quoted_fare?: number;
-  final_fare?: number;
-  payment: string;
-  driver_name?: string;
-  driver_rating?: number;
-  driver_vehicle?: string;
-  driver_plate?: string;
-  rider_rating?: number;
-  tip?: number;
-  waiting_fee?: number;
-  created_date: string;
-  scheduled_for?: string;
-  promo_code?: string;
-  discount?: number;
-}
+type Ride = RiderHistoryRide;
 
 const MOCK_RIDES: Ride[] = [
   { id: "r1", status: "completed", category: "Standard", destination_address: "Kotoka International Airport, Airport Rd", pickup_address: "Osu, Accra", distance: 8.2, duration: 22, fare: 50.34, payment: "MoMo", driver_name: "Kwame Asante", driver_rating: 4.9, driver_vehicle: "Toyota Camry (White)", driver_plate: "GR 1234-24", rider_rating: 5, tip: 5, created_date: new Date(Date.now() - 2 * 3600000).toISOString() },
@@ -124,19 +101,10 @@ export default function ActivityScreen() {
     try {
       // Rides are saved to the 'rides' collection by dispatch.ts using 'created_at' as the timestamp field
       let firestoreRides = await firestoreDB.list('rides', { rider_id: user.uid }, 'created_at', 'desc', 50);
-      // Normalize field names so the Ride interface and UI helpers work correctly
-      firestoreRides = (firestoreRides || []).map((r: any) => ({
-        ...r,
-        fare: getFinalRideFare(r),
-        quoted_fare: getQuotedRideFare(r),
-        created_date: r.created_date || r.created_at || new Date().toISOString(),
-        destination_address: r.destination_address ||
-          (typeof r.destination === 'object' ? r.destination?.address || r.destination?.name : r.destination) || '',
-        pickup_address: r.pickup_address ||
-          (typeof r.pickup === 'object' ? r.pickup?.address || r.pickup?.name : r.pickup) || '',
-        distance: r.distance || r.distance_km || 0,
-        duration: r.duration || r.duration_min || r.duration_minutes || 0,
-      }));
+      // Historical Firestore records span several release schemas. Normalize
+      // every numeric/date field before a list card or detail sheet calls
+      // `.toFixed`, so opening an older trip cannot crash the Rider app.
+      firestoreRides = (firestoreRides || []).map((ride: Record<string, unknown>) => normalizeRiderHistoryRide(ride));
       setRides(firestoreRides as Ride[]);
     } catch (err) {
       setRides([]);
