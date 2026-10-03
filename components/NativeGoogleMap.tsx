@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { matchPointToServerRoute } from '@/lib/rider-route-matching';
 import { isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
@@ -41,6 +41,10 @@ export type NativeGoogleMapRef = {
 };
 
 const FALLBACK_CENTER: NativeMapPoint = [5.6037, -0.187];
+// The supplied 256px artwork is intentionally high-resolution. Render it at
+// map-appropriate point sizes so a nearby vehicle does not cover roads or pins.
+const ACTIVE_DRIVER_MARKER_SIZE = 38;
+const NEARBY_DRIVER_MARKER_SIZE = 32;
 const GOOGLE_DARK_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#1f2933' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#d9e2ec' }] },
@@ -69,6 +73,14 @@ function markerAsset(serviceType?: string | null) {
     return require('../assets/images/map-delivery-marker.png');
   }
   return require('../assets/images/map-car-marker.png');
+}
+
+function CompactVehicleMarker({ serviceType, size }: { serviceType?: string | null; size: number }) {
+  return (
+    <View pointerEvents="none" style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Image source={markerAsset(serviceType)} style={{ width: size, height: size }} resizeMode="contain" />
+    </View>
+  );
 }
 
 function initialRegion(center: NativeMapPoint): Region {
@@ -225,25 +237,27 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         />}
         {displayDriverPoint && <Marker.Animated
           coordinate={animatedDriverCoordinate as any}
-          image={markerAsset(driverServiceType)}
           anchor={{ x: 0.5, y: 0.5 }}
           flat
           rotation={Number(displayDriverBearing) || 0}
           tracksViewChanges={false}
           title={tripStatus === 'in_progress' ? 'HY3N Driver en route' : 'Your HY3N Driver'}
           zIndex={8}
-        />}
+        >
+          <CompactVehicleMarker serviceType={driverServiceType} size={ACTIVE_DRIVER_MARKER_SIZE} />
+        </Marker.Animated>}
         {!driverTracking && nearby.map((driver) => <Marker
           key={`nearby-${driver.id}`}
           coordinate={{ latitude: driver.lat, longitude: driver.lng }}
-          image={markerAsset(driver.serviceType)}
           anchor={{ x: 0.5, y: 0.5 }}
           flat
           rotation={Number(driver.heading) || 0}
           opacity={0.82}
           tracksViewChanges={false}
           zIndex={4}
-        />)}
+        >
+          <CompactVehicleMarker serviceType={driver.serviceType} size={NEARBY_DRIVER_MARKER_SIZE} />
+        </Marker>)}
       </MapView>
     </View>
   );

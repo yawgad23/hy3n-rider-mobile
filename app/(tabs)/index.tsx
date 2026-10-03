@@ -50,6 +50,7 @@ import { trpc } from "@/lib/trpc";
 import { type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
 import { canRequestServerQuotedRide, canSelectServerQuotedCategory, isServerQuoteCurrent } from "@/lib/rider-quote-selection";
+import { requestAuthoritativeRideQuotes } from "@/lib/rider-quote-request";
 import { bookingSheetSwipeAction, shouldClaimBookingSheetSwipe } from "@/lib/booking-sheet-gesture";
 import { formatLiveDistance, riderPickupStatusLabel } from "@/lib/rider-live-tracking-presentation";
 import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-share";
@@ -327,6 +328,7 @@ export default function RiderHomeScreen() {
   const [bookingLoading, setBookingLoading] = useState(false);
   const [serverQuotes, setServerQuotes] = useState<Record<string, ServerRideQuote>>({});
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quotedRouteKey, setQuotedRouteKey] = useState<string | null>(null);
   const [quoteRefreshNonce, setQuoteRefreshNonce] = useState(0);
   const nearbyVehiclesForSelectedCategory = nearbyDrivers
@@ -1041,12 +1043,11 @@ export default function RiderHomeScreen() {
       setQuoteLoading(true);
       setQuotedRouteKey(null);
       try {
-        const idToken = await auth.currentUser?.getIdToken();
-        if (!idToken) throw new Error('Session expired');
-        const response = await fetch(`${getApiBaseUrl()}/api/rides/quote`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-          body: JSON.stringify({
+        const firebaseUser = auth.currentUser ?? user;
+        const quotes = await requestAuthoritativeRideQuotes<ServerRideQuote>({
+          baseUrl: getApiBaseUrl(),
+          getIdToken: (forceRefresh) => firebaseUser.getIdToken(Boolean(forceRefresh)),
+          body: {
             categories: RIDE_CATEGORIES.map((category) => category.id),
             pickup: {
               lat: userLocation[0],
@@ -1070,20 +1071,21 @@ export default function RiderHomeScreen() {
             })),
             distance,
             duration,
-          }),
+          },
         });
-        const payload = await response.json().catch(() => null) as { success?: boolean; quotes?: ServerRideQuote[] } | null;
-        if (!response.ok || !payload?.success || !Array.isArray(payload.quotes)) throw new Error('Quote unavailable');
         if (!cancelled) {
-          setServerQuotes(Object.fromEntries(payload.quotes.map((quote) => [quote.category, quote])));
+          setServerQuotes(Object.fromEntries(quotes.map((quote) => [quote.category, quote])));
           setQuotedRouteKey(quoteRouteKey);
+          setQuoteError(null);
         }
-      } catch {
+      } catch (error) {
         // Do not use local pricing as a fallback: the Rider must never accept
-        // a number that the backend has not calculated.
+        // a number that the backend has not calculated. Explain the blocked
+        // state rather than leaving GH₵0.00 and an endless loading label.
         if (!cancelled) {
           setServerQuotes({});
           setQuotedRouteKey(null);
+          setQuoteError(error instanceof Error ? error.message : 'Unable to update fares. Please try again.');
         }
       } finally {
         if (!cancelled) setQuoteLoading(false);
@@ -2495,6 +2497,18 @@ export default function RiderHomeScreen() {
           <Text style={{ color: MUTED, fontSize: 11, fontWeight: "600" }}>No live Driver in this category yet</Text>
         )}
       </View>
+      {quoteError ? (
+        <TouchableOpacity
+          onPress={() => setQuoteRefreshNonce((value) => value + 1)}
+          disabled={quoteLoading}
+          accessibilityRole="button"
+          accessibilityLabel="Retry protected fare update"
+          style={{ flexDirection: "row", alignItems: "center", gap: 7, alignSelf: "flex-start", marginTop: -3, marginBottom: 10, paddingVertical: 5, paddingHorizontal: 8, borderRadius: 9, backgroundColor: `${GOLD}14` }}
+        >
+          <MaterialIcons name="refresh" size={16} color={GOLD} />
+          <Text style={{ color: GOLD, fontSize: 11, fontWeight: "800" }} numberOfLines={1}>{quoteError} Tap to retry.</Text>
+        </TouchableOpacity>
+      ) : null}
       <View style={{ gap: 9, paddingBottom: 14 }}>
         {RIDE_CATEGORIES.map((cat) => {
           const quote = serverQuotes[cat.id];
@@ -2538,7 +2552,7 @@ export default function RiderHomeScreen() {
                 </View>
                 <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{cat.description}</Text>
                 <Text style={{ color: !isAvailable ? MUTED : pickupEta !== null ? GREEN : MUTED, fontSize: 11, fontWeight: "800", marginTop: 5 }}>
-                  {!quote ? 'Updating protected fare…' : !isAvailable ? 'Temporarily unavailable' : quoteLoading && isSelected ? 'Refreshing protected fare…' : pickupEta !== null ? `${driverLabel} nearby · ${pickupEta} min pickup` : `No ${cat.name} drivers nearby`}
+                  {!quote ? quoteError ? 'Protected fare needs retry' : 'Updating protected fare…' : !isAvailable ? 'Temporarily unavailable' : quoteLoading && isSelected ? 'Refreshing protected fare…' : pickupEta !== null ? `${driverLabel} nearby · ${pickupEta} min pickup` : `No ${cat.name} drivers nearby`}
                 </Text>
               </View>
               <View style={{ alignItems: "flex-end", gap: 7 }}>

@@ -12,6 +12,9 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('provider={PROVIDER_GOOGLE}');
     expect(component).toContain('Marker.Animated');
     expect(component).toContain('animatedDriverCoordinate.timing');
+    expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 38');
+    expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 32');
+    expect(component).toContain('CompactVehicleMarker');
     expect(component).not.toContain('react-native-webview');
   });
 
