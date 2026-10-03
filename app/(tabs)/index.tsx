@@ -1700,6 +1700,9 @@ export default function RiderHomeScreen() {
     setTerminalRide(null);
     setCompletedRideData(null);
     resetBookingState();
+    // The native map is remounted after a terminal trip. Its ready-gated
+    // camera uses this already-verified Rider position rather than carrying
+    // forward any completed-trip route or destination viewport.
   };
 
   const openCompletedRideRating = () => {

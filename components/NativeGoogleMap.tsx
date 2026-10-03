@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Image, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { matchPointToServerRoute } from '@/lib/rider-route-matching';
@@ -114,6 +114,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   nearbyDrivers = [],
 }, ref) {
   const mapRef = useRef<MapView>(null);
+  const [mapReady, setMapReady] = useState(false);
   const userMovedMapRef = useRef(false);
   const previousDriverPointRef = useRef<NativeMapPoint | null>(null);
   const displayDriverPoint = useMemo(() => {
@@ -154,6 +155,10 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   }, [animatedDriverCoordinate, displayDriverPoint]);
 
   useEffect(() => {
+    // A completed trip unmounts this surface. On its remount, a camera command
+    // issued before Google Maps reports ready is ignored by iOS, which leaves
+    // the SDK's whole-world fallback viewport visible behind the home sheet.
+    if (!mapReady) return;
     if (userMovedMapRef.current) return;
     if (!driverTracking && routeCoordinates.length > 1) {
       mapRef.current?.fitToCoordinates(routeCoordinates, {
@@ -169,7 +174,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     );
     if (!region) return;
     mapRef.current?.animateToRegion(region, displayDriverPoint && trackedTarget ? 650 : 350);
-  }, [center, displayDriverPoint, driverTracking, routeCoordinates, trackedTarget, userLocation]);
+  }, [center, displayDriverPoint, driverTracking, mapReady, routeCoordinates, trackedTarget, userLocation]);
 
   useImperativeHandle(ref, () => ({
     panTo(latitude, longitude) {
@@ -205,6 +210,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         showsPointsOfInterest={false}
         showsScale={false}
         toolbarEnabled={false}
+        onMapReady={() => setMapReady(true)}
         onPanDrag={() => { userMovedMapRef.current = true; }}
       >
         {routeCoordinates.length > 1 && <Polyline

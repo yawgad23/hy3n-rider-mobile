@@ -23,6 +23,13 @@ describe('Rider native Google Maps migration', () => {
     expect(screen).not.toContain('import LeafletMap from');
   });
 
+  it('waits for the remounted native surface before applying the post-trip camera', () => {
+    expect(component).toContain('const [mapReady, setMapReady] = useState(false)');
+    expect(component).toContain('if (!mapReady) return;');
+    expect(component).toContain('onMapReady={() => setMapReady(true)}');
+    expect(component).toContain('animateToRegion(region');
+  });
+
   it('keeps the Maps stub web-only and resolves native SDK keys for both stores', () => {
     expect(metroConfig).toContain('moduleName === "react-native-maps" && platform === "web"');
     expect(metroConfig).not.toContain('if (moduleName === "react-native-maps") {');
