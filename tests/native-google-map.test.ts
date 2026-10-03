@@ -42,6 +42,14 @@ describe('Rider native Google Maps migration', () => {
     expect(screen).toContain('bookingMapTimeLabels');
   });
 
+  it('keeps a fresh online Driver visible on the map while the Rider compares another category', () => {
+    expect(screen).toContain('const nearbyVehiclesForMap = nearbyDrivers');
+    expect(screen).toContain('nearbyDrivers={(!activeRide || activeRide.status === "searching")');
+    expect(screen).toContain('? nearbyVehiclesForMap.slice(0, 4)');
+    expect(screen).toContain('Drivers nearby for another ride type');
+    expect(screen).toContain('choose a matching type');
+  });
+
   it('keeps the Maps stub web-only and resolves native SDK keys for both stores', () => {
     expect(metroConfig).toContain('moduleName === "react-native-maps" && platform === "web"');
     expect(metroConfig).not.toContain('if (moduleName === "react-native-maps") {');

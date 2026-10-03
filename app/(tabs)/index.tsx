@@ -341,6 +341,16 @@ export default function RiderHomeScreen() {
     .sort((a, b) => (a.etaMinutes || 99) - (b.etaMinutes || 99));
   const closestVehicleEta = nearbyVehiclesForSelectedCategory[0]?.etaMinutes ?? null;
 
+  // Keep all fresh, approved online vehicles on the map. A Standard Driver
+  // must remain visible when a Rider is comparing Comfort or Kantanka, while
+  // the category-specific list still controls who can receive the request.
+  const nearbyVehiclesForMap = nearbyDrivers
+    .map((vehicle) => ({
+      ...vehicle,
+      etaMinutes: calculateETA({ lat: vehicle.lat, lng: vehicle.lng }, { lat: userLocation[0], lng: userLocation[1] }),
+    }))
+    .sort((a, b) => (a.etaMinutes || 99) - (b.etaMinutes || 99));
+
   // Keep the map open while a request is searching. The expanded trip card is
   // is one tap away, but it should never cover the map when the rider needs
   // to follow the driver or see nearby vehicles.
@@ -2524,7 +2534,9 @@ export default function RiderHomeScreen() {
             </Text>
           </View>
         ) : (
-          <Text style={{ color: MUTED, fontSize: 11, fontWeight: "600" }}>No live Driver in this category yet</Text>
+          <Text style={{ color: MUTED, fontSize: 11, fontWeight: "600" }}>
+            {nearbyDrivers.length > 0 ? `${nearbyDrivers.length} Driver${nearbyDrivers.length === 1 ? '' : 's'} nearby · choose a matching type` : 'No live Driver in this category yet'}
+          </Text>
         )}
       </View>
       {quoteError ? (
@@ -2582,7 +2594,7 @@ export default function RiderHomeScreen() {
                 </View>
                 <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{cat.description}</Text>
                 <Text style={{ color: !isAvailable ? MUTED : pickupEta !== null ? GREEN : MUTED, fontSize: 11, fontWeight: "800", marginTop: 5 }}>
-                  {!quote ? quoteError ? 'Protected fare needs retry' : 'Updating protected fare…' : !isAvailable ? 'Temporarily unavailable' : quoteLoading && isSelected ? 'Refreshing protected fare…' : pickupEta !== null ? `${driverLabel} nearby · ${pickupEta} min pickup` : `No ${cat.name} drivers nearby`}
+                  {!quote ? quoteError ? 'Protected fare needs retry' : 'Updating protected fare…' : !isAvailable ? 'Temporarily unavailable' : quoteLoading && isSelected ? 'Refreshing protected fare…' : pickupEta !== null ? `${driverLabel} nearby · ${pickupEta} min pickup` : nearbyDrivers.length > 0 ? 'Drivers nearby for another ride type' : `No ${cat.name} drivers nearby`}
                 </Text>
               </View>
               <View style={{ alignItems: "flex-end", gap: 7 }}>
@@ -2902,7 +2914,7 @@ export default function RiderHomeScreen() {
         tripStatus={activeRide?.status ?? null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
         nearbyDrivers={(!activeRide || activeRide.status === "searching")
-          ? nearbyVehiclesForSelectedCategory.slice(0, 4)
+          ? nearbyVehiclesForMap.slice(0, 4)
           : []}
         onRouteMetrics={handleLiveRouteMetrics}
       />
