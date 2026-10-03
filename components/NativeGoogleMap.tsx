@@ -20,6 +20,7 @@ type NativeGoogleMapProps = {
   userLocation?: NativeMapPoint | null;
   destination?: NativeMapPoint | null;
   driverLocation?: NativeMapPoint | null;
+  driverLocationUpdatedAt?: string | null;
   driverBearing?: number | null;
   driverColourHex?: string | null;
   driverVehicle?: string | null;
@@ -116,6 +117,14 @@ function initialRegion(center: NativeMapPoint): Region {
   };
 }
 
+function markerAnimationDuration(previousUpdatedAt: number | null, currentUpdatedAt: string | null | undefined) {
+  const current = currentUpdatedAt ? new Date(currentUpdatedAt).getTime() : Number.NaN;
+  if (!Number.isFinite(current) || previousUpdatedAt === null) return 2_650;
+  // Align each native interpolation to the server GPS cadence. A bounded range
+  // prevents a delayed mobile packet from making the marker jump or freeze.
+  return Math.max(900, Math.min(7_500, current - previousUpdatedAt));
+}
+
 /**
  * The active Rider map is native Google Maps, not a browser page. GPS changes
  * animate the branded vehicle marker in place and the server-published route
@@ -128,6 +137,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   userLocation,
   destination,
   driverLocation,
+  driverLocationUpdatedAt = null,
   driverBearing = null,
   driverColourHex = null,
   driverServiceType = null,
@@ -143,6 +153,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const [mapReady, setMapReady] = useState(false);
   const userMovedMapRef = useRef(false);
   const previousDriverPointRef = useRef<NativeMapPoint | null>(null);
+  const previousDriverUpdatedAtRef = useRef<number | null>(null);
   const displayDriverPoint = useMemo(() => {
     const trustedRoute = (driverRoutePoints || []).filter(isNativeMapPoint);
     return matchPointToServerRoute(driverLocation, trustedRoute)?.point
@@ -177,12 +188,14 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     } else {
       animatedDriverCoordinate.timing({
         ...nextRegion,
-        duration: 2_650,
+        duration: markerAnimationDuration(previousDriverUpdatedAtRef.current, driverLocationUpdatedAt),
         useNativeDriver: false,
       } as any).start();
     }
     previousDriverPointRef.current = displayDriverPoint;
-  }, [animatedDriverCoordinate, displayDriverPoint]);
+    const updatedAt = driverLocationUpdatedAt ? new Date(driverLocationUpdatedAt).getTime() : Number.NaN;
+    if (Number.isFinite(updatedAt)) previousDriverUpdatedAtRef.current = updatedAt;
+  }, [animatedDriverCoordinate, displayDriverPoint, driverLocationUpdatedAt]);
 
   useEffect(() => {
     // A completed trip unmounts this surface. On its remount, a camera command

@@ -3009,6 +3009,7 @@ export default function RiderHomeScreen() {
             ? [activeRide.driverLocation.lat, activeRide.driverLocation.lng]
             : null
         }
+        driverLocationUpdatedAt={activeRide?.driverLocationUpdatedAt ?? null}
         driverBearing={activeRide?.driverBearing ?? null}
         driverColourHex={activeRide?.driverColourHex ?? null}
         driverVehicle={activeRide?.driverVehicle ?? null}
