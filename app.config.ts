@@ -29,8 +29,12 @@ const schemeFromBundleId = `manus${timestamp}`;
 // must be separately restricted in Google Cloud. They are injected only by
 // EAS at build time and must never reuse the server-only Routes API key.
 const nativeGoogleMaps = {
-  iosApiKey: process.env.GOOGLE_MAPS_IOS_API_KEY?.trim() || "",
-  androidApiKey: process.env.GOOGLE_MAPS_ANDROID_API_KEY?.trim() || "",
+  iosApiKey: process.env.GOOGLE_MAPS_IOS_API_KEY?.trim()
+    || process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS?.trim()
+    || "",
+  androidApiKey: process.env.GOOGLE_MAPS_ANDROID_API_KEY?.trim()
+    || process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID?.trim()
+    || "",
 };
 
 const env = {
