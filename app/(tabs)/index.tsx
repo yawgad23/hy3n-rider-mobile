@@ -669,8 +669,14 @@ export default function RiderHomeScreen() {
           const hasCurrentServerRoute = serverRoutePhase === expectedRoutePhase;
           const serverRoutePoints = Array.isArray(liveRoute.points)
             ? liveRoute.points
-              .filter((point: any) => Array.isArray(point) && point.length >= 2)
-              .map((point: any) => [Number(point[0]), Number(point[1])] as [number, number])
+              .map((point: any) => {
+                const source: Record<string, unknown> | null = Array.isArray(point)
+                  ? { lat: point[0], lng: point[1] }
+                  : point && typeof point === 'object'
+                    ? point as Record<string, unknown>
+                    : null;
+                return [Number(source?.lat ?? source?.latitude), Number(source?.lng ?? source?.longitude)] as [number, number];
+              })
               .filter(([lat, lng]: [number, number]) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180)
               .slice(0, 180)
             : undefined;

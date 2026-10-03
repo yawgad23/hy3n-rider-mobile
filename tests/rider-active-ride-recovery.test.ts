@@ -65,6 +65,18 @@ describe('Rider active ride relaunch recovery', () => {
     })?.bookingRoutePoints).toEqual([[5.605, -0.174], [5.606, -0.173], [5.607, -0.171]]);
   });
 
+  it('restores Firestore-safe live route point objects for the active map', () => {
+    expect(recoverActiveRide({
+      ...activeRide,
+      live_route_metrics: {
+        phase: 'destination',
+        distance_km: 2.1,
+        duration_minutes: 8,
+        points: [{ lat: 5.604, lng: -0.175 }, { latitude: 5.607, longitude: -0.171 }],
+      },
+    })?.driverRoutePoints).toEqual([[5.604, -0.175], [5.607, -0.171]]);
+  });
+
   it('does not revive completed or cancelled rides after relaunch', () => {
     expect(recoverActiveRide({ ...activeRide, status: 'completed' })).toBeNull();
     expect(recoverActiveRide({ ...activeRide, status: 'cancelled' })).toBeNull();
