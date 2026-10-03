@@ -102,7 +102,7 @@ interface ServerRideQuote {
   fareRate: Record<string, unknown>;
   breakdown: Record<string, unknown>;
   routePoints?: [number, number][];
-  routeSource?: 'google_routes_traffic' | 'osrm';
+  routeSource?: 'google_routes_traffic' | 'osrm' | 'server_coordinate_estimate';
 }
 
 interface ActiveRide {
