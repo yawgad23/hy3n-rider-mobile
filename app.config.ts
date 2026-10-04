@@ -73,6 +73,11 @@ const config: ExpoConfig = {
     bundleIdentifier: env.iosBundleId,
     buildNumber: "92",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
+    // TestFlight/App Store archives need production APNs for remote Live
+    // Activity updates; development profiles retain the development endpoint.
+    entitlements: {
+      "aps-environment": process.env.EAS_BUILD_PROFILE === "production" ? "production" : "development",
+    },
     ...(nativeGoogleMaps.iosApiKey
       ? { config: { googleMapsApiKey: nativeGoogleMaps.iosApiKey } }
       : {}),
@@ -130,6 +135,14 @@ const config: ExpoConfig = {
     "expo-notifications",
     "@react-native-firebase/app",
     "@react-native-firebase/messaging",
+    [
+      "expo-live-activity",
+      {
+        // Create the ActivityKit extension and request token-based remote
+        // updates. The app uses a HY3N-specific follow-up plugin below.
+        enablePushNotifications: true,
+      },
+    ],
     "@react-native-google-signin/google-signin",
     "expo-video",
     "expo-web-browser",
@@ -156,6 +169,10 @@ const config: ExpoConfig = {
     ],
     [
       "./plugins/withPodfileModularHeaders",
+      {},
+    ],
+    [
+      "./plugins/withHy3nLiveActivityBranding",
       {},
     ],
   ],

@@ -70,6 +70,14 @@ import {
   parseRiderStoredSavedPlaces,
   parseRiderStoredSearchHistory,
 } from "@/lib/rider-persisted-location";
+import {
+  endRiderLiveActivity,
+  syncRiderLiveActivity,
+} from "@/lib/rider-live-activity";
+import {
+  riderLiveActivityEligible,
+  type RiderLiveActivityRide,
+} from "@/lib/rider-live-activity-presentation";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -401,6 +409,9 @@ export default function RiderHomeScreen() {
 
   const removeActiveRide = useCallback((rideId?: string) => {
     if (!rideId) return;
+    // The in-app/server trip state remains authoritative. Ending this native
+    // presentation is best-effort and must never delay a cancellation.
+    void endRiderLiveActivity(rideId, false);
     setActiveRides((prev) => removeRide(prev, rideId));
     setSelectedRideId((current) => current === rideId ? null : current);
   }, []);
@@ -420,6 +431,9 @@ export default function RiderHomeScreen() {
       driverName: terminal.driverName,
     });
 
+    // Clear the Island immediately as well as relying on the server's remote
+    // ActivityKit end push, so a completed trip never stays on screen.
+    void endRiderLiveActivity(trackedRide.id, true);
     setActiveRides((previous) => removeRide(previous, trackedRide.id));
     setTerminalRide(terminal);
     setRideRated(false);
@@ -441,6 +455,27 @@ export default function RiderHomeScreen() {
       setSelectedRideId(activeRides[0].id);
     }
   }, [activeRides, selectedRideId]);
+
+  // This is a native iOS presentation of the existing server-owned ride. It
+  // starts only after Driver matching, keeps a native countdown in the Dynamic
+  // Island, and never participates in booking, pricing, or trip settlement.
+  useEffect(() => {
+    if (!user || !activeRide || !riderLiveActivityEligible(activeRide.status)) return;
+    // The eligibility guard above makes the broader ActiveRide union safe for
+    // the native presenter, which intentionally accepts only nonterminal rides.
+    void syncRiderLiveActivity(user, activeRide as RiderLiveActivityRide);
+  }, [
+    user,
+    activeRide?.id,
+    activeRide?.status,
+    activeRide?.driverName,
+    activeRide?.eta,
+    activeRide?.routeDurationMinutes,
+    activeRide?.destination.name,
+    activeRide?.destination.address,
+    activeRide?.pickupLocation.name,
+    activeRide?.pickupLocation.address,
+  ]);
 
   // Keep the active ride count available to the tab layout for a persistent badge.
   useEffect(() => {

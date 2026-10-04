@@ -8,23 +8,28 @@ function source(relativePath: string) {
   return fs.readFileSync(path.join(root, relativePath), 'utf8');
 }
 
-describe('Rider trip-completion native safety', () => {
-  it('keeps the unstable Live Activity bridge out of the completion release', () => {
+describe('Rider HY3N Dynamic Island integration', () => {
+  it('configures the native Live Activity extension without coupling it to ride authority', () => {
     const appConfig = source('app.config.ts');
     const rootLayout = source('app/_layout.tsx');
     const riderHome = source('app/(tabs)/index.tsx');
+    const liveActivity = source('lib/rider-live-activity.ts');
+    const brandingPlugin = source('plugins/withHy3nLiveActivityBranding.js');
     const packageJson = JSON.parse(source('package.json')) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
     };
 
-    expect(appConfig).not.toContain('expo-live-activity');
-    expect(appConfig).not.toContain('withLiveActivityReleaseSettings');
-    expect(appConfig).not.toContain('NSSupportsLiveActivities');
-    expect(rootLayout).not.toContain('listenForRiderLiveActivity');
-    expect(riderHome).not.toContain('syncRiderLiveActivity');
-    expect(riderHome).not.toContain('endRiderLiveActivity');
-    expect(packageJson.dependencies?.['expo-live-activity']).toBeUndefined();
-    expect(packageJson.devDependencies?.['expo-live-activity']).toBeUndefined();
+    expect(appConfig).toContain('expo-live-activity');
+    expect(appConfig).toContain('withHy3nLiveActivityBranding');
+    expect(appConfig).toContain('"aps-environment"');
+    expect(brandingPlugin).toContain('hy3n_wordmark');
+    expect(brandingPlugin).toContain('aps-environment');
+    expect(riderHome).toContain('syncRiderLiveActivity');
+    expect(riderHome).toContain('endRiderLiveActivity');
+    expect(liveActivity).toContain('/api/live-activities/token');
+    expect(liveActivity).toContain('riderLiveActivityEligible');
+    expect(rootLayout).not.toContain('live-activities/token');
+    expect(packageJson.dependencies?.['expo-live-activity']).toBe('0.4.2');
   });
 });
