@@ -182,8 +182,11 @@ export function PostRideModal({
                   <Text style={{ color: TEXT, fontSize: 22, fontWeight: '800', marginBottom: 8 }}>
                     How was your ride?
                   </Text>
-                  <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>
-                    Your feedback is anonymous.
+                  <Text style={{ color: GOLD, fontSize: 17, fontWeight: '900' }}>
+                    Medaase
+                  </Text>
+                  <Text style={{ color: MUTED, fontSize: 13, marginTop: 3, marginBottom: 16 }}>
+                    Thank you
                   </Text>
 
                   <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>

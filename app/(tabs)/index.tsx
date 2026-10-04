@@ -1938,7 +1938,8 @@ export default function RiderHomeScreen() {
             <MaterialIcons name="check" size={40} color={GREEN} />
           </View>
           <Text style={{ color: TEXT, fontSize: 28, fontWeight: '900', textAlign: 'center' }}>How was your ride?</Text>
-          <Text style={{ color: MUTED, fontSize: 14, marginTop: 10, textAlign: 'center' }}>Your feedback is anonymous.</Text>
+          <Text style={{ color: GOLD, fontSize: 18, fontWeight: '900', marginTop: 10, textAlign: 'center' }}>Medaase</Text>
+          <Text style={{ color: MUTED, fontSize: 13, marginTop: 3, textAlign: 'center' }}>Thank you</Text>
           <View style={{ flexDirection: 'row', gap: 14, marginTop: 30 }}>
             {[1, 2, 3, 4, 5].map((star) => (
               <TouchableOpacity
@@ -2503,7 +2504,12 @@ export default function RiderHomeScreen() {
               <MaterialIcons name="star-border" size={20} color="#000" />
               <Text style={{ color: "#000", fontWeight: "bold", fontSize: 15 }}>How was your ride?</Text>
             </TouchableOpacity>
-            {!rideRated && <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", marginBottom: 8 }}>Your feedback is anonymous.</Text>}
+            {!rideRated && (
+              <View style={{ alignItems: "center", marginBottom: 8 }}>
+                <Text style={{ color: GOLD, fontSize: 15, fontWeight: "900" }}>Medaase</Text>
+                <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>Thank you</Text>
+              </View>
+            )}
             <TouchableOpacity
               onPress={handleFinishRide}
               style={{ width: "100%", alignItems: "center", paddingVertical: 12 }}
