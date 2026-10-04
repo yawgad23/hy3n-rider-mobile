@@ -365,9 +365,27 @@ export default function ActivityScreen() {
         }
       />
 
-      {/* Trip Details Modal */}
-      <Modal visible={showDetails} animationType="slide" presentationStyle="pageSheet">
-        <View style={{ flex: 1, backgroundColor: BG }}>
+      {/*
+        Render trip details inside the active History screen instead of using an
+        iOS page-sheet Modal. The page sheet is the exact native transition
+        reached in the supplied recording before the recovery boundary appears.
+        Keeping the detail view in this React tree makes a past-trip tap a
+        simple state transition and retains the History list underneath it.
+      */}
+      {showDetails && selectedRide && (
+        <View
+          testID="history-trip-details-overlay"
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            zIndex: 100,
+            elevation: 100,
+            backgroundColor: BG,
+          }}
+        >
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderBottomWidth: 0.5, borderBottomColor: BORDER }}>
             <TouchableOpacity
               onPress={() => setShowDetails(false)}
@@ -572,7 +590,7 @@ export default function ActivityScreen() {
             </ScrollView>
           )}
         </View>
-      </Modal>
+      )}
 
       {/* Report Issue Modal */}
       <Modal visible={showReport} animationType="slide" presentationStyle="pageSheet">

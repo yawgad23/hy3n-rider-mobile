@@ -94,7 +94,7 @@ describe('Rider History screen rendering', () => {
     expect(source).toContain('const Sharing = await import("expo-sharing")');
   });
 
-  it('renders a legacy Firestore record and opens its detail sheet without throwing', async () => {
+  it('renders a legacy Firestore record and opens an in-screen detail view without throwing', async () => {
     const { renderer, view } = await renderHistoryWith({
       id: 'history-legacy',
       status: 'completed',
@@ -117,8 +117,11 @@ describe('Rider History screen rendering', () => {
       cards[0].props.onPress();
     });
 
-    const detailModal = view.root.findAll((node) => node.type === 'Modal' && node.props.visible === true);
-    expect(detailModal).toHaveLength(1);
+    const detailOverlay = view.root.findAll((node) => node.props.testID === 'history-trip-details-overlay');
+    // The test View mock exposes both the component and host View; either way,
+    // the mounted overlay must be discoverable after a past-trip tap.
+    expect(detailOverlay.length).toBeGreaterThan(0);
+    expect(view.root.findAll((node) => node.type === 'Modal' && node.props.visible === true)).toHaveLength(0);
     expect(view.root.findAll((node) => node.type === 'Text' && node.props.children === 'Trip Details')).toHaveLength(1);
     await renderer.act(async () => {
       view.unmount();
@@ -153,7 +156,8 @@ describe('Rider History screen rendering', () => {
       cards[0].props.onPress();
     });
 
-    expect(view.root.findAll((node) => node.type === 'Modal' && node.props.visible === true)).toHaveLength(1);
+    expect(view.root.findAll((node) => node.props.testID === 'history-trip-details-overlay').length).toBeGreaterThan(0);
+    expect(view.root.findAll((node) => node.type === 'Modal' && node.props.visible === true)).toHaveLength(0);
     expect(view.root.findAll((node) => node.type === 'Text' && node.props.children === 'Total Paid')).toHaveLength(1);
     await renderer.act(async () => {
       view.unmount();
