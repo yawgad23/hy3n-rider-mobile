@@ -570,25 +570,27 @@ export default function RiderHomeScreen() {
   const destinationAlertRideRef = useRef<string | null>(null);
 
   // ─── Mobile-network Driver call ───────────────────────────────────────────────
-  const driverName = activeRide?.driverName || 'Driver';
-  const driverPhone = (activeRide as any)?.driverPhone;
-
-  const handleCallDriver = async () => {
-    if (!activeRide) return;
-    const callUrl = driverMobileCallUrl(driverPhone);
+  // HY3N deliberately opens the system dialer. There is no in-app calling path.
+  const openMobileDriverCall = async (name: string, phone: unknown, context = 'Call Driver') => {
+    const callUrl = driverMobileCallUrl(phone);
     if (!callUrl) {
-      Alert.alert('Call Driver', 'Driver contact not available yet.');
+      Alert.alert(context, 'This Driver’s mobile number is not available for this ride.');
       return;
     }
     try {
       if (!await Linking.canOpenURL(callUrl)) {
-        Alert.alert('Call Driver', `Your device cannot start a phone call to ${driverName}.`);
+        Alert.alert(context, `Your device cannot start a phone call to ${name}.`);
         return;
       }
       await Linking.openURL(callUrl);
     } catch {
-      Alert.alert('Call Driver', `Unable to start a mobile-network call to ${driverName}. Please try again.`);
+      Alert.alert(context, `Unable to start a mobile-network call to ${name}. Please try again.`);
     }
+  };
+
+  const handleCallDriver = async () => {
+    if (!activeRide) return;
+    await openMobileDriverCall(activeRide.driverName || 'Driver', activeRide.driverPhone);
   };
   const [chatMessages, setChatMessages] = useState<{ id: string; text: string; fromRider: boolean; time: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
@@ -1873,12 +1875,13 @@ export default function RiderHomeScreen() {
     // forward any completed-trip route or destination viewport.
   };
 
-  const openCompletedRideRating = () => {
+  const openCompletedRideRating = (initialRating = 5) => {
     if (!terminalRide) return;
     setCompletedRideData({
       rideId: terminalRide.firestoreId,
       driverName: terminalRide.driverName,
       driverRating: terminalRide.driverRating,
+      initialRating,
       fare: terminalRide.finalFare,
       tip: tipAmount || 0,
       distance: terminalRide.distanceKm,
@@ -1887,10 +1890,20 @@ export default function RiderHomeScreen() {
       destinationAddress: terminalRide.destination,
       driverVehicle: terminalRide.driverVehicle,
       driverPlate: terminalRide.driverPlate,
+      driverPhone: terminalRide.driverPhone,
       paymentMethod: terminalRide.payment,
       category: terminalRide.category,
     });
     setShowPostRideModal(true);
+  };
+
+  const handleContactCompletedDriver = async () => {
+    if (!terminalRide) return;
+    await openMobileDriverCall(
+      terminalRide.driverName,
+      terminalRide.driverPhone,
+      'Contact driver',
+    );
   };
 
   const handleBookAnotherRide = async () => {
@@ -1908,43 +1921,47 @@ export default function RiderHomeScreen() {
     const tip = Number.isFinite(tipAmount) && (tipAmount ?? 0) > 0 ? tipAmount ?? 0 : 0;
     const total = terminalRide.finalFare + tip;
     return (
-      <View style={{ flex: 1, backgroundColor: BG, paddingTop: safeTop + 24, paddingHorizontal: 20, paddingBottom: insets.bottom + 20 }}>
-        <View style={{ alignItems: 'center', paddingTop: 18, paddingBottom: 26 }}>
-          <View style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: `${GREEN}1A`, alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
-            <MaterialIcons name="check-circle" size={44} color={GREEN} />
-          </View>
-          <Text style={{ color: TEXT, fontSize: 24, fontWeight: '900' }}>Trip complete</Text>
-          <Text style={{ color: MUTED, fontSize: 13, marginTop: 6, textAlign: 'center' }}>Your final fare is confirmed by HY3N.</Text>
-        </View>
-
-        <View style={{ backgroundColor: CARD, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: BORDER }}>
-          <Row label={terminalRide.waitingFee > 0 ? 'Final fare (includes wait)' : 'Final fare'} value={`GH₵${terminalRide.finalFare.toFixed(2)}`} />
-          {terminalRide.waitingFee > 0 && <Row label="Waiting fee" value={`Included · GH₵${terminalRide.waitingFee.toFixed(2)}`} valueColor={MUTED} />}
-          {tip > 0 && <Row label="Tip" value={`+GH₵${tip.toFixed(2)}`} valueColor={GREEN} />}
-          <View style={{ borderTopWidth: 1, borderTopColor: BORDER, marginTop: 8, paddingTop: 10 }}>
-            <Row label="Total" value={`GH₵${total.toFixed(2)}`} valueColor={GOLD} bold />
-          </View>
-          <View style={{ borderTopWidth: 1, borderTopColor: BORDER, marginTop: 8, paddingTop: 10, gap: 4 }}>
-            <Text style={{ color: MUTED, fontSize: 11 }}>From</Text>
-            <Text style={{ color: TEXT, fontSize: 13, fontWeight: '600' }} numberOfLines={2}>{terminalRide.pickup}</Text>
-            <Text style={{ color: MUTED, fontSize: 11, marginTop: 8 }}>To</Text>
-            <Text style={{ color: TEXT, fontSize: 13, fontWeight: '600' }} numberOfLines={2}>{terminalRide.destination}</Text>
+      <View style={{ flex: 1, backgroundColor: BG, paddingTop: safeTop + 10, paddingHorizontal: 24, paddingBottom: insets.bottom + 18 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48 }}>
+          <TouchableOpacity onPress={handleFinishRide} accessibilityLabel="Close completed ride" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+            <MaterialIcons name="close" size={30} color={TEXT} />
+          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <MaterialIcons name="payments" size={20} color={GREEN} />
+            <Text style={{ color: TEXT, fontSize: 16, fontWeight: '700' }}>{terminalRide.payment || 'Payment'}</Text>
+            <Text style={{ color: GOLD, fontSize: 18, fontWeight: '900' }}>GH₵{total.toFixed(2)}</Text>
           </View>
         </View>
 
-        <View style={{ marginTop: 18, gap: 10 }}>
-          {!tipAdded && (
-            <TouchableOpacity onPress={() => setShowTipModal(true)} style={{ borderWidth: 1, borderColor: `${GREEN}66`, borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}>
-              <Text style={{ color: GREEN, fontSize: 14, fontWeight: '800' }}>Add tip</Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={openCompletedRideRating} style={{ backgroundColor: GOLD, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}>
-            <Text style={{ color: '#000', fontSize: 15, fontWeight: '900' }}>Rate {terminalRide.driverName}</Text>
+        <View style={{ alignItems: 'center', flex: 1, justifyContent: 'center', paddingBottom: 36 }}>
+          <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: `${GREEN}1A`, alignItems: 'center', justifyContent: 'center', marginBottom: 22 }}>
+            <MaterialIcons name="check" size={40} color={GREEN} />
+          </View>
+          <Text style={{ color: TEXT, fontSize: 28, fontWeight: '900', textAlign: 'center' }}>How was your ride?</Text>
+          <Text style={{ color: MUTED, fontSize: 14, marginTop: 10, textAlign: 'center' }}>Your feedback is anonymous.</Text>
+          <View style={{ flexDirection: 'row', gap: 14, marginTop: 30 }}>
+            {[1, 2, 3, 4, 5].map((star) => (
+              <TouchableOpacity
+                key={star}
+                accessibilityLabel={`Rate ${star} star${star === 1 ? '' : 's'}`}
+                onPress={() => openCompletedRideRating(star)}
+                style={{ padding: 2 }}
+              >
+                <MaterialIcons name="star-border" size={44} color="#5A5A5A" />
+              </TouchableOpacity>
+            ))}
+          </View>
+          {!rideRated && <Text style={{ color: MUTED, fontSize: 12, textAlign: 'center', marginTop: 20 }}>Choose a star to rate this completed ride.</Text>}
+          {tip > 0 && <Text style={{ color: GREEN, fontSize: 12, fontWeight: '700', marginTop: 14 }}>Tip added · GH₵{tip.toFixed(2)}</Text>}
+        </View>
+
+        <View style={{ borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 22, paddingBottom: 6, alignItems: 'center' }}>
+          <Text style={{ color: MUTED, fontSize: 15 }}>Left something behind?</Text>
+          <TouchableOpacity onPress={handleContactCompletedDriver} accessibilityLabel="Contact driver about a lost item" style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 16, paddingVertical: 12, marginTop: 2 }}>
+            <MaterialIcons name="phone" size={18} color={GREEN} />
+            <Text style={{ color: GREEN, fontSize: 16, fontWeight: '800' }}>Contact driver</Text>
           </TouchableOpacity>
-          {!rideRated && <Text style={{ color: MUTED, fontSize: 12, textAlign: 'center' }}>Rate your Driver before booking your next ride.</Text>}
-          <TouchableOpacity onPress={handleFinishRide} style={{ paddingVertical: 12, alignItems: 'center' }}>
-            <Text style={{ color: MUTED, fontSize: 13, fontWeight: '700' }}>Done for now</Text>
-          </TouchableOpacity>
+          <Text style={{ color: MUTED, fontSize: 11, textAlign: 'center', marginTop: 2 }}>Uses your phone network — not an in-app call.</Text>
         </View>
       </View>
     );
@@ -2480,13 +2497,13 @@ export default function RiderHomeScreen() {
             )}
 
             <TouchableOpacity
-              onPress={openCompletedRideRating}
+              onPress={() => openCompletedRideRating()}
               style={{ width: "100%", backgroundColor: GOLD, borderRadius: 12, paddingVertical: 14, alignItems: "center", marginBottom: 10, flexDirection: "row", justifyContent: "center", gap: 8 }}
             >
-              <MaterialIcons name="star" size={18} color="#000" />
-              <Text style={{ color: "#000", fontWeight: "bold", fontSize: 15 }}>Rate Driver</Text>
+              <MaterialIcons name="star-border" size={20} color="#000" />
+              <Text style={{ color: "#000", fontWeight: "bold", fontSize: 15 }}>How was your ride?</Text>
             </TouchableOpacity>
-            {!rideRated && <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", marginBottom: 8 }}>Rate your Driver before booking your next ride.</Text>}
+            {!rideRated && <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", marginBottom: 8 }}>Your feedback is anonymous.</Text>}
             <TouchableOpacity
               onPress={handleFinishRide}
               style={{ width: "100%", alignItems: "center", paddingVertical: 12 }}
@@ -3579,6 +3596,8 @@ export default function RiderHomeScreen() {
           riderName={(riderProfile as any)?.full_name || user?.displayName || "HY3N Rider"}
           driverVehicle={completedRideData.driverVehicle || terminalRide?.driverVehicle || "HY3N vehicle"}
           driverPlate={completedRideData.driverPlate || terminalRide?.driverPlate || "Not available"}
+          initialRating={completedRideData.initialRating || 5}
+          onContactDriver={handleContactCompletedDriver}
           paymentMethod={completedRideData.paymentMethod || terminalRide?.payment || "Selected method"}
           category={completedRideData.category || terminalRide?.category || "Ride"}
           completedAt={new Date().toISOString()}

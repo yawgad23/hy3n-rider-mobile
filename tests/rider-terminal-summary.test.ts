@@ -16,6 +16,7 @@ describe('buildRiderTerminalSummary', () => {
     driverRating: 4.8,
     driverVehicle: 'Toyota Vitz',
     driverPlate: 'GG 1-26',
+    driverPhone: '+233241234567',
     distance: 3.2,
     duration: 12,
   };
@@ -29,7 +30,7 @@ describe('buildRiderTerminalSummary', () => {
       actual_distance_km: '4.7',
       driver_location: { latitude: 'not-a-number' },
       live_route_metrics: { points: [['bad', null]] },
-      driver: { name: '  Kofi   Mensah ', rating: '4.6', plate: 'GT 1234-25' },
+      driver: { name: '  Kofi   Mensah ', rating: '4.6', plate: 'GT 1234-25', phone: '024 111 2233' },
     });
 
     expect(summary).toEqual(expect.objectContaining({
@@ -41,6 +42,7 @@ describe('buildRiderTerminalSummary', () => {
       driverName: 'Kofi Mensah',
       driverRating: 4.6,
       driverPlate: 'GT 1234-25',
+      driverPhone: '024 111 2233',
     }));
     expect(summary).not.toHaveProperty('driverLocation');
     expect(summary).not.toHaveProperty('driverRoutePoints');

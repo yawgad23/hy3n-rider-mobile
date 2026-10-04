@@ -37,6 +37,20 @@ describe('Rider completion presentation safety', () => {
     expect(completionBlock).not.toContain('setCompletedRideData({');
   });
 
+  it('uses a rating-first completion view with an explicit mobile-network lost-item contact action', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
+    const start = source.indexOf('const renderTerminalRide = () => {');
+    const end = source.indexOf('  const renderActiveRide = () => {', start);
+    const terminalView = source.slice(start, end);
+
+    expect(terminalView).toContain('How was your ride?');
+    expect(terminalView).toContain('Your feedback is anonymous.');
+    expect(terminalView).toContain('Left something behind?');
+    expect(terminalView).toContain('Contact driver');
+    expect(terminalView).toContain('handleContactCompletedDriver');
+    expect(terminalView).not.toContain('Rate {terminalRide.driverName}');
+  });
+
   it('uses the authenticated status fallback to clear a completed ride when the Firestore listener is paused', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
     const start = source.indexOf('const reconcileStatuses = async () => {');

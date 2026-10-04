@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -39,6 +39,8 @@ interface PostRideModalProps {
   riderName?: string;
   driverVehicle?: string;
   driverPlate?: string;
+  initialRating?: number;
+  onContactDriver?: () => void;
   paymentMethod?: string;
   category?: string;
   completedAt?: string;
@@ -63,6 +65,8 @@ export function PostRideModal({
   riderName = 'HY3N Rider',
   driverVehicle = 'HY3N vehicle',
   driverPlate = 'Not available',
+  initialRating = 5,
+  onContactDriver,
   paymentMethod = 'Selected method',
   category = 'Ride',
   completedAt,
@@ -71,13 +75,17 @@ export function PostRideModal({
   onClose,
   onRatingSubmitted,
 }: PostRideModalProps) {
-  const [ratingStars, setRatingStars] = useState(5);
+  const [ratingStars, setRatingStars] = useState(initialRating);
   const [feedback, setFeedback] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [showReceipt, setShowReceipt] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const sendReceiptMutation = trpc.trips.sendReceipt.useMutation();
   const [emailStatus, setEmailStatus] = useState<ReceiptEmailStatus>(receiptEmailStatus);
+
+  useEffect(() => {
+    if (isVisible) setRatingStars(initialRating);
+  }, [initialRating, isVisible]);
 
   const FEEDBACK_TAGS = [
     'Driver was friendly',
@@ -171,11 +179,11 @@ export function PostRideModal({
             {!showReceipt ? (
               <>
                 <View style={{ alignItems: 'center', marginBottom: 24 }}>
-                  <Text style={{ color: TEXT, fontSize: 20, fontWeight: '800', marginBottom: 8 }}>
-                    Rate your Driver
+                  <Text style={{ color: TEXT, fontSize: 22, fontWeight: '800', marginBottom: 8 }}>
+                    How was your ride?
                   </Text>
                   <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>
-                    Tell us about {driverName} before your next ride
+                    Your feedback is anonymous.
                   </Text>
 
                   <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
@@ -304,6 +312,19 @@ export function PostRideModal({
                       </Text>
                     )}
                   </TouchableOpacity>
+                </View>
+                <View style={{ borderTopWidth: 1, borderTopColor: BORDER, marginTop: 24, paddingTop: 20, alignItems: 'center' }}>
+                  <Text style={{ color: MUTED, fontSize: 13 }}>Left something behind?</Text>
+                  <TouchableOpacity
+                    onPress={onContactDriver}
+                    disabled={!onContactDriver}
+                    accessibilityLabel="Contact driver about a lost item"
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 10, opacity: onContactDriver ? 1 : 0.45 }}
+                  >
+                    <MaterialIcons name="phone" size={17} color={GREEN} />
+                    <Text style={{ color: GREEN, fontSize: 14, fontWeight: '800' }}>Contact driver</Text>
+                  </TouchableOpacity>
+                  <Text style={{ color: MUTED, fontSize: 10, textAlign: 'center' }}>Uses your phone network — not an in-app call.</Text>
                 </View>
               </>
             ) : (

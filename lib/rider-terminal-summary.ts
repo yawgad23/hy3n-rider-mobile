@@ -14,6 +14,7 @@ export type RiderTerminalSummary = {
   driverRating: number;
   driverVehicle: string;
   driverPlate: string;
+  driverPhone: string;
   distanceKm: number;
   durationMinutes: number;
 };
@@ -32,6 +33,7 @@ type PreviousRide = {
   driverRating?: unknown;
   driverVehicle?: unknown;
   driverPlate?: unknown;
+  driverPhone?: unknown;
   distance?: unknown;
   duration?: unknown;
 };
@@ -74,6 +76,9 @@ export function buildRiderTerminalSummary(
       'HY3N vehicle',
     ),
     driverPlate: text(serverDriver.plate ?? serverRide.driver_plate ?? previous.driverPlate, 'Not available'),
+    // A Rider can use this only through the native phone dialer after the
+    // completed ride. It never participates in pricing or settlement.
+    driverPhone: text(serverDriver.phone ?? serverRide.driver_phone ?? previous.driverPhone, ''),
     distanceKm: nonNegative(serverRide.actual_distance_km ?? previous.distance),
     durationMinutes: whole(serverRide.actual_duration_minutes ?? serverRide.duration_minutes ?? previous.duration),
   };
