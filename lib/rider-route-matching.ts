@@ -3,6 +3,8 @@ export type RoutePoint = [latitude: number, longitude: number];
 export type RouteMatch = {
   point: RoutePoint;
   segmentIndex: number;
+  /** Normalized position on the matched route segment (0=start, 1=end). */
+  segmentProgress: number;
   distanceMeters: number;
   bearing: number;
 };
@@ -90,6 +92,7 @@ export function matchPointToServerRoute(
     best = {
       point: coordinateFromLocalMeters(projectedLocal, gpsPoint),
       segmentIndex: index,
+      segmentProgress: progress,
       distanceMeters,
       bearing: routeSegmentBearing(start, end),
     };

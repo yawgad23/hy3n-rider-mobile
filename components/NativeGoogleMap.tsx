@@ -2,6 +2,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, use
 import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { matchPointToServerRoute } from '@/lib/rider-route-matching';
+import { planRiderRouteAnimation } from '@/lib/rider-route-animation';
 import { bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
 
 export type NearbyDriver = {
@@ -21,6 +22,7 @@ type NativeGoogleMapProps = {
   destination?: NativeMapPoint | null;
   driverLocation?: NativeMapPoint | null;
   driverLocationUpdatedAt?: string | null;
+  driverRouteUpdatedAt?: string | null;
   driverBearing?: number | null;
   driverColourHex?: string | null;
   driverVehicle?: string | null;
@@ -138,6 +140,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   destination,
   driverLocation,
   driverLocationUpdatedAt = null,
+  driverRouteUpdatedAt = null,
   driverBearing = null,
   driverColourHex = null,
   driverServiceType = null,
@@ -154,16 +157,26 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const userMovedMapRef = useRef(false);
   const previousDriverPointRef = useRef<NativeMapPoint | null>(null);
   const previousDriverUpdatedAtRef = useRef<number | null>(null);
+  const animationGenerationRef = useRef(0);
+  const lastAnimatedDriverKeyRef = useRef<string | null>(null);
+  const previousFreshRouteRef = useRef<{ points: NativeMapPoint[]; updatedAt: string | null; tripStatus: string | null }>({ points: [], updatedAt: null, tripStatus: null });
+  const trustedDriverRoute = useMemo(
+    () => (driverRoutePoints || []).filter(isNativeMapPoint),
+    [driverRoutePoints],
+  );
+  const displayDriverMatch = useMemo(
+    () => matchPointToServerRoute(driverLocation, trustedDriverRoute),
+    [driverLocation, trustedDriverRoute],
+  );
   const displayDriverPoint = useMemo(() => {
-    const trustedRoute = (driverRoutePoints || []).filter(isNativeMapPoint);
-    return matchPointToServerRoute(driverLocation, trustedRoute)?.point
+    return displayDriverMatch?.point
       ?? (isNativeMapPoint(driverLocation) ? driverLocation : null);
-  }, [driverLocation, driverRoutePoints]);
+  }, [displayDriverMatch, driverLocation]);
   const displayDriverBearing = useMemo(() => {
-    const trustedRoute = (driverRoutePoints || []).filter(isNativeMapPoint);
-    return matchPointToServerRoute(driverLocation, trustedRoute)?.bearing ?? driverBearing ?? 0;
-  }, [driverBearing, driverLocation, driverRoutePoints]);
+    return displayDriverMatch?.bearing ?? driverBearing ?? 0;
+  }, [displayDriverMatch, driverBearing]);
   const animatedDriverCoordinate = useRef(new AnimatedRegion(initialRegion(displayDriverPoint || FALLBACK_CENTER))).current;
+  const [visualDriverBearing, setVisualDriverBearing] = useState(() => Number(displayDriverBearing) || 0);
   const trackedTarget = driverTracking && isNativeMapPoint(driverTrackingTarget) ? driverTrackingTarget : null;
   const routeCoordinates = useMemo(() => {
     const serverRoute = (driverRoutePoints || []).filter(isNativeMapPoint);
@@ -180,22 +193,119 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     && isNativeMapPoint(destination)
     && Boolean(bookingPickupTimeLabel || bookingDropoffTimeLabel);
 
+  const driverMotionAnchor = isNativeMapPoint(driverLocation) ? driverLocation : displayDriverPoint;
+  const driverMotionKey = driverMotionAnchor
+    ? `${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${driverLocationUpdatedAt || ''}`
+    : null;
+
   useEffect(() => {
-    if (!displayDriverPoint) return;
-    const nextRegion = initialRegion(displayDriverPoint);
-    if (!previousDriverPointRef.current) {
-      animatedDriverCoordinate.setValue(nextRegion);
-    } else {
-      animatedDriverCoordinate.timing({
-        ...nextRegion,
-        duration: markerAnimationDuration(previousDriverUpdatedAtRef.current, driverLocationUpdatedAt),
-        useNativeDriver: false,
-      } as any).start();
+    if (!displayDriverPoint) {
+      animationGenerationRef.current += 1;
+      lastAnimatedDriverKeyRef.current = null;
+      previousDriverPointRef.current = null;
+      previousDriverUpdatedAtRef.current = null;
+      animatedDriverCoordinate.stopAnimation(() => {});
+      return;
     }
-    previousDriverPointRef.current = displayDriverPoint;
-    const updatedAt = driverLocationUpdatedAt ? new Date(driverLocationUpdatedAt).getTime() : Number.NaN;
-    if (Number.isFinite(updatedAt)) previousDriverUpdatedAtRef.current = updatedAt;
-  }, [animatedDriverCoordinate, displayDriverPoint, driverLocationUpdatedAt]);
+    if (lastAnimatedDriverKeyRef.current === driverMotionKey) return;
+
+    const nextPoint = displayDriverPoint;
+    const nextBearing = Number(displayDriverBearing) || 0;
+    const nextUpdatedAt = driverLocationUpdatedAt ? new Date(driverLocationUpdatedAt).getTime() : Number.NaN;
+    const durationMs = markerAnimationDuration(previousDriverUpdatedAtRef.current, driverLocationUpdatedAt);
+    const generation = animationGenerationRef.current + 1;
+    const retainedRoute = previousFreshRouteRef.current;
+    animationGenerationRef.current = generation;
+    lastAnimatedDriverKeyRef.current = driverMotionKey;
+
+    const finishSnapshot = () => {
+      previousDriverPointRef.current = nextPoint;
+      if (Number.isFinite(nextUpdatedAt)) previousDriverUpdatedAtRef.current = nextUpdatedAt;
+    };
+
+    const runPlan = (from: NativeMapPoint) => {
+      if (animationGenerationRef.current !== generation) return;
+      // A refreshed route usually starts at this newest Driver point. Retain the
+      // last timestamped route too: it is the route most likely to contain both
+      // the displayed in-flight point and the newly received GPS point.
+      const routeCandidates = [
+        retainedRoute.tripStatus === tripStatus
+          ? retainedRoute
+          : { points: [], updatedAt: null },
+        { points: trustedDriverRoute, updatedAt: driverRouteUpdatedAt },
+      ];
+      const plans = routeCandidates.map((route) => planRiderRouteAnimation({
+        from,
+        to: nextPoint,
+        routePoints: route.points,
+        durationMs,
+        fallbackBearing: nextBearing,
+        routeUpdatedAt: route.updatedAt,
+        locationUpdatedAt: driverLocationUpdatedAt,
+      }));
+      const plan = plans.find((candidate) => candidate.mode === 'road') ?? plans[plans.length - 1];
+
+      if (plan.mode === 'stationary') {
+        setVisualDriverBearing(nextBearing);
+        finishSnapshot();
+        return;
+      }
+
+      const animateStep = (index: number) => {
+        if (animationGenerationRef.current !== generation) return;
+        const step = plan.steps[index];
+        if (!step) {
+          finishSnapshot();
+          return;
+        }
+        // Rotation belongs to the visual marker rather than the latest raw GPS
+        // prop so the branded car faces each server road segment as it turns.
+        setVisualDriverBearing(step.bearing);
+        animatedDriverCoordinate.timing({
+          ...initialRegion(step.point),
+          duration: step.durationMs,
+          useNativeDriver: false,
+        } as any).start(({ finished }) => {
+          if (!finished || animationGenerationRef.current !== generation) return;
+          animateStep(index + 1);
+        });
+      };
+
+      animateStep(0);
+    };
+
+    if (!previousDriverPointRef.current) {
+      animatedDriverCoordinate.setValue(initialRegion(nextPoint));
+      setVisualDriverBearing(nextBearing);
+      finishSnapshot();
+      return;
+    }
+
+    // Stop at the exact in-flight native coordinate before starting the newer
+    // plan. This prevents delayed Firestore snapshots from building an animation
+    // queue or visibly jumping back to the previous GPS target.
+    animatedDriverCoordinate.stopAnimation((currentRegion) => {
+      const currentPoint: NativeMapPoint = [currentRegion.latitude, currentRegion.longitude];
+      runPlan(isNativeMapPoint(currentPoint) ? currentPoint : previousDriverPointRef.current!);
+    });
+  }, [
+    animatedDriverCoordinate,
+    displayDriverBearing,
+    displayDriverPoint,
+    driverLocationUpdatedAt,
+    driverMotionKey,
+    driverRouteUpdatedAt,
+    tripStatus,
+    trustedDriverRoute,
+  ]);
+
+  useEffect(() => {
+    previousFreshRouteRef.current = {
+      points: trustedDriverRoute,
+      updatedAt: driverRouteUpdatedAt,
+      tripStatus,
+    };
+  }, [driverRouteUpdatedAt, tripStatus, trustedDriverRoute]);
 
   useEffect(() => {
     // A completed trip unmounts this surface. On its remount, a camera command
@@ -319,7 +429,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           coordinate={animatedDriverCoordinate as any}
           anchor={{ x: 0.5, y: 0.5 }}
           flat
-          rotation={Number(displayDriverBearing) || 0}
+          rotation={visualDriverBearing}
           tracksViewChanges={false}
           title={tripStatus === 'in_progress' ? 'HY3N Driver en route' : 'Your HY3N Driver'}
           zIndex={8}

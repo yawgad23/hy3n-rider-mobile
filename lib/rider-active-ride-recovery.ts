@@ -50,6 +50,7 @@ export type RecoveredActiveRide = {
   driverLocation?: { lat: number; lng: number };
   driverBearing?: number;
   driverLocationUpdatedAt?: string;
+  driverRouteUpdatedAt?: string;
   routeDistanceKm?: number;
   routeDurationMinutes?: number;
   routePhase?: 'pickup' | 'destination';
@@ -186,6 +187,7 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
     driverLocation,
     driverBearing: optionalFiniteNumber(driver.location?.heading ?? rawRide.driver_location?.heading),
     driverLocationUpdatedAt: nonEmptyText(driver.location?.recorded_at ?? rawRide.driver_location_updated_at) || undefined,
+    driverRouteUpdatedAt: nonEmptyText(liveRoute.updated_at) || undefined,
     routeDistanceKm: optionalFiniteNumber(liveRoute.distance_km),
     routeDurationMinutes: optionalFiniteNumber(liveRoute.duration_minutes),
     routePhase: liveRoute.phase === 'destination' || liveRoute.phase === 'pickup' ? liveRoute.phase : undefined,

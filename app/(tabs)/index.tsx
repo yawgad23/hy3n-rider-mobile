@@ -149,6 +149,8 @@ interface ActiveRide {
   driverLocation?: { lat: number; lng: number };
   driverBearing?: number;
   driverLocationUpdatedAt?: string;
+  /** Server timestamp proving the active road geometry is fresh enough to traverse visually. */
+  driverRouteUpdatedAt?: string;
   driverTotalTrips?: number;
   driverPhone?: string;
   driverMomoNumber?: string;
@@ -745,6 +747,7 @@ export default function RiderHomeScreen() {
             : undefined;
           const expectedRoutePhase = ride.status === 'in_progress' ? 'destination' : 'pickup';
           const hasCurrentServerRoute = serverRoutePhase === expectedRoutePhase;
+          const serverRouteUpdatedAt = String(liveRoute.updated_at || '').trim() || undefined;
           const serverRoutePoints = Array.isArray(liveRoute.points)
             ? liveRoute.points
               .map((point: any) => {
@@ -829,6 +832,9 @@ export default function RiderHomeScreen() {
             driverLocation: nextDriverLocation,
             driverBearing,
             driverLocationUpdatedAt: String((driver as any)?.location?.recorded_at || (driver as any)?.last_location_update || (ride as any).driver_location_updated_at || prev.driverLocationUpdatedAt || ''),
+            driverRouteUpdatedAt: hasCurrentServerRoute && serverRoutePoints?.length
+              ? serverRouteUpdatedAt
+              : undefined,
             routeDistanceKm: hasCurrentServerRoute ? serverRouteDistance ?? prev.routeDistanceKm : undefined,
             routeDurationMinutes: hasCurrentServerRoute ? serverRouteDuration ?? prev.routeDurationMinutes : undefined,
             routePhase: expectedRoutePhase,
@@ -3072,6 +3078,7 @@ export default function RiderHomeScreen() {
             : null
         }
         driverLocationUpdatedAt={activeRide?.driverLocationUpdatedAt ?? null}
+        driverRouteUpdatedAt={activeRide?.driverRouteUpdatedAt ?? null}
         driverBearing={activeRide?.driverBearing ?? null}
         driverColourHex={activeRide?.driverColourHex ?? null}
         driverVehicle={activeRide?.driverVehicle ?? null}

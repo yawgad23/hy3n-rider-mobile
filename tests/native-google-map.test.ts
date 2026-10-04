@@ -18,6 +18,18 @@ describe('Rider native Google Maps migration', () => {
     expect(component).not.toContain('react-native-webview');
   });
 
+  it('moves the active vehicle through fresh server road turns and cancels stale native queues', () => {
+    expect(component).toContain('planRiderRouteAnimation');
+    expect(component).toContain('driverRouteUpdatedAt');
+    expect(component).toContain('animatedDriverCoordinate.stopAnimation');
+    expect(component).toContain('animationGenerationRef');
+    expect(component).toContain('previousFreshRouteRef');
+    expect(component).toContain('rotation={visualDriverBearing}');
+    expect(component).toContain('Stop at the exact in-flight native coordinate');
+    expect(screen).toContain('driverRouteUpdatedAt: hasCurrentServerRoute');
+    expect(screen).toContain('driverRouteUpdatedAt={activeRide?.driverRouteUpdatedAt ?? null}');
+  });
+
   it('renders the active Rider screen with the native renderer', () => {
     expect(screen).toContain('NativeGoogleMap');
     expect(screen).not.toContain('import LeafletMap from');
