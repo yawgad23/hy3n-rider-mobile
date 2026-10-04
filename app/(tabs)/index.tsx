@@ -47,6 +47,7 @@ import { driverMobileCallUrl } from "@/lib/driver-mobile-call";
 import { expireStaleRiderSearch } from "@/lib/rider-search-expiry-api";
 import { getRiderRideStatus } from "@/lib/rider-ride-status-api";
 import { nonRegressiveRideStatus, riderTerminalStatus } from "@/lib/rider-ride-status";
+import { RIDER_STATUS_RECONCILIATION_INTERVAL_MS } from "@/lib/rider-status-reconciliation";
 import { buildEmergencyAssistMessage, getSafetySignal, requiresCancellationReason, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 import { trpc } from "@/lib/trpc";
 import { type ReceiptEmailStatus } from "@/lib/receipt-email";
@@ -327,6 +328,7 @@ export default function RiderHomeScreen() {
     { name: "Work", address: "Set location" },
   ]);
   const [activeRides, setActiveRides] = useState<ActiveRide[]>([]);
+  const activeRidesRef = useRef<ActiveRide[]>([]);
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const activeRide = activeRides.find((ride) => ride.id === selectedRideId) ?? activeRides[0] ?? null;
   const cancellationReasonRequired = activeRide
@@ -402,6 +404,10 @@ export default function RiderHomeScreen() {
     setActiveRides((prev) => removeRide(prev, rideId));
     setSelectedRideId((current) => current === rideId ? null : current);
   }, []);
+
+  useEffect(() => {
+    activeRidesRef.current = activeRides;
+  }, [activeRides]);
 
   // Firestore snapshots are normally instantaneous. When iOS pauses that
   // channel, the authenticated status fallback is equally authoritative and
@@ -834,7 +840,7 @@ export default function RiderHomeScreen() {
       serverSnapshots.forEach(({ rideId, ride }) => {
         const terminalStatus = riderTerminalStatus(ride.status);
         if (!terminalStatus) return;
-        const trackedRide = activeRides.find((candidate) => candidate.id === rideId || candidate.firestoreId === rideId);
+        const trackedRide = activeRidesRef.current.find((candidate) => candidate.id === rideId || candidate.firestoreId === rideId);
         if (!trackedRide) return;
         if (terminalStatus === 'completed') presentCompletedRide(trackedRide, ride);
         else removeActiveRide(trackedRide.id);
@@ -854,12 +860,12 @@ export default function RiderHomeScreen() {
     };
 
     void reconcileStatuses();
-    const timer = setInterval(() => { void reconcileStatuses(); }, 4_000);
+    const timer = setInterval(() => { void reconcileStatuses(); }, RIDER_STATUS_RECONCILIATION_INTERVAL_MS);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [user?.uid, activeRideKeys, activeRides, removeActiveRide, presentCompletedRide]);
+  }, [user?.uid, activeRideKeys, removeActiveRide, presentCompletedRide]);
 
   // A message becomes delivered once this Rider app receives it, even if the
   // chat sheet is closed. Opening the sheet additionally marks it as read.

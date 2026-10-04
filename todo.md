@@ -596,4 +596,3 @@
 ## Production Build Compatibility (Aug 2026)
 
 - [x] Align Expo SDK package versions and remove duplicate native dependencies reported by Expo Doctor
-- [ ] Validate react-native-webrtc on iOS and Android production builds because Expo Doctor reports it as untested on the New Architecture
