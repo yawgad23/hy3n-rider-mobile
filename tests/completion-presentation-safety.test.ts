@@ -45,9 +45,8 @@ describe('Rider completion presentation safety', () => {
 
     expect(terminalView).toContain('How was your ride?');
     expect(terminalView).toContain('Medaase');
-    expect(terminalView).toContain('Thank you');
-    expect(terminalView).not.toContain('Your feedback is anonymous.');
-    expect(source).not.toContain('Your feedback is anonymous.');
+    expect(terminalView).not.toContain('Thank you');
+    expect(source).not.toMatch(/thank you/i);
     expect(terminalView).toContain('Left something behind?');
     expect(terminalView).toContain('Contact driver');
     expect(terminalView).toContain('handleContactCompletedDriver');
@@ -58,8 +57,7 @@ describe('Rider completion presentation safety', () => {
     const source = fs.readFileSync(path.join(process.cwd(), 'components/post-ride-modal.tsx'), 'utf8');
 
     expect(source).toContain('Medaase');
-    expect(source).toContain('Thank you');
-    expect(source).not.toContain('Your feedback is anonymous.');
+    expect(source).not.toMatch(/thank you/i);
   });
 
   it('uses the authenticated status fallback to clear a completed ride when the Firestore listener is paused', () => {

@@ -1939,7 +1939,6 @@ export default function RiderHomeScreen() {
           </View>
           <Text style={{ color: TEXT, fontSize: 28, fontWeight: '900', textAlign: 'center' }}>How was your ride?</Text>
           <Text style={{ color: GOLD, fontSize: 18, fontWeight: '900', marginTop: 10, textAlign: 'center' }}>Medaase</Text>
-          <Text style={{ color: MUTED, fontSize: 13, marginTop: 3, textAlign: 'center' }}>Thank you</Text>
           <View style={{ flexDirection: 'row', gap: 14, marginTop: 30 }}>
             {[1, 2, 3, 4, 5].map((star) => (
               <TouchableOpacity
@@ -2461,7 +2460,7 @@ export default function RiderHomeScreen() {
               <MaterialIcons name="check-circle" size={40} color={GREEN} />
             </View>
             <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 20, marginBottom: 4 }}>Trip Complete!</Text>
-            <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>Thank you for riding with HY3N</Text>
+            <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>Medaase for riding with HY3N</Text>
 
             <View style={{ backgroundColor: CARD, borderRadius: 14, padding: 14, width: "100%", marginBottom: 16, borderWidth: 0.5, borderColor: BORDER }}>
               <Row label={activeRide.waitingFee && activeRide.waitingFee > 0 ? "Final fare (includes wait)" : "Final fare"} value={`GH₵${liveFare.toFixed(2)}`} />
@@ -2493,7 +2492,7 @@ export default function RiderHomeScreen() {
             {tipAdded && (
               <View style={{ width: "100%", backgroundColor: `${GREEN}1A`, borderRadius: 12, padding: 12, marginBottom: 10, alignItems: "center", borderWidth: 1, borderColor: `${GREEN}33` }}>
                 <Text style={{ color: GREEN, fontWeight: "600", fontSize: 13 }}>Tip Added: GH₵{tipAmount?.toFixed(2)}</Text>
-                <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>Thank you for your generosity!</Text>
+                <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>Medaase for your generosity!</Text>
               </View>
             )}
 
@@ -2507,7 +2506,6 @@ export default function RiderHomeScreen() {
             {!rideRated && (
               <View style={{ alignItems: "center", marginBottom: 8 }}>
                 <Text style={{ color: GOLD, fontSize: 15, fontWeight: "900" }}>Medaase</Text>
-                <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>Thank you</Text>
               </View>
             )}
             <TouchableOpacity
@@ -3403,7 +3401,7 @@ export default function RiderHomeScreen() {
                     console.warn('[Rating] Failed to save rating:', e);
                   }
                 }
-                Alert.alert("Thank you!", `You rated ${pendingRatingDriverName || activeRide?.driverName || "your driver"} ${ratingValue} star${ratingValue !== 1 ? 's' : ''}`);
+                Alert.alert("Medaase!", `You rated ${pendingRatingDriverName || activeRide?.driverName || "your driver"} ${ratingValue} star${ratingValue !== 1 ? 's' : ''}`);
               }}
               style={{ backgroundColor: GOLD, borderRadius: 14, paddingVertical: 14, alignItems: "center", marginBottom: 10 }}
             >
@@ -3505,7 +3503,7 @@ export default function RiderHomeScreen() {
             )}
             <TouchableOpacity
               onPress={async () => {
-                const receiptText = `HY3N Trip Receipt\nDate: ${new Date().toLocaleDateString('en-GH')}\nDestination: ${activeRide?.destination.name}\nFare: GH₵${activeRide ? getFinalRideFare(activeRide).toFixed(2) : '0.00'}\nTotal: GH₵${activeRide ? (getFinalRideFare(activeRide) + (tipAmount || 0)).toFixed(2) : '0.00'}\nDriver: ${activeRide?.driverName || 'N/A'}\n\nThank you for riding with HY3N!`;
+                const receiptText = `HY3N Trip Receipt\nDate: ${new Date().toLocaleDateString('en-GH')}\nDestination: ${activeRide?.destination.name}\nFare: GH₵${activeRide ? getFinalRideFare(activeRide).toFixed(2) : '0.00'}\nTotal: GH₵${activeRide ? (getFinalRideFare(activeRide) + (tipAmount || 0)).toFixed(2) : '0.00'}\nDriver: ${activeRide?.driverName || 'N/A'}\n\nMedaase for riding with HY3N!`;
                 try { await Share.share({ message: receiptText, title: 'HY3N Trip Receipt' }); } catch {}
               }}
               style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 14, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 16 }}

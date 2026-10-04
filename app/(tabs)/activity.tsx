@@ -168,7 +168,7 @@ export default function ActivityScreen() {
       <h2>Trip route</h2><div class="route"><div class="route-label">Pickup</div><div class="route-value">${escapeHtml(ride.pickup_address)}</div></div><div class="route"><div class="route-label">Destination</div><div class="route-value">${escapeHtml(ride.destination_address)}</div></div>
       <h2>Trip details</h2><table class="details">${row("Date", date)}${row("Category", ride.category)}${row("Distance", `${ride.distance.toFixed(1)} km`)}${row("Duration", `${ride.duration} min`)}${row("Payment", ride.payment)}${row("Trip ID", ride.id)}</table>
       <h2>Fare breakdown</h2><table class="details">${row(`${ride.category} final fare`, `GH₵${ride.fare.toFixed(2)}`)}${ride.waiting_fee ? row("Waiting fee", `Included · GH₵${ride.waiting_fee.toFixed(2)}`) : ""}${ride.tip ? row("Tip", `+GH₵${ride.tip.toFixed(2)}`) : ""}${row("Total paid", `GH₵${total.toFixed(2)}`)}</table>
-      <div class="footer">Thank you for riding with HY3N.<br/>Questions? hello@ridehy3n.com</div></div></body></html>`;
+      <div class="footer">Medaase for riding with HY3N.<br/>Questions? hello@ridehy3n.com</div></div></body></html>`;
       const { uri } = await Print.printToFileAsync({ html });
       if (!(await Sharing.isAvailableAsync())) {
         Alert.alert("Invoice ready", `The PDF was created at ${uri}`);
@@ -520,7 +520,7 @@ export default function ActivityScreen() {
                         selectedRide.driver_name ? `Driver: ${selectedRide.driver_name}` : null,
                         `Trip ID: ${selectedRide.id?.slice(0, 12)}`,
                         '',
-                        'Thank you for riding with HY3N!',
+                        'Medaase for riding with HY3N!',
                       ].filter(Boolean) as string[];
                       Share.share({ message: lines.join('\n'), title: 'HY3N Trip Receipt' });
                     }}

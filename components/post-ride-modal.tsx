@@ -142,7 +142,7 @@ export function PostRideModal({
     try {
       await dispatchService.rateDriver(rideId, ratingStars, feedback, selectedTags);
       onRatingSubmitted?.();
-      Alert.alert('Thank you!', 'Your rating has been submitted.');
+      Alert.alert('Medaase!', 'Your rating has been submitted.');
       setTimeout(() => onClose(), 500);
     } catch (err) {
       const presentation = presentDriverRatingSubmissionError(err);
@@ -160,7 +160,7 @@ export function PostRideModal({
 
   const handleShareReceipt = async () => {
     try {
-      const receiptText = `HY3N Receipt\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nRide ID: ${rideId}\nDriver: ${driverName}\nRating: ${driverRating.toFixed(1)} ⭐\n\nFrom: ${pickupAddress}\nTo: ${destinationAddress}\n\nDistance: ${distance.toFixed(1)} km\nDuration: ${duration} min\n\nFare: GH₵${fare.toFixed(2)}\nTip: GH₵${tip.toFixed(2)}\nTotal: GH₵${(fare + tip).toFixed(2)}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nThank you for riding with HY3N!`;
+      const receiptText = `HY3N Receipt\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nRide ID: ${rideId}\nDriver: ${driverName}\nRating: ${driverRating.toFixed(1)} ⭐\n\nFrom: ${pickupAddress}\nTo: ${destinationAddress}\n\nDistance: ${distance.toFixed(1)} km\nDuration: ${duration} min\n\nFare: GH₵${fare.toFixed(2)}\nTip: GH₵${tip.toFixed(2)}\nTotal: GH₵${(fare + tip).toFixed(2)}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nMedaase for riding with HY3N!`;
 
       await Share.share({
         message: receiptText,
@@ -184,9 +184,6 @@ export function PostRideModal({
                   </Text>
                   <Text style={{ color: GOLD, fontSize: 17, fontWeight: '900' }}>
                     Medaase
-                  </Text>
-                  <Text style={{ color: MUTED, fontSize: 13, marginTop: 3, marginBottom: 16 }}>
-                    Thank you
                   </Text>
 
                   <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
@@ -389,7 +386,7 @@ export function PostRideModal({
                         {emailStatus === 'sending' && <ActivityIndicator size="small" color={GOLD} />}
                       </View>
                       <Text style={{ color: MUTED, fontSize: 11, textAlign: 'center' }}>
-                        Thank you for riding with HY3N!
+                        Medaase for riding with HY3N!
                       </Text>
                     </View>
                   </View>

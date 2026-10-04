@@ -146,7 +146,7 @@ export async function endRiderLiveActivity(rideId: string, completed: boolean) {
   try {
     await stopActivity(activity.activityId, {
       title: completed ? 'Trip complete' : 'Ride cancelled',
-      subtitle: completed ? 'Thank you for riding with HY3N' : 'Open HY3N to book another ride',
+      subtitle: completed ? 'Medaase for riding with HY3N' : 'Open HY3N to book another ride',
       progressBar: { progress: 1 },
       imageName: 'hy3n_wordmark',
       dynamicIslandImageName: 'hy3n_wordmark',
