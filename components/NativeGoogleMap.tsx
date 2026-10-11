@@ -369,6 +369,10 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
+        // Keep the native Google Maps surface on the compatible Android
+        // renderer. This avoids the authenticated-but-blank tile screen
+        // reported on affected Android devices while preserving iOS behavior.
+        googleRenderer="LEGACY"
         initialRegion={initialRegion(mapCenter)}
         style={StyleSheet.absoluteFill}
         customMapStyle={colorScheme === 'dark' ? GOOGLE_DARK_STYLE : undefined}

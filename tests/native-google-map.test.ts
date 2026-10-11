@@ -10,6 +10,7 @@ const appConfig = readFileSync(path.join(process.cwd(), 'app.config.ts'), 'utf8'
 describe('Rider native Google Maps migration', () => {
   it('uses Google Maps with an animated branded driver marker, not a WebView', () => {
     expect(component).toContain('provider={PROVIDER_GOOGLE}');
+    expect(component).toContain('googleRenderer="LEGACY"');
     expect(component).toContain('Marker.Animated');
     expect(component).toContain('animatedDriverCoordinate.timing');
     expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 38');
