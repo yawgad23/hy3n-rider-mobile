@@ -88,7 +88,8 @@ const config: ExpoConfig = {
   android: {
     adaptiveIcon: {
       backgroundColor: "#0A0A0A",
-      foregroundImage: "./assets/images/rider-adaptive-foreground.png",
+      // Keep the Android launcher artwork aligned with the iOS app icon.
+      foregroundImage: "./assets/images/rider-android-adaptive-foreground.png",
       backgroundImage: "./assets/images/rider-adaptive-background.png",
       monochromeImage: "./assets/images/rider-adaptive-monochrome.png",
     },
