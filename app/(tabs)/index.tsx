@@ -65,6 +65,8 @@ import { deliveryRequestDetails, validateDeliveryBookingDetails } from "@/lib/de
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
 import { destinationArrivalReminder, shouldPromptForDestinationArrival } from "@/lib/rider-trip-feedback";
 import { bookingMapTimeLabels } from "@/lib/booking-map-presentation";
+import { findAnotherRideOffer, type FindAnotherRideOffer } from "@/lib/rider-find-another-ride";
+import { driverRedispatchCount, isDriverCancellationRedispatch } from "@/lib/rider-driver-redispatch";
 import {
   parseRiderStoredRebookDestination,
   parseRiderStoredSavedPlaces,
@@ -182,6 +184,7 @@ interface ActiveRide {
   lastRiderLocation?: { lat: number; lng: number };
   sharingActive?: boolean;
   shareExpiresAt?: string;
+  reassignmentCount?: number;
 }
 
 const DEFAULT_LOCATION: [number, number] = [5.6037, -0.187]; // Accra, Ghana
@@ -339,6 +342,7 @@ export default function RiderHomeScreen() {
   ]);
   const [activeRides, setActiveRides] = useState<ActiveRide[]>([]);
   const activeRidesRef = useRef<ActiveRide[]>([]);
+  const rebookPromptedRideIdsRef = useRef(new Set<string>());
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const activeRide = activeRides.find((ride) => ride.id === selectedRideId) ?? activeRides[0] ?? null;
   const cancellationReasonRequired = activeRide
@@ -416,6 +420,25 @@ export default function RiderHomeScreen() {
     void endRiderLiveActivity(rideId, false);
     setActiveRides((prev) => removeRide(prev, rideId));
     setSelectedRideId((current) => current === rideId ? null : current);
+  }, []);
+
+  const offerFindAnotherRide = useCallback((ride: ActiveRide, cancelledBy: unknown) => {
+    const offer = findAnotherRideOffer(ride.status, cancelledBy);
+    if (!offer) return false;
+
+    // Preserve the route only when this is the final active request. The Rider
+    // must explicitly choose the next search, preventing a duplicate request
+    // while another live ride remains active.
+    const hasAnotherActiveRide = activeRidesRef.current.some((candidate) => (
+      candidate.id !== ride.id && !['completed', 'cancelled'].includes(candidate.status)
+    ));
+    if (hasAnotherActiveRide) return false;
+
+    const rideKey = ride.firestoreId || ride.id;
+    if (rebookPromptedRideIdsRef.current.has(rideKey)) return true;
+    rebookPromptedRideIdsRef.current.add(rideKey);
+    setRebookOffer(offer);
+    return true;
   }, []);
 
   useEffect(() => {
@@ -539,6 +562,7 @@ export default function RiderHomeScreen() {
   // Cancel with reason
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [rebookOffer, setRebookOffer] = useState<FindAnotherRideOffer | null>(null);
   // Book for Someone
   const [bookForSomeone, setBookForSomeone] = useState(false);
   const [recipientName, setRecipientName] = useState("");
@@ -702,6 +726,10 @@ export default function RiderHomeScreen() {
           return;
         }
         if (terminalStatus === 'cancelled') {
+          offerFindAnotherRide(
+            trackedRide,
+            (ride as unknown as Record<string, unknown>).cancelled_by,
+          );
           removeActiveRide(trackedRide.id);
           return;
         }
@@ -712,6 +740,7 @@ export default function RiderHomeScreen() {
           // the same snapshot that ends the trip. Do not run live GPS/ETA
           // calculations or nested React state setters for terminal rides.
           const rawRide = ride as any;
+          const reassignedAfterDriverCancellation = isDriverCancellationRedispatch(rawRide);
           const driver = ride.driver || (
             rawRide.driver_name || rawRide.driver_vehicle || rawRide.driver_vehicle_make || rawRide.driver_plate
               ? {
@@ -806,56 +835,64 @@ export default function RiderHomeScreen() {
 
           return {
             ...prev,
-            status: nonRegressiveRideStatus(prev.status, ride.status as ActiveRide['status']),
-            driverName: driver?.name ?? prev.driverName,
-            driverId: driver?.id ?? (ride as any).driver_id ?? prev.driverId,
-            driverRating: driver?.rating ?? prev.driverRating,
+            // A Driver cancellation deliberately returns the same server-owned
+            // request to searching. This is the only safe backward transition.
+            status: reassignedAfterDriverCancellation
+              ? 'searching'
+              : nonRegressiveRideStatus(prev.status, ride.status as ActiveRide['status']),
+            driverName: reassignedAfterDriverCancellation ? undefined : (driver?.name ?? prev.driverName),
+            driverId: reassignedAfterDriverCancellation ? undefined : (driver?.id ?? (ride as any).driver_id ?? prev.driverId),
+            driverRating: reassignedAfterDriverCancellation ? undefined : (driver?.rating ?? prev.driverRating),
             driverRatingCount: reportedDriverRatingCount === null
-              ? prev.driverRatingCount
+              ? (reassignedAfterDriverCancellation ? undefined : prev.driverRatingCount)
               : Math.max(0, Math.floor(reportedDriverRatingCount)),
-            driverVehicle: driver ? `${driver.vehicle_make} ${driver.vehicle_model}` : prev.driverVehicle,
-            driverServiceType: (driver as any)?.service_type ?? (driver as any)?.serviceType ?? prev.driverServiceType,
-            driverPlate: driver?.plate ?? prev.driverPlate,
-            driverColour: driver?.vehicle_colour ?? prev.driverColour,
-            driverColourHex: driver?.vehicle_colour_hex ?? prev.driverColourHex,
+            driverVehicle: reassignedAfterDriverCancellation ? undefined : (driver ? `${driver.vehicle_make} ${driver.vehicle_model}` : prev.driverVehicle),
+            driverServiceType: reassignedAfterDriverCancellation ? undefined : ((driver as any)?.service_type ?? (driver as any)?.serviceType ?? prev.driverServiceType),
+            driverPlate: reassignedAfterDriverCancellation ? undefined : (driver?.plate ?? prev.driverPlate),
+            driverColour: reassignedAfterDriverCancellation ? undefined : (driver?.vehicle_colour ?? prev.driverColour),
+            driverColourHex: reassignedAfterDriverCancellation ? undefined : (driver?.vehicle_colour_hex ?? prev.driverColourHex),
             driverTotalTrips: reportedDriverTripTotal === null
-              ? prev.driverTotalTrips
+              ? (reassignedAfterDriverCancellation ? undefined : prev.driverTotalTrips)
               : Math.max(0, Math.floor(reportedDriverTripTotal)),
-            driverPhone: driver?.phone ?? prev.driverPhone,
-            driverPhoto: driverPhotoUri(driver) ?? driverPhotoUri(rawRide) ?? prev.driverPhoto,
+            driverPhone: reassignedAfterDriverCancellation ? undefined : (driver?.phone ?? prev.driverPhone),
+            driverPhoto: reassignedAfterDriverCancellation ? undefined : (driverPhotoUri(driver) ?? driverPhotoUri(rawRide) ?? prev.driverPhoto),
             driverMomoNumber: (ride as any).payment_method === 'mobile_money' || ride.payment === 'mobile_money'
-              ? ((driver as any)?.momo_number ?? (ride as any).driver_momo_number ?? prev.driverMomoNumber)
+              ? (reassignedAfterDriverCancellation ? undefined : ((driver as any)?.momo_number ?? (ride as any).driver_momo_number ?? prev.driverMomoNumber))
               : undefined,
             driverMomoNetwork: (ride as any).payment_method === 'mobile_money' || ride.payment === 'mobile_money'
-              ? ((driver as any)?.momo_network ?? (ride as any).driver_momo_network ?? prev.driverMomoNetwork)
+              ? (reassignedAfterDriverCancellation ? undefined : ((driver as any)?.momo_network ?? (ride as any).driver_momo_network ?? prev.driverMomoNetwork))
               : undefined,
-            driverLocation: nextDriverLocation,
-            driverBearing,
-            driverLocationUpdatedAt: String((driver as any)?.location?.recorded_at || (driver as any)?.last_location_update || (ride as any).driver_location_updated_at || prev.driverLocationUpdatedAt || ''),
-            driverRouteUpdatedAt: hasCurrentServerRoute && serverRoutePoints?.length
+            driverLocation: reassignedAfterDriverCancellation ? undefined : nextDriverLocation,
+            driverBearing: reassignedAfterDriverCancellation ? undefined : driverBearing,
+            driverLocationUpdatedAt: reassignedAfterDriverCancellation ? undefined : String((driver as any)?.location?.recorded_at || (driver as any)?.last_location_update || (ride as any).driver_location_updated_at || prev.driverLocationUpdatedAt || ''),
+            driverRouteUpdatedAt: reassignedAfterDriverCancellation ? undefined : (hasCurrentServerRoute && serverRoutePoints?.length
               ? serverRouteUpdatedAt
-              : undefined,
-            routeDistanceKm: hasCurrentServerRoute ? serverRouteDistance ?? prev.routeDistanceKm : undefined,
-            routeDurationMinutes: hasCurrentServerRoute ? serverRouteDuration ?? prev.routeDurationMinutes : undefined,
-            routePhase: expectedRoutePhase,
-            driverRoutePoints: hasCurrentServerRoute && serverRoutePoints?.length ? serverRoutePoints : undefined,
+              : undefined),
+            routeDistanceKm: reassignedAfterDriverCancellation ? undefined : (hasCurrentServerRoute ? serverRouteDistance ?? prev.routeDistanceKm : undefined),
+            routeDurationMinutes: reassignedAfterDriverCancellation ? undefined : (hasCurrentServerRoute ? serverRouteDuration ?? prev.routeDurationMinutes : undefined),
+            routePhase: reassignedAfterDriverCancellation ? undefined : expectedRoutePhase,
+            driverRoutePoints: reassignedAfterDriverCancellation ? undefined : (hasCurrentServerRoute && serverRoutePoints?.length ? serverRoutePoints : undefined),
             safetySignal,
             routeDeviationKm,
             driverStoppedAt,
-            eta: etaMin ?? prev.eta,
-            etaSeconds: (ride as any).eta_seconds ?? ((etaMin ?? 0) * 60),
+            eta: reassignedAfterDriverCancellation ? undefined : (etaMin ?? prev.eta),
+            etaSeconds: reassignedAfterDriverCancellation ? undefined : ((ride as any).eta_seconds ?? ((etaMin ?? 0) * 60)),
             quotedFare: getQuotedRideFare(ride),
             waitingFee: (ride as any).waiting_fee ?? prev.waitingFee,
-            matchedAt: prev.matchedAt ?? ((ride.status === 'driver_arriving' || ride.status === 'matched') ? new Date().toISOString() : prev.matchedAt),
+            matchedAt: reassignedAfterDriverCancellation ? undefined : (prev.matchedAt ?? ((ride.status === 'driver_arriving' || ride.status === 'matched') ? new Date().toISOString() : prev.matchedAt)),
+            ridePin: reassignedAfterDriverCancellation
+              ? String((ride as any).pickup_code || (ride as any).ride_pin || '') || undefined
+              : prev.ridePin,
             trackingStartedAt: enteredTrip ? Date.now() : prev.trackingStartedAt,
             actualDistanceKm: toFiniteNumber((ride as any).actual_distance_km ?? (ride as any).trip_meter?.distance_km) ?? prev.actualDistanceKm ?? 0,
             sharingActive: Boolean((ride as any).sharing_active),
             shareExpiresAt: String((ride as any).share_expires_at || '') || undefined,
+            reassignmentCount: reassignedAfterDriverCancellation ? driverRedispatchCount(rawRide) : prev.reassignmentCount,
           };
         });
       }));
     return () => subscriptions.forEach((unsubscribe) => unsubscribe());
-  }, [activeRideKeys, selectedRideId, updateActiveRide, removeActiveRide, presentCompletedRide]);
+  }, [activeRideKeys, selectedRideId, updateActiveRide, removeActiveRide, presentCompletedRide, offerFindAnotherRide]);
 
   // Firestore is the live transport, but an accepted trip must not remain on
   // “Searching” if an iOS snapshot is paused or disconnected. Reconcile the
@@ -886,7 +923,10 @@ export default function RiderHomeScreen() {
         const trackedRide = activeRidesRef.current.find((candidate) => candidate.id === rideId || candidate.firestoreId === rideId);
         if (!trackedRide) return;
         if (terminalStatus === 'completed') presentCompletedRide(trackedRide, ride);
-        else removeActiveRide(trackedRide.id);
+        else {
+          offerFindAnotherRide(trackedRide, ride.cancelled_by);
+          removeActiveRide(trackedRide.id);
+        }
       });
 
       const recovered = serverSnapshots
@@ -908,7 +948,7 @@ export default function RiderHomeScreen() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [user?.uid, activeRideKeys, removeActiveRide, presentCompletedRide]);
+  }, [user?.uid, activeRideKeys, removeActiveRide, presentCompletedRide, offerFindAnotherRide]);
 
   // A message becomes delivered once this Rider app receives it, even if the
   // chat sheet is closed. Opening the sheet additionally marks it as read.
@@ -1667,6 +1707,23 @@ export default function RiderHomeScreen() {
     setRecipientPhone("");
     setRecipientAddress("");
   };
+
+  const handleFindAnotherRide = () => {
+    // The prior quote was consumed by the cancelled request. Preserve the
+    // route details, but always request a new server-owned quote before the
+    // Rider can send another request.
+    setRebookOffer(null);
+    setServerQuotes({});
+    setQuotedRouteKey(null);
+    setQuoteRefreshNonce((nonce) => nonce + 1);
+    setBookingSheetCollapsed(false);
+  };
+
+  const dismissFindAnotherRide = () => {
+    setRebookOffer(null);
+    resetBookingState();
+  };
+
   const handleCancelRide = () => {
     if (activeRide?.status === "in_progress") {
       Alert.alert("Cannot Cancel", "You cannot cancel a ride that is already in progress.");
@@ -1690,6 +1747,7 @@ export default function RiderHomeScreen() {
   const confirmCancelRide = async () => {
     if (!activeRide) return;
     if (cancellationReasonRequired && !cancelReason) return;
+    const cancelledRide = activeRide;
     if (activeRide?.firestoreId) {
       try {
         await dispatchService.cancelRide(
@@ -1707,10 +1765,12 @@ export default function RiderHomeScreen() {
       }
     }
     setShowCancelModal(false);
-    removeActiveRide(activeRide?.id);
-    resetBookingState();
+    removeActiveRide(cancelledRide.id);
     setCancelReason("");
-    Alert.alert('Ride cancelled', 'Your ride request was cancelled. No Driver had started this trip and no trip fare was charged.');
+    if (!offerFindAnotherRide(cancelledRide, 'rider')) {
+      resetBookingState();
+      Alert.alert('Ride cancelled', 'Your ride request was cancelled. No Driver had started this trip and no trip fare was charged.');
+    }
   };
 
   const handleCancelBooking = () => {
@@ -1977,6 +2037,7 @@ export default function RiderHomeScreen() {
     if (!activeRide) return null;
     const isCompleted = activeRide.status === "completed";
     const isSearching = activeRide.status === "searching";
+    const isReassigningDriver = isSearching && (activeRide.reassignmentCount ?? 0) > 0;
     const hasDriver = ["matched", "driver_arriving", "driver_arrived", "in_progress"].includes(activeRide.status);
     const pairingDriverName = activeRide.driverName || "Your driver";
     const pairingVehicle = activeRide.driverVehicle || "HY3N vehicle";
@@ -2173,8 +2234,12 @@ export default function RiderHomeScreen() {
         {isSearching && (
           <View style={{ alignItems: "center", paddingVertical: 24 }}>
             <ActivityIndicator size="large" color={GOLD} style={{ marginBottom: 16 }} />
-            <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, marginBottom: 6 }}>Searching for driver...</Text>
-            <Text style={{ color: MUTED, fontSize: 13 }}>This usually takes 1–5 minutes</Text>
+            <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 18, marginBottom: 6 }}>
+              {isReassigningDriver ? 'Finding another Driver...' : 'Searching for driver...'}
+            </Text>
+            <Text style={{ color: MUTED, fontSize: 13 }}>
+              {isReassigningDriver ? 'Your previous Driver cancelled. We sent your request to nearby Drivers.' : 'This usually takes 1–5 minutes'}
+            </Text>
             <View style={{ backgroundColor: CARD, borderRadius: 14, padding: 14, marginTop: 16, width: "100%", borderWidth: 0.5, borderColor: BORDER }}>
               <Row label="Destination" value={activeRide.destination.name} />
               <Row label="Distance" value={`${activeRide.distance.toFixed(1)} km · ~${activeRide.duration} min`} />
@@ -2541,6 +2606,7 @@ export default function RiderHomeScreen() {
 
   const renderCompactSearchingRide = () => {
     if (!activeRide) return null;
+    const isReassigningDriver = (activeRide.reassignmentCount ?? 0) > 0;
     return (
       <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 8 }}>
         <TouchableOpacity
@@ -2554,9 +2620,13 @@ export default function RiderHomeScreen() {
             <ActivityIndicator size="small" color={GOLD} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: TEXT, fontSize: 14, fontWeight: "800" }}>Searching for a driver</Text>
+            <Text style={{ color: TEXT, fontSize: 14, fontWeight: "800" }}>
+              {isReassigningDriver ? 'Finding another Driver' : 'Searching for a driver'}
+            </Text>
             <Text style={{ color: MUTED, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
-              {activeRide.destination.name} · We will notify you when a Driver accepts
+              {isReassigningDriver
+                ? 'Previous Driver cancelled · notifying nearby Drivers'
+                : `${activeRide.destination.name} · We will notify you when a Driver accepts`}
             </Text>
           </View>
           <View style={{ alignItems: "flex-end" }}>
@@ -3569,6 +3639,41 @@ export default function RiderHomeScreen() {
                 style={{ flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: RED, alignItems: "center", opacity: cancellationReasonRequired && !cancelReason ? 0.55 : 1 }}
               >
                 <Text style={{ color: "#fff", fontWeight: "700" }}>Cancel Ride</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={Boolean(rebookOffer)} transparent animationType="fade" onRequestClose={dismissFindAnotherRide}>
+        <View style={{ flex: 1, justifyContent: "center", padding: 24, backgroundColor: "rgba(0,0,0,0.62)" }}>
+          <View style={{ backgroundColor: CARD, borderRadius: 24, padding: 22, borderWidth: 1, borderColor: `${GOLD}55` }}>
+            <View style={{ width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: `${GOLD}22`, marginBottom: 14 }}>
+              <MaterialIcons name="directions-car" size={24} color={GOLD} />
+            </View>
+            <Text style={{ color: TEXT, fontSize: 20, fontWeight: "800", marginBottom: 8 }}>
+              {rebookOffer?.title || 'Find another ride'}
+            </Text>
+            <Text style={{ color: MUTED, fontSize: 14, lineHeight: 20, marginBottom: 22 }}>
+              {rebookOffer?.message}
+            </Text>
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <TouchableOpacity
+                onPress={dismissFindAnotherRide}
+                accessibilityRole="button"
+                accessibilityLabel="Do not find another ride"
+                style={{ flex: 1, alignItems: "center", justifyContent: "center", minHeight: 50, borderRadius: 14, borderWidth: 1, borderColor: BORDER }}
+              >
+                <Text style={{ color: TEXT, fontWeight: "700" }}>Not now</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleFindAnotherRide}
+                accessibilityRole="button"
+                accessibilityLabel="Find another ride"
+                accessibilityHint="Loads a fresh server quote before you request another Driver"
+                style={{ flex: 1.35, alignItems: "center", justifyContent: "center", minHeight: 50, borderRadius: 14, backgroundColor: GREEN }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "800" }}>Find another ride</Text>
               </TouchableOpacity>
             </View>
           </View>

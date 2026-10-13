@@ -61,6 +61,7 @@ export type RecoveredActiveRide = {
   matchedAt?: string;
   actualDistanceKm?: number;
   waitingFee?: number;
+  reassignmentCount?: number;
 };
 
 const finiteNumber = (value: unknown, fallback = 0) => {
@@ -198,6 +199,7 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
     matchedAt: nonEmptyText(rawRide.matched_at ?? rawRide.accepted_at) || undefined,
     actualDistanceKm: optionalFiniteNumber(rawRide.actual_distance_km ?? rawRide.trip_meter?.distance_km),
     waitingFee: optionalFiniteNumber(rawRide.waiting_fee),
+    reassignmentCount: optionalFiniteNumber(rawRide.driver_reassignment_count),
   };
 }
 
