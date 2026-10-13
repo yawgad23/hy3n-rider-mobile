@@ -48,7 +48,7 @@ import { expireStaleRiderSearch } from "@/lib/rider-search-expiry-api";
 import { getRiderRideStatus } from "@/lib/rider-ride-status-api";
 import { nonRegressiveRideStatus, riderTerminalStatus } from "@/lib/rider-ride-status";
 import { RIDER_STATUS_RECONCILIATION_INTERVAL_MS } from "@/lib/rider-status-reconciliation";
-import { buildEmergencyAssistMessage, getSafetySignal, requiresCancellationReason, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
+import { buildEmergencyAssistMessage, getSafetySignal, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 import { trpc } from "@/lib/trpc";
 import { type ReceiptEmailStatus } from "@/lib/receipt-email";
 import { getFinalRideFare, getQuotedRideFare } from "@/lib/fare";
@@ -66,7 +66,7 @@ import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
 import { destinationArrivalReminder, shouldPromptForDestinationArrival } from "@/lib/rider-trip-feedback";
 import { bookingMapTimeLabels } from "@/lib/booking-map-presentation";
 import { findAnotherRideOffer, type FindAnotherRideOffer } from "@/lib/rider-find-another-ride";
-import { driverRedispatchCount, isDriverCancellationRedispatch } from "@/lib/rider-driver-redispatch";
+import { assignmentReleaseActor, driverRedispatchCount, isAssignmentReleaseRedispatch } from "@/lib/rider-driver-redispatch";
 import {
   parseRiderStoredRebookDestination,
   parseRiderStoredSavedPlaces,
@@ -185,6 +185,7 @@ interface ActiveRide {
   sharingActive?: boolean;
   shareExpiresAt?: string;
   reassignmentCount?: number;
+  assignmentReleaseActor?: 'rider' | 'driver';
 }
 
 const DEFAULT_LOCATION: [number, number] = [5.6037, -0.187]; // Accra, Ghana
@@ -345,9 +346,6 @@ export default function RiderHomeScreen() {
   const rebookPromptedRideIdsRef = useRef(new Set<string>());
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const activeRide = activeRides.find((ride) => ride.id === selectedRideId) ?? activeRides[0] ?? null;
-  const cancellationReasonRequired = activeRide
-    ? requiresCancellationReason(activeRide.status, activeRide.driverId)
-    : false;
   const [shareActionBusy, setShareActionBusy] = useState(false);
   const unreadChatCount = useUnreadChatCount(activeRide?.firestoreId || activeRide?.id || null, user?.uid || '', 'rider');
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -559,9 +557,6 @@ export default function RiderHomeScreen() {
   const [stops, setStops] = useState<(Location | null)[]>([]);
   // Trip Receipt
   const [showReceipt, setShowReceipt] = useState(false);
-  // Cancel with reason
-  const [showCancelModal, setShowCancelModal] = useState(false);
-  const [cancelReason, setCancelReason] = useState("");
   const [rebookOffer, setRebookOffer] = useState<FindAnotherRideOffer | null>(null);
   // Book for Someone
   const [bookForSomeone, setBookForSomeone] = useState(false);
@@ -740,7 +735,7 @@ export default function RiderHomeScreen() {
           // the same snapshot that ends the trip. Do not run live GPS/ETA
           // calculations or nested React state setters for terminal rides.
           const rawRide = ride as any;
-          const reassignedAfterDriverCancellation = isDriverCancellationRedispatch(rawRide);
+          const reassignedAfterDriverCancellation = isAssignmentReleaseRedispatch(rawRide);
           const driver = ride.driver || (
             rawRide.driver_name || rawRide.driver_vehicle || rawRide.driver_vehicle_make || rawRide.driver_plate
               ? {
@@ -888,6 +883,7 @@ export default function RiderHomeScreen() {
             sharingActive: Boolean((ride as any).sharing_active),
             shareExpiresAt: String((ride as any).share_expires_at || '') || undefined,
             reassignmentCount: reassignedAfterDriverCancellation ? driverRedispatchCount(rawRide) : prev.reassignmentCount,
+            assignmentReleaseActor: reassignedAfterDriverCancellation ? assignmentReleaseActor(rawRide) ?? undefined : prev.assignmentReleaseActor,
           };
         });
       }));
@@ -1687,14 +1683,6 @@ export default function RiderHomeScreen() {
     }
   };
 
-  const CANCEL_REASONS = [
-    "Driver is taking too long",
-    "I found another ride",
-    "Wrong pickup location",
-    "Changed my plans",
-    "Price is too high",
-    "Other",
-  ];
   const resetBookingState = () => {
     setDestination(null);
     setStops([]);
@@ -1730,43 +1718,83 @@ export default function RiderHomeScreen() {
       return;
     }
     if (!activeRide) return;
-    setCancelReason("");
-    if (!cancellationReasonRequired) {
+    const hasAssignedDriver = ['matched', 'driver_arriving', 'driver_arrived', 'driver_queued'].includes(activeRide.status)
+      && Boolean(activeRide.driverId);
+    if (!hasAssignedDriver) {
       Alert.alert(
         "Cancel ride request?",
         "No Driver is connected yet. You can cancel this request without selecting a reason.",
         [
           { text: "Keep Request", style: "cancel" },
-          { text: "Cancel Ride", style: "destructive", onPress: () => { void confirmCancelRide(); } },
+          { text: "Cancel Ride", style: "destructive", onPress: () => { void confirmCancelRide(false); } },
         ],
       );
       return;
     }
-    setShowCancelModal(true);
+    Alert.alert(
+      'Find another ride?',
+      'We will release this Driver and immediately look for another nearby Driver. Your pickup, destination, payment method, and locked fare will stay exactly the same.',
+      [
+        { text: 'Keep current Driver', style: 'cancel' },
+        { text: 'Find another ride', onPress: () => { void confirmCancelRide(true); } },
+      ],
+    );
   };
-  const confirmCancelRide = async () => {
+  const confirmCancelRide = async (redispatch: boolean) => {
     if (!activeRide) return;
-    if (cancellationReasonRequired && !cancelReason) return;
     const cancelledRide = activeRide;
+    let cancellation: { redispatched: boolean; ride?: Record<string, unknown> } | null = null;
     if (activeRide?.firestoreId) {
       try {
-        await dispatchService.cancelRide(
+        cancellation = await dispatchService.cancelRide(
           activeRide.firestoreId,
-          cancellationReasonRequired ? cancelReason : undefined,
+          { redispatch },
         );
       } catch (error) {
-        if ((error as Error & { code?: string })?.code === 'cancellation_reason_required') {
-          setCancelReason("");
-          setShowCancelModal(true);
-          return;
-        }
         Alert.alert('Cannot Cancel Ride', error instanceof Error ? error.message : 'Ride cancellation is unavailable right now.');
         return;
       }
     }
-    setShowCancelModal(false);
+    if (cancellation?.redispatched) {
+      // The backend kept the same ride, locked quote, payment selection, and
+      // route. Clear only the former Driver locally until Firestore delivers
+      // the authoritative searching snapshot and a new Driver accepts.
+      updateActiveRide(cancelledRide.id, (ride) => ({
+        ...ride,
+        status: 'searching',
+        driverId: undefined,
+        driverName: undefined,
+        driverRating: undefined,
+        driverRatingCount: undefined,
+        driverTotalTrips: undefined,
+        driverVehicle: undefined,
+        driverServiceType: undefined,
+        driverPlate: undefined,
+        driverColour: undefined,
+        driverColourHex: undefined,
+        driverPhoto: undefined,
+        driverPhone: undefined,
+        driverMomoNumber: undefined,
+        driverMomoNetwork: undefined,
+        driverLocation: undefined,
+        driverBearing: undefined,
+        driverLocationUpdatedAt: undefined,
+        driverRouteUpdatedAt: undefined,
+        driverRoutePoints: undefined,
+        routeDistanceKm: undefined,
+        routeDurationMinutes: undefined,
+        routePhase: undefined,
+        eta: undefined,
+        etaSeconds: undefined,
+        matchedAt: undefined,
+        ridePin: String(cancellation?.ride?.pickup_code || cancellation?.ride?.ride_pin || '') || undefined,
+        reassignmentCount: Math.max(1, (ride.reassignmentCount ?? 0) + 1),
+        assignmentReleaseActor: 'rider',
+      }));
+      setActiveRideSheetCollapsed(true);
+      return;
+    }
     removeActiveRide(cancelledRide.id);
-    setCancelReason("");
     if (!offerFindAnotherRide(cancelledRide, 'rider')) {
       resetBookingState();
       Alert.alert('Ride cancelled', 'Your ride request was cancelled. No Driver had started this trip and no trip fare was charged.');
@@ -2038,6 +2066,7 @@ export default function RiderHomeScreen() {
     const isCompleted = activeRide.status === "completed";
     const isSearching = activeRide.status === "searching";
     const isReassigningDriver = isSearching && (activeRide.reassignmentCount ?? 0) > 0;
+    const riderRequestedRedispatch = activeRide.assignmentReleaseActor === 'rider';
     const hasDriver = ["matched", "driver_arriving", "driver_arrived", "in_progress"].includes(activeRide.status);
     const pairingDriverName = activeRide.driverName || "Your driver";
     const pairingVehicle = activeRide.driverVehicle || "HY3N vehicle";
@@ -2238,7 +2267,11 @@ export default function RiderHomeScreen() {
               {isReassigningDriver ? 'Finding another Driver...' : 'Searching for driver...'}
             </Text>
             <Text style={{ color: MUTED, fontSize: 13 }}>
-              {isReassigningDriver ? 'Your previous Driver cancelled. We sent your request to nearby Drivers.' : 'This usually takes 1–5 minutes'}
+              {isReassigningDriver
+                ? riderRequestedRedispatch
+                  ? 'We released the previous Driver and sent this same request to nearby Drivers.'
+                  : 'Your previous Driver cancelled. We sent your request to nearby Drivers.'
+                : 'This usually takes 1–5 minutes'}
             </Text>
             <View style={{ backgroundColor: CARD, borderRadius: 14, padding: 14, marginTop: 16, width: "100%", borderWidth: 0.5, borderColor: BORDER }}>
               <Row label="Destination" value={activeRide.destination.name} />
@@ -2607,6 +2640,7 @@ export default function RiderHomeScreen() {
   const renderCompactSearchingRide = () => {
     if (!activeRide) return null;
     const isReassigningDriver = (activeRide.reassignmentCount ?? 0) > 0;
+    const riderRequestedRedispatch = activeRide.assignmentReleaseActor === 'rider';
     return (
       <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 8 }}>
         <TouchableOpacity
@@ -2625,7 +2659,9 @@ export default function RiderHomeScreen() {
             </Text>
             <Text style={{ color: MUTED, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
               {isReassigningDriver
-                ? 'Previous Driver cancelled · notifying nearby Drivers'
+                ? riderRequestedRedispatch
+                  ? 'Previous Driver released · notifying nearby Drivers'
+                  : 'Previous Driver cancelled · notifying nearby Drivers'
                 : `${activeRide.destination.name} · We will notify you when a Driver accepts`}
             </Text>
           </View>
@@ -3602,49 +3638,6 @@ export default function RiderHomeScreen() {
           currentUserName={riderProfile?.full_name || user?.displayName || 'Rider'}
         />
       )}
-
-
-      {/* A cancellation reason is collected only after a Driver is assigned. */}
-      <Modal visible={showCancelModal} transparent animationType="slide">
-        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
-          <View style={{ backgroundColor: CARD, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 }}>
-            <Text style={{ color: TEXT, fontWeight: "800", fontSize: 18, marginBottom: 4 }}>Cancel Ride</Text>
-            <Text style={{ color: MUTED, fontSize: 13, marginBottom: 16 }}>
-              {cancellationReasonRequired
-                ? "A Driver is connected. Please select a reason for cancelling."
-                : "No Driver is connected yet. You can cancel this request without selecting a reason."}
-            </Text>
-            {cancellationReasonRequired && CANCEL_REASONS.map((reason) => (
-              <TouchableOpacity
-                key={reason}
-                onPress={() => setCancelReason(reason)}
-                style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: BORDER }}
-              >
-                <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: cancelReason === reason ? RED : BORDER, alignItems: "center", justifyContent: "center" }}>
-                  {cancelReason === reason && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: RED }} />}
-                </View>
-                <Text style={{ color: TEXT, fontSize: 14 }}>{reason}</Text>
-              </TouchableOpacity>
-            ))}
-            <View style={{ flexDirection: "row", gap: 12, marginTop: 20 }}>
-              <TouchableOpacity
-                onPress={() => setShowCancelModal(false)}
-                style={{ flex: 1, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: BORDER, alignItems: "center" }}
-              >
-                <Text style={{ color: TEXT, fontWeight: "600" }}>Keep Ride</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={confirmCancelRide}
-                disabled={cancellationReasonRequired && !cancelReason}
-                style={{ flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: RED, alignItems: "center", opacity: cancellationReasonRequired && !cancelReason ? 0.55 : 1 }}
-              >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>Cancel Ride</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
       <Modal visible={Boolean(rebookOffer)} transparent animationType="fade" onRequestClose={dismissFindAnotherRide}>
         <View style={{ flex: 1, justifyContent: "center", padding: 24, backgroundColor: "rgba(0,0,0,0.62)" }}>
           <View style={{ backgroundColor: CARD, borderRadius: 24, padding: 22, borderWidth: 1, borderColor: `${GOLD}55` }}>

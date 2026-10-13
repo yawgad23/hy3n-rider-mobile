@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { driverRedispatchCount, isDriverCancellationRedispatch } from '@/lib/rider-driver-redispatch';
+import { assignmentReleaseActor, driverRedispatchCount, isAssignmentReleaseRedispatch } from '@/lib/rider-driver-redispatch';
 
-describe('Driver cancellation re-dispatch state', () => {
-  it('recognises only a reopened Driver-cancelled request', () => {
-    expect(isDriverCancellationRedispatch({ status: 'searching', reassigned_after_driver_cancellation: true })).toBe(true);
-    expect(isDriverCancellationRedispatch({ status: 'matched', reassigned_after_driver_cancellation: true })).toBe(false);
-    expect(isDriverCancellationRedispatch({ status: 'searching' })).toBe(false);
+describe('Assignment release re-dispatch state', () => {
+  it('recognises only a reopened assigned-Driver request', () => {
+    expect(isAssignmentReleaseRedispatch({ status: 'searching', reassigned_after_assignment_release: true })).toBe(true);
+    expect(isAssignmentReleaseRedispatch({ status: 'matched', reassigned_after_assignment_release: true })).toBe(false);
+    expect(isAssignmentReleaseRedispatch({ status: 'searching' })).toBe(false);
+  });
+
+  it('reports who released the previous Driver assignment', () => {
+    expect(assignmentReleaseActor({ assignment_release_actor: 'rider' })).toBe('rider');
+    expect(assignmentReleaseActor({ assignment_release_actor: 'driver' })).toBe('driver');
+    expect(assignmentReleaseActor({ assignment_release_actor: 'system' })).toBeNull();
   });
 
   it('normalises the server-owned re-dispatch count', () => {

@@ -68,7 +68,8 @@ describe('Rider completion presentation safety', () => {
 
     expect(fallbackBlock).toContain('riderTerminalStatus(ride.status)');
     expect(fallbackBlock).toContain("if (terminalStatus === 'completed') presentCompletedRide(trackedRide, ride)");
-    expect(fallbackBlock).toContain('else removeActiveRide(trackedRide.id)');
+    expect(fallbackBlock).toContain('offerFindAnotherRide(trackedRide, ride.cancelled_by)');
+    expect(fallbackBlock).toContain('removeActiveRide(trackedRide.id)');
     expect(fallbackBlock).toContain('!riderTerminalStatus(ride.status)');
   });
 });

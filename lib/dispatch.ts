@@ -415,23 +415,34 @@ export const dispatchService = {
   },
 
   /**
-   * Withdraw a searching request without a reason, or cancel an assigned ride
-   * with the Rider's selected reason. The backend decides which state applies.
+    * Withdraw a searching request without a reason, or cancel an assigned ride
+   * when the Rider declines re-dispatch. An assigned request can be re-sent to
+   * nearby Drivers without creating another booking or quote.
    */
-  async cancelRide(rideId: string, reason?: string): Promise<void> {
+  async cancelRide(
+    rideId: string,
+    options: { redispatch?: boolean; reason?: string } = {},
+  ): Promise<{ redispatched: boolean; ride?: Record<string, unknown> }> {
     const idToken = await auth.currentUser?.getIdToken();
     if (!idToken) throw new Error('Please sign in again before cancelling this ride.');
     const response = await fetch(`${getApiBaseUrl()}/api/rides/${encodeURIComponent(rideId)}/cancel`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-      body: JSON.stringify(reason ? { reason } : {}),
+      body: JSON.stringify(options),
     });
-    const payload = await response.json().catch(() => null) as { success?: boolean; code?: string; message?: string } | null;
+    const payload = await response.json().catch(() => null) as {
+      success?: boolean;
+      redispatched?: boolean;
+      ride?: Record<string, unknown>;
+      code?: string;
+      message?: string;
+    } | null;
     if (!response.ok || !payload?.success) {
       const error = new Error(payload?.message || 'Ride cancellation is unavailable right now.') as Error & { code?: string };
       error.code = payload?.code;
       throw error;
     }
+    return { redispatched: payload.redispatched === true, ride: payload.ride };
   },
 
   /**

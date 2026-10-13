@@ -62,6 +62,7 @@ export type RecoveredActiveRide = {
   actualDistanceKm?: number;
   waitingFee?: number;
   reassignmentCount?: number;
+  assignmentReleaseActor?: 'rider' | 'driver';
 };
 
 const finiteNumber = (value: unknown, fallback = 0) => {
@@ -200,6 +201,9 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
     actualDistanceKm: optionalFiniteNumber(rawRide.actual_distance_km ?? rawRide.trip_meter?.distance_km),
     waitingFee: optionalFiniteNumber(rawRide.waiting_fee),
     reassignmentCount: optionalFiniteNumber(rawRide.driver_reassignment_count),
+    assignmentReleaseActor: rawRide.assignment_release_actor === 'rider' || rawRide.assignment_release_actor === 'driver'
+      ? rawRide.assignment_release_actor
+      : undefined,
   };
 }
 
