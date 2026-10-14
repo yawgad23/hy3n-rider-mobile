@@ -77,6 +77,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           rating: 5.0,
           total_rides: 0,
           referral_code: Math.random().toString(36).slice(2, 8).toUpperCase(),
+          // Keep a durable registration timestamp. The admin dashboard uses it
+          // for ordering and must not be forced to infer registration from a
+          // later profile update or a first ride request.
+          created_date: new Date().toISOString(),
           ...registrationDetails,
         });
         setRiderProfile(newProfile as unknown as RiderProfile);
