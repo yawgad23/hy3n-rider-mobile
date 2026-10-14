@@ -199,6 +199,46 @@ export const firebaseAuth = {
     }
     return payload;
   },
+
+  async syncRiderProfile(input: { fullName: string; email: string; phone: string; inviteCode?: string }) {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error('Please sign in again before creating your account.');
+    const apiBaseUrl = getApiBaseUrl();
+    if (!apiBaseUrl) throw new Error('Account registration is temporarily unavailable. Please try again later.');
+    const idToken = await currentUser.getIdToken(true);
+    const response = await fetch(`${apiBaseUrl}/api/account/profile/rider`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.success !== true) {
+      const error = new Error(payload?.message || 'Your account could not be created. Please try again.') as Error & { code?: string };
+      error.code = payload?.code;
+      throw error;
+    }
+    return payload.profile;
+  },
+
+  async updateRiderContact(input: { fullName?: string; email?: string; phone?: string }) {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error('Please sign in again before updating your account.');
+    const apiBaseUrl = getApiBaseUrl();
+    if (!apiBaseUrl) throw new Error('Account updates are temporarily unavailable. Please try again later.');
+    const idToken = await currentUser.getIdToken(true);
+    const response = await fetch(`${apiBaseUrl}/api/account/profile/contact`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'rider', ...input }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.success !== true) {
+      const error = new Error(payload?.message || 'Your contact details could not be updated. Please try again.') as Error & { code?: string };
+      error.code = payload?.code;
+      throw error;
+    }
+    return payload.profile;
+  },
 };
 
 // ─── Firestore Helpers ────────────────────────────────────────────────────────

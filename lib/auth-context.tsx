@@ -60,30 +60,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         : await firestoreDB.list(COLLECTIONS.RIDER_PROFILES, { user_id: firebaseUser.uid });
       if (profiles.length > 0) {
         const existing = profiles[0] as RiderProfile;
-        if (registrationDetails) {
-          const updated = await firestoreDB.update(COLLECTIONS.RIDER_PROFILES, existing.id, registrationDetails);
-          setRiderProfile({ ...existing, ...updated } as RiderProfile);
-        } else {
-          setRiderProfile(existing);
-        }
+        setRiderProfile(existing);
       } else {
-        const newProfile = await firestoreDB.set(COLLECTIONS.RIDER_PROFILES, firebaseUser.uid, {
-          user_id: firebaseUser.uid,
-          full_name: registrationDetails?.full_name || firebaseUser.displayName || '',
-          email: registrationDetails?.email || firebaseUser.email || '',
-          phone: registrationDetails?.phone || firebaseUser.phoneNumber || '',
-          loyalty_points: 0,
-          loyalty_tier: 'Bronze',
-          rating: 5.0,
-          total_rides: 0,
-          referral_code: Math.random().toString(36).slice(2, 8).toUpperCase(),
-          // Keep a durable registration timestamp. The admin dashboard uses it
-          // for ordering and must not be forced to infer registration from a
-          // later profile update or a first ride request.
-          created_date: new Date().toISOString(),
-          ...registrationDetails,
-        });
-        setRiderProfile(newProfile as unknown as RiderProfile);
+        // Profile creation is server-owned so one phone/email claim cannot be
+        // written into a second account during an auth/profile race.
+        setRiderProfile(null);
       }
     } catch (err) {
       console.error('Error loading rider profile:', err);
@@ -148,6 +129,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     pendingRegistrationRef.current = bootstrap;
     try {
       const firebaseUser = await firebaseAuth.register(email, password, fullName);
+      await firebaseAuth.syncRiderProfile({
+        fullName: bootstrap.full_name,
+        email: bootstrap.email || email,
+        phone: bootstrap.phone || phone,
+        inviteCode: bootstrap.invite_code_used,
+      });
       setGuestMode(false);
       await loadProfile(firebaseUser, bootstrap);
     } finally {
@@ -177,8 +164,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateProfileData = async (data: Partial<RiderProfile>) => {
     if (!riderProfile?.id) return;
+    const hasContactChange = data.full_name !== undefined || data.email !== undefined || data.phone !== undefined;
+    if (hasContactChange) {
+      const updated = await firebaseAuth.updateRiderContact({
+        fullName: data.full_name,
+        email: data.email,
+        phone: data.phone,
+      });
+      setRiderProfile((previous) => previous ? {
+        ...previous,
+        full_name: updated.fullName || previous.full_name,
+        email: updated.email || previous.email,
+        phone: updated.phone || previous.phone,
+      } : previous);
+      return;
+    }
     const updated = await firestoreDB.update(COLLECTIONS.RIDER_PROFILES, riderProfile.id, data);
-    setRiderProfile((prev) => prev ? { ...prev, ...updated } : prev);
+    setRiderProfile((previous) => previous ? { ...previous, ...updated } : previous);
   };
 
   const signInWithGoogle = async () => {
