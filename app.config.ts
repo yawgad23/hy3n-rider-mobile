@@ -105,7 +105,8 @@ const config: ExpoConfig = {
     ...(nativeGoogleMaps.androidApiKey
       ? { config: { googleMaps: { apiKey: nativeGoogleMaps.androidApiKey } } }
       : {}),
-    permissions: ["POST_NOTIFICATIONS"],
+    permissions: ["POST_NOTIFICATIONS", "READ_CONTACTS"],
+    blockedPermissions: ["android.permission.WRITE_CONTACTS"],
     intentFilters: [
       {
         action: "VIEW",
@@ -136,12 +137,6 @@ const config: ExpoConfig = {
     "expo-audio",
     "expo-font",
     "expo-notifications",
-    [
-      "expo-contacts",
-      {
-        "contactsPermission": "HY3N uses the contact you choose to fill in a passenger name and phone number when you book a ride for someone else."
-      }
-    ],
     "@react-native-firebase/app",
     "@react-native-firebase/messaging",
     [
