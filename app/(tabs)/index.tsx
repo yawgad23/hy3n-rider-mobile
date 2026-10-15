@@ -103,6 +103,7 @@ const BORDER = "#2A2A2A";
 const TEXT = "#FAFAFA";
 const MUTED = "#9CA3AF";
 const HY3N_CAR_WORDMARK = require("@/assets/images/hy3n-car-wordmark-transparent.png");
+const HY3N_CAR_DELIVERY = require("@/assets/images/hy3n-car-delivery.png");
 
 interface Location {
   name: string;
@@ -2924,7 +2925,9 @@ export default function RiderHomeScreen() {
           const driverLabel = `${matchingVehicles.length} ${cat.name} Driver${matchingVehicles.length === 1 ? '' : 's'}`;
           const vehicleArtwork = cat.id === "okada"
             ? require("@/assets/images/ride-list-map-okada.png")
-            : isDeliveryCategory(cat.id)
+            : cat.id === "car_delivery"
+              ? HY3N_CAR_DELIVERY
+              : isDeliveryCategory(cat.id)
               ? require("@/assets/images/ride-list-map-delivery.png")
               : require("@/assets/images/ride-list-map-car.png");
           return (
@@ -3278,9 +3281,15 @@ export default function RiderHomeScreen() {
                 accessibilityLabel={`Choose ${category.name} and enter destination`}
                 style={{ width: "31%", minHeight: 108, justifyContent: "space-between", backgroundColor: selected ? `${GOLD}1A` : CARD, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
               >
-                <View style={{ width: 35, height: 35, borderRadius: 12, backgroundColor: selected ? GOLD : `${GREEN}20`, alignItems: "center", justifyContent: "center" }}>
-                  <MaterialIcons name={category.icon as any} size={20} color={selected ? "#151515" : GREEN} />
-                </View>
+                {category.id === 'car_delivery' ? (
+                  <View style={{ width: 54, height: 42, alignItems: 'center', justifyContent: 'center', marginLeft: -4, marginTop: -3 }}>
+                    <Image source={HY3N_CAR_DELIVERY} accessibilityLabel="HY3N car with delivery box" style={{ width: 54, height: 42 }} resizeMode="contain" />
+                  </View>
+                ) : (
+                  <View style={{ width: 35, height: 35, borderRadius: 12, backgroundColor: selected ? GOLD : `${GREEN}20`, alignItems: "center", justifyContent: "center" }}>
+                    <MaterialIcons name={category.icon as any} size={20} color={selected ? "#151515" : GREEN} />
+                  </View>
+                )}
                 <View>
                   <Text style={{ color: TEXT, fontSize: 13, fontWeight: "900" }} numberOfLines={2}>{category.name}</Text>
                   <Text style={{ color: MUTED, fontSize: 10, marginTop: 3 }} numberOfLines={1}>{category.seats ? `${category.seats} seats` : "Parcel"}</Text>
@@ -3358,7 +3367,9 @@ export default function RiderHomeScreen() {
         driverBearing={activeRide?.driverBearing ?? null}
         driverColourHex={activeRide?.driverColourHex ?? null}
         driverVehicle={activeRide?.driverVehicle ?? null}
-        driverServiceType={activeRide?.driverServiceType ?? activeRide?.categoryId ?? null}
+        // A Car Delivery Driver is technically a car Driver, but the active
+        // booking type is what determines the Rider's visual marker.
+        driverServiceType={isDeliveryCategory(activeRide?.categoryId) ? activeRide?.categoryId : (activeRide?.driverServiceType ?? activeRide?.categoryId ?? null)}
         driverEtaMinutes={activeRide?.status !== 'in_progress' && activeRide?.routePhase === 'pickup' ? (activeRide.routeDurationMinutes ?? activeRide.eta ?? null) : null}
         driverDistanceKm={activeRide?.routeDistanceKm ?? null}
         driverTracking={Boolean(activeRide && ['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(activeRide.status) && activeRide.driverLocation)}

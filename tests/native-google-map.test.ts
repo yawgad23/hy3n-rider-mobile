@@ -57,6 +57,13 @@ describe('Rider native Google Maps migration', () => {
     expect(screen).toContain('bookingMapTimeLabels');
   });
 
+  it('uses a car-with-box marker for Car Delivery and keeps bike delivery markers separate', () => {
+    expect(component).toContain("type.includes('car_delivery')");
+    expect(component).toContain("require('../assets/images/hy3n-car-delivery.png')");
+    expect(component).toContain("require('../assets/images/map-delivery-marker.png')");
+    expect(screen).toContain('isDeliveryCategory(activeRide?.categoryId) ? activeRide?.categoryId');
+  });
+
   it('keeps a fresh online Driver visible on the map while the Rider compares another category', () => {
     expect(screen).toContain('const nearbyVehiclesForMap = nearbyDrivers');
     expect(screen).toContain('nearbyDrivers={(!activeRide || activeRide.status === "searching")');

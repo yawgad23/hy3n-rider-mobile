@@ -79,6 +79,9 @@ function markerAsset(serviceType?: string | null) {
   if (type.includes('okada') || type.includes('motor') || type.includes('bike')) {
     return require('../assets/images/map-okada-marker.png');
   }
+  if (type.includes('car_delivery') || type.includes('car-delivery') || type.includes('car delivery')) {
+    return require('../assets/images/hy3n-car-delivery.png');
+  }
   if (type.includes('delivery') || type.includes('parcel') || type.includes('express')) {
     return require('../assets/images/map-delivery-marker.png');
   }
