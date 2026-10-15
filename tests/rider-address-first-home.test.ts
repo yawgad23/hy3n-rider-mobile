@@ -9,8 +9,15 @@ describe('Rider address-first home flow', () => {
     expect(screen).toContain('const renderAddressFirstHome = () => (');
     expect(screen).toContain('Akwaaba{riderProfile?.full_name');
     expect(screen).toContain('Wo ho te sɛn?');
+    expect(screen).toContain('const HY3N_CAR_WORDMARK = require("@/assets/images/hy3n-car-wordmark-transparent.png");');
     expect(screen).toContain('const showAddressFirstHome = !terminalRide && !activeRide && !destination;');
     expect(screen).toContain('showAddressFirstHome ? renderAddressFirstHome()');
+  });
+
+  it('uses the transparent car-and-wordmark logo on both the map and the address-first home', () => {
+    expect((screen.match(/source=\{HY3N_CAR_WORDMARK\}/g) || [])).toHaveLength(2);
+    expect(screen).toContain('accessibilityLabel="HY3N car logo"');
+    expect(screen).not.toContain("source={require('@/assets/images/icon.png')}");
   });
 
   it('does not mount the map or the empty request panel before a destination is chosen', () => {

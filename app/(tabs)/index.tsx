@@ -93,6 +93,7 @@ const CARD = "#1A1A1A";
 const BORDER = "#2A2A2A";
 const TEXT = "#FAFAFA";
 const MUTED = "#9CA3AF";
+const HY3N_CAR_WORDMARK = require("@/assets/images/hy3n-car-wordmark-transparent.png");
 
 interface Location {
   name: string;
@@ -3068,8 +3069,9 @@ export default function RiderHomeScreen() {
         <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
           <View style={{ flex: 1, paddingRight: 16 }}>
             <Image
-              source={require('@/assets/images/icon.png')}
-              style={{ width: 66, height: 38, resizeMode: 'contain', marginLeft: -7 }}
+              source={HY3N_CAR_WORDMARK}
+              accessibilityLabel="HY3N car logo"
+              style={{ width: 140, height: 52, resizeMode: 'contain', marginLeft: -7 }}
             />
             <Text style={{ color: greetingColor, fontSize: 28, fontWeight: '900', letterSpacing: -0.5, marginTop: 10 }}>
               Akwaaba{riderProfile?.full_name ? `, ${riderProfile.full_name.split(' ')[0]}` : ''}! 👋
@@ -3277,8 +3279,9 @@ export default function RiderHomeScreen() {
       {!showAddressFirstHome && <View style={{ position: "absolute", top: safeTop + 4, left: 16, right: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 10 }}>
         <View style={{ flexDirection: "column" }}>
           <Image
-            source={require('@/assets/images/icon.png')}
-            style={{ width: 58, height: 34, resizeMode: 'contain' }}
+            source={HY3N_CAR_WORDMARK}
+            accessibilityLabel="HY3N car logo"
+            style={{ width: 126, height: 47, resizeMode: 'contain' }}
           />
         </View>
         <TouchableOpacity
