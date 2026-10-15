@@ -68,6 +68,12 @@ import { bookingMapTimeLabels } from "@/lib/booking-map-presentation";
 import { findAnotherRideOffer, type FindAnotherRideOffer } from "@/lib/rider-find-another-ride";
 import { assignmentReleaseActor, driverRedispatchCount, isAssignmentReleaseRedispatch } from "@/lib/rider-driver-redispatch";
 import {
+  addRiderRouteStop,
+  hasPendingRiderRouteStop,
+  removeRiderRouteStop,
+  setRiderRouteStop,
+} from "@/lib/rider-multi-stop";
+import {
   parseRiderStoredRebookDestination,
   parseRiderStoredSavedPlaces,
   parseRiderStoredSearchHistory,
@@ -560,6 +566,7 @@ export default function RiderHomeScreen() {
 
   // Multi-stop
   const [stops, setStops] = useState<(Location | null)[]>([]);
+  const [editingStopIndex, setEditingStopIndex] = useState<number | null>(null);
   // Trip Receipt
   const [showReceipt, setShowReceipt] = useState(false);
   const [rebookOffer, setRebookOffer] = useState<FindAnotherRideOffer | null>(null);
@@ -1414,11 +1421,18 @@ export default function RiderHomeScreen() {
     }
 
     if (selectedMode === "stop") {
+      if (editingStopIndex === null || editingStopIndex < 0 || editingStopIndex >= stops.length) {
+        Alert.alert('Add a stop first', 'Tap Add stop to create a stop address field.');
+        return;
+      }
+      if (stops.some((stop, index) => index !== editingStopIndex && stop && stop.lat === resolved.lat && stop.lng === resolved.lng)) {
+        Alert.alert('Stop already added', 'Choose a different stop, or remove the existing one.');
+        return;
+      }
       setStops((previousStops) => {
-        if (previousStops.length >= 3) return previousStops;
-        const duplicate = previousStops.some((stop) => stop && stop.lat === resolved.lat && stop.lng === resolved.lng);
-        return duplicate ? previousStops : [...previousStops, resolved];
+        return setRiderRouteStop(previousStops, editingStopIndex, resolved);
       });
+      setEditingStopIndex(null);
       setSearchOpen(false);
       setSearchQuery("");
       return;
@@ -1442,6 +1456,11 @@ export default function RiderHomeScreen() {
     const paymentMethod = paymentOverride;
     if (!destination) {
       openLocationSearch("destination");
+      return;
+    }
+
+    if (hasPendingRiderRouteStop(stops)) {
+      Alert.alert('Finish your route', 'Enter an address for the added stop, or tap X to remove it before requesting your ride.');
       return;
     }
 
@@ -1691,6 +1710,7 @@ export default function RiderHomeScreen() {
   const resetBookingState = () => {
     setDestination(null);
     setStops([]);
+    setEditingStopIndex(null);
     setPromoInput("");
     setPromoError("");
     setIsScheduled(false);
@@ -1822,17 +1842,32 @@ export default function RiderHomeScreen() {
       Alert.alert("Limit reached", "You can add up to 3 stops.");
       return;
     }
+    const nextStopIndex = stops.length;
+    setStops((previousStops) => addRiderRouteStop(previousStops));
+    setEditingStopIndex(nextStopIndex);
     openLocationSearch("stop");
   };
 
-  const moveStop = (index: number, direction: -1 | 1) => {
-    setStops((prev) => {
-      const next = [...prev];
-      const swapIndex = index + direction;
-      if (swapIndex < 0 || swapIndex >= next.length) return prev;
-      [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
-      return next;
+  const handleEditStop = (index: number) => {
+    setEditingStopIndex(index);
+    openLocationSearch("stop");
+  };
+
+  const handleRemoveStop = (index: number) => {
+    setStops((previousStops) => removeRiderRouteStop(previousStops, index));
+    setEditingStopIndex((currentIndex) => {
+      if (currentIndex === null || currentIndex === index) return null;
+      return currentIndex > index ? currentIndex - 1 : currentIndex;
     });
+  };
+
+  const dismissLocationSearch = () => {
+    if (locationSearchMode === 'stop' && editingStopIndex !== null && stops[editingStopIndex] === null) {
+      handleRemoveStop(editingStopIndex);
+    }
+    setEditingStopIndex(null);
+    setSearchOpen(false);
+    setSearchQuery("");
   };
 
   const handleApplyPromo = () => {
@@ -2779,13 +2814,18 @@ export default function RiderHomeScreen() {
             </TouchableOpacity>
           </View>
           {stops.map((stop, idx) => (
-            <View key={`${stop?.name}-${idx}`} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: `${GOLD}0D`, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: `${GOLD}33` }}>
+            <View key={`${stop?.name || 'new-stop'}-${idx}`} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: `${GOLD}0D`, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: `${GOLD}33` }}>
               <MaterialIcons name="more-horiz" size={17} color={GOLD} />
-              <View style={{ flex: 1, minWidth: 0 }}>
+              <TouchableOpacity
+                onPress={() => handleEditStop(idx)}
+                accessibilityRole="button"
+                accessibilityLabel={stop ? `Edit stop ${idx + 1}` : `Enter address for stop ${idx + 1}`}
+                style={{ flex: 1, minWidth: 0 }}
+              >
                 <Text style={{ color: MUTED, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>Stop {idx + 1}</Text>
-                <Text style={{ color: TEXT, fontSize: 13, fontWeight: "700", marginTop: 1 }} numberOfLines={1}>{stop?.name}</Text>
-              </View>
-              <TouchableOpacity onPress={() => setStops((prev) => prev.filter((_, i) => i !== idx))} accessibilityLabel={`Remove stop ${idx + 1}`} style={{ padding: 4 }}>
+                <Text style={{ color: stop ? TEXT : GOLD, fontSize: 13, fontWeight: "700", marginTop: 1, fontStyle: stop ? 'normal' : 'italic' }} numberOfLines={1}>{stop?.name || 'Add stop address'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleRemoveStop(idx)} accessibilityRole="button" accessibilityLabel={`Remove stop ${idx + 1}`} style={{ padding: 4 }}>
                 <MaterialIcons name="close" size={18} color={RED} />
               </TouchableOpacity>
             </View>
@@ -3371,32 +3411,109 @@ export default function RiderHomeScreen() {
       {/* Search Modal */}
       <Modal visible={searchOpen} animationType="slide" presentationStyle="fullScreen">
         <View style={{ flex: 1, backgroundColor: BG, paddingTop: insets.top }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: BORDER }}>
-            <TouchableOpacity
-              onPress={() => { setSearchOpen(false); setSearchQuery(""); }}
-              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: CARD, alignItems: "center", justifyContent: "center" }}
-            >
-              <MaterialIcons name="arrow-back" size={20} color={TEXT} />
-            </TouchableOpacity>
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder={locationSearchMode === "pickup"
-                ? "Choose pickup location"
-                : locationSearchMode === "stop"
-                  ? "Enter a stop address"
-                  : "Where are you going?"}
-              placeholderTextColor={MUTED}
-              autoFocus
-              style={{ flex: 1, color: TEXT, fontSize: 16, paddingVertical: 8 }}
-              returnKeyType="search"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery("")}>
-                <MaterialIcons name="close" size={20} color={MUTED} />
+          {locationSearchMode === "stop" ? (
+            <>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12 }}>
+                <TouchableOpacity
+                  onPress={dismissLocationSearch}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close route editor"
+                  style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center" }}
+                >
+                  <MaterialIcons name="close" size={29} color={TEXT} />
+                </TouchableOpacity>
+                <Text style={{ color: TEXT, fontSize: 20, fontWeight: "900" }}>Route</Text>
+                <TouchableOpacity
+                  onPress={handleAddStop}
+                  disabled={stops.length >= 3}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add another stop"
+                  style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", opacity: stops.length >= 3 ? 0.35 : 1 }}
+                >
+                  <MaterialIcons name="add" size={29} color={TEXT} />
+                </TouchableOpacity>
+              </View>
+              <View style={{ marginHorizontal: 18, marginBottom: 8, borderWidth: 2, borderColor: GREEN, borderRadius: 18, backgroundColor: CARD, overflow: "hidden" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", minHeight: 66, paddingHorizontal: 16, gap: 12 }}>
+                  <MaterialIcons name="radio-button-checked" size={23} color={GREEN} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: MUTED, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>Pickup</Text>
+                    <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700", marginTop: 2 }} numberOfLines={1}>{pickupAddress || "Current location"}</Text>
+                  </View>
+                </View>
+                {stops.map((stop, index) => {
+                  const isEditing = editingStopIndex === index;
+                  return (
+                    <View key={`${stop?.name || 'new-stop'}-${index}`} style={{ flexDirection: "row", alignItems: "center", minHeight: 66, marginLeft: 16, paddingRight: 12, borderTopWidth: 1, borderTopColor: BORDER, gap: 12 }}>
+                      <MaterialIcons name="add-circle-outline" size={22} color={GREEN} />
+                      {isEditing ? (
+                        <TextInput
+                          value={searchQuery}
+                          onChangeText={setSearchQuery}
+                          placeholder="Add stop address"
+                          placeholderTextColor={MUTED}
+                          autoFocus
+                          accessibilityLabel={`Stop ${index + 1} address`}
+                          style={{ flex: 1, color: TEXT, fontSize: 17, paddingVertical: 10 }}
+                          returnKeyType="search"
+                        />
+                      ) : (
+                        <TouchableOpacity
+                          onPress={() => handleEditStop(index)}
+                          accessibilityRole="button"
+                          accessibilityLabel={stop ? `Edit stop ${index + 1}` : `Enter address for stop ${index + 1}`}
+                          style={{ flex: 1, paddingVertical: 10 }}
+                        >
+                          <Text style={{ color: stop ? TEXT : MUTED, fontSize: 17, fontWeight: stop ? "700" : "500", fontStyle: stop ? "normal" : "italic" }} numberOfLines={1}>{stop?.name || "Add stop address"}</Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        onPress={() => handleRemoveStop(index)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove stop ${index + 1}`}
+                        style={{ width: 38, height: 38, alignItems: "center", justifyContent: "center" }}
+                      >
+                        <MaterialIcons name="close" size={27} color={TEXT} />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+                <View style={{ flexDirection: "row", alignItems: "center", minHeight: 66, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: BORDER, gap: 12 }}>
+                  <MaterialIcons name="location-on" size={23} color={GOLD} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: MUTED, fontSize: 10, fontWeight: "800", textTransform: "uppercase" }}>Destination</Text>
+                    <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700", marginTop: 2 }} numberOfLines={1}>{destination?.name || "Selected destination"}</Text>
+                  </View>
+                </View>
+              </View>
+              <Text style={{ color: MUTED, fontSize: 12, lineHeight: 18, paddingHorizontal: 22, paddingVertical: 8 }}>Type the address, landmark, or place name for your stop, then choose the matching result.</Text>
+            </>
+          ) : (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: BORDER }}>
+              <TouchableOpacity
+                onPress={dismissLocationSearch}
+                accessibilityRole="button"
+                accessibilityLabel="Close location search"
+                style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: CARD, alignItems: "center", justifyContent: "center" }}
+              >
+                <MaterialIcons name="arrow-back" size={20} color={TEXT} />
               </TouchableOpacity>
-            )}
-          </View>
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder={locationSearchMode === "pickup" ? "Choose pickup location" : "Where are you going?"}
+                placeholderTextColor={MUTED}
+                autoFocus
+                style={{ flex: 1, color: TEXT, fontSize: 16, paddingVertical: 8 }}
+                returnKeyType="search"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery("")} accessibilityRole="button" accessibilityLabel="Clear location search">
+                  <MaterialIcons name="close" size={20} color={MUTED} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
           {suggestionsLoading && searchQuery.length >= 2 && (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 10 }}>
@@ -3414,12 +3531,6 @@ export default function RiderHomeScreen() {
             keyExtractor={(item, i) => `${item.name}-${i}`}
             ListHeaderComponent={
               <>
-                {locationSearchMode === "stop" && !searchQuery && (
-                  <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 }}>
-                    <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }}>Add a stop</Text>
-                    <Text style={{ color: MUTED, fontSize: 13, lineHeight: 19, marginTop: 5 }}>Type the address, landmark, or place name for this stop, then choose the matching result.</Text>
-                  </View>
-                )}
                 {searchHistory.length > 0 && !searchQuery && (
                   <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
                     <Text style={{ color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600" }}>Recent</Text>
