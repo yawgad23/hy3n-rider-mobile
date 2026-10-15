@@ -3538,7 +3538,14 @@ export default function RiderHomeScreen() {
       </>}
 
       {/* Search Modal */}
-      <Modal visible={searchOpen} animationType="slide" presentationStyle="fullScreen">
+      <Modal
+        visible={searchOpen}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        // Android's system Back button must perform the same safe close as the
+        // visible top-left arrow, including removing an unused provisional stop.
+        onRequestClose={dismissLocationSearch}
+      >
         <View style={{ flex: 1, backgroundColor: BG, paddingTop: insets.top }}>
           {locationSearchMode === "stop" ? (
             <>
