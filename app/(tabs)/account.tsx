@@ -21,6 +21,7 @@ import { Notifications } from '@/lib/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeContext } from '@/lib/theme-provider';
 import { useColors } from '@/hooks/use-colors';
+import { riderProfileCompletionMessage, riderProfileIsComplete } from '@/lib/rider-profile-completeness';
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -183,15 +184,19 @@ export default function AccountScreen() {
   const progressToNext = nextTier ? (userPoints - currentTier.minPoints) / (nextTier.minPoints - currentTier.minPoints) : 1;
 
   const handleSaveProfile = async () => {
-    setName(editName);
-    setPhone(editPhone);
-    setEmail(editEmail);
-    setShowEditProfile(false);
+    if (!riderProfileIsComplete({ full_name: editName, email: editEmail, phone: editPhone })) {
+      Alert.alert('Profile details required', riderProfileCompletionMessage());
+      return;
+    }
     try {
       await updateProfile({ full_name: editName, phone: editPhone, email: editEmail });
+      setName(editName.trim());
+      setPhone(editPhone.trim());
+      setEmail(editEmail.trim().toLowerCase());
+      setShowEditProfile(false);
       Alert.alert('Saved', 'Profile updated successfully');
-    } catch (err) {
-      Alert.alert('Error', 'Failed to save profile');
+    } catch (err: any) {
+      Alert.alert('Profile not saved', err?.message || 'Failed to save profile');
     }
   };
 

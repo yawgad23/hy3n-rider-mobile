@@ -132,6 +132,7 @@ export default function RootLayout() {
                 <Stack.Screen name="privacy" options={{ presentation: "modal" }} />
                 <Stack.Screen name="login" />
                 <Stack.Screen name="register" />
+                <Stack.Screen name="complete-profile" />
                 <Stack.Screen name="forgot-password" />
                 <Stack.Screen name="oauth/callback" />
                 <Stack.Screen name="safety" options={{ presentation: "modal" }} />

@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/use-colors";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useAuth } from "@/lib/auth-context";
+import { riderProfileIsComplete } from "@/lib/rider-profile-completeness";
 import { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -35,7 +36,7 @@ function TabBarIcon({ name, color, focused }: TabBarIconProps) {
 export default function TabLayout() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user, loading } = useAuth();
+  const { user, riderProfile, loading } = useAuth();
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [activeRideCount, setActiveRideCount] = useState(0);
 
@@ -65,10 +66,15 @@ export default function TabLayout() {
       }
       if (!user) {
         router.replace('/login' as any);
+      } else if (!riderProfileIsComplete(riderProfile)) {
+        // Never allow phone or Google sign-in to bypass the required account
+        // identity fields. The completion screen persists these server-side.
+        router.replace('/complete-profile' as any);
+        return;
       }
       setOnboardingChecked(true);
     })();
-  }, [user, loading]);
+  }, [user, riderProfile, loading]);
 
   if (loading) {
     return (
@@ -78,7 +84,7 @@ export default function TabLayout() {
     );
   }
 
-  if (!user) return null;
+  if (!user || !riderProfileIsComplete(riderProfile)) return null;
   const bottomPadding = Math.max(insets.bottom, 12);
   const tabBarHeight = 70 + bottomPadding;
 
