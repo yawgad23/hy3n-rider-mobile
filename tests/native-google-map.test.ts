@@ -69,10 +69,9 @@ describe('Rider native Google Maps migration', () => {
     expect(screen).toContain('routeOverview={routeOverview}');
   });
 
-  it('uses a car-with-box marker for Car Delivery and keeps bike delivery markers separate', () => {
-    expect(component).toContain("type.includes('car_delivery')");
-    expect(component).toContain("require('../assets/images/hy3n-car-delivery.png')");
+  it('keeps trunk artwork in service cards and uses the delivery bike marker on maps', () => {
     expect(component).toContain("require('../assets/images/map-delivery-marker.png')");
+    expect(component).not.toContain("require('../assets/images/hy3n-car-delivery-open-trunk-card.png')");
     expect(screen).toContain('isDeliveryCategory(activeRide?.categoryId) ? activeRide?.categoryId');
   });
 

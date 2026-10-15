@@ -104,7 +104,7 @@ const BORDER = "#2A2A2A";
 const TEXT = "#FAFAFA";
 const MUTED = "#9CA3AF";
 const HY3N_CAR_WORDMARK = require("@/assets/images/hy3n-car-wordmark-transparent.png");
-const HY3N_CAR_DELIVERY = require("@/assets/images/hy3n-car-delivery.png");
+const HY3N_CAR_DELIVERY = require("@/assets/images/hy3n-car-delivery-open-trunk-card-clean.png");
 const EMPTY_ROUTE_POINTS: [number, number][] = [];
 
 interface Location {

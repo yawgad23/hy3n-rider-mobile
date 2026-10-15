@@ -35,7 +35,7 @@ describe('Rider address-first home flow', () => {
   });
 
   it('shows Car Delivery as a HY3N car carrying a box on both service-card stages', () => {
-    expect(screen).toContain('const HY3N_CAR_DELIVERY = require("@/assets/images/hy3n-car-delivery.png");');
+    expect(screen).toContain('const HY3N_CAR_DELIVERY = require("@/assets/images/hy3n-car-delivery-open-trunk-card-clean.png");');
     expect(screen).toContain('cat.id === "car_delivery"');
     expect(screen).toContain('category.id === \'car_delivery\'');
     expect(screen).toContain('accessibilityLabel="HY3N car with delivery box"');
