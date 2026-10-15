@@ -66,6 +66,7 @@ import { deliveryRequestDetails, isDeliveryCategory, validateDeliveryBookingDeta
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
 import { destinationArrivalReminder, shouldPromptForDestinationArrival } from "@/lib/rider-trip-feedback";
 import { bookingMapTimeLabels } from "@/lib/booking-map-presentation";
+import { authoritativeRouteOverviewPoints } from "@/lib/native-map-camera";
 import { findAnotherRideOffer, type FindAnotherRideOffer } from "@/lib/rider-find-another-ride";
 import { assignmentReleaseActor, driverRedispatchCount, isAssignmentReleaseRedispatch } from "@/lib/rider-driver-redispatch";
 import {
@@ -104,6 +105,7 @@ const TEXT = "#FAFAFA";
 const MUTED = "#9CA3AF";
 const HY3N_CAR_WORDMARK = require("@/assets/images/hy3n-car-wordmark-transparent.png");
 const HY3N_CAR_DELIVERY = require("@/assets/images/hy3n-car-delivery.png");
+const EMPTY_ROUTE_POINTS: [number, number][] = [];
 
 interface Location {
   name: string;
@@ -346,6 +348,7 @@ export default function RiderHomeScreen() {
   const [locationSearchMode, setLocationSearchMode] = useState<"pickup" | "destination" | "stop">("destination");
   const [bookingSheetCollapsed, setBookingSheetCollapsed] = useState(false);
   const [activeRideSheetCollapsed, setActiveRideSheetCollapsed] = useState(true);
+  const [routeOverview, setRouteOverview] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(RIDE_CATEGORIES[0]);
   const [selectedPayment, setSelectedPayment] = useState(PAYMENT_METHODS[0]);
   // The start screen previews every HY3N service without showing a fare. A
@@ -1225,11 +1228,29 @@ export default function RiderHomeScreen() {
         routeDurationMinutes: selectedQuote?.durationMinutes,
       })
     : null;
+  const displayedRoutePoints = activeRide?.driverRoutePoints
+    ?? activeRide?.bookingRoutePoints
+    ?? selectedQuote?.routePoints
+    ?? EMPTY_ROUTE_POINTS;
+  const routeOverviewPoints = useMemo(
+    () => authoritativeRouteOverviewPoints(displayedRoutePoints),
+    [displayedRoutePoints],
+  );
+  const canShowRouteOverview = routeOverviewPoints.length > 1;
+  const routeOverviewDestination = activeRide?.destination ?? destination;
+  const routeOverviewDurationMinutes = activeRide?.routeDurationMinutes ?? selectedQuote?.durationMinutes ?? null;
+  const routeOverviewDistanceKm = activeRide?.routeDistanceKm ?? selectedQuote?.distanceKm ?? null;
   const requestQuoteReady = isServerQuoteCurrent(quotedRouteKey, quoteRouteKey)
     && canRequestServerQuotedRide(selectedQuote, quoteLoading);
   const bookingFare = selectedQuote?.available ? selectedQuote.total : 0;
   const quoteSurgeMultiplier = selectedQuote?.surgeMultiplier ?? surge.multiplier;
   const preTipAmount = selectedTipPercent ? (bookingFare * selectedTipPercent) / 100 : (customTip ? parseFloat(customTip) : 0);
+
+  // A route overview is strictly a native map-camera preference. It never
+  // changes the server quote, booking route, Driver tracking, or trip state.
+  useEffect(() => {
+    if (!canShowRouteOverview) setRouteOverview(false);
+  }, [canShowRouteOverview]);
 
   // The app displays quotes from the protected API rather than calculating a
   // fare locally. A price edit in the admin dashboard applies on this refresh;
@@ -3378,9 +3399,8 @@ export default function RiderHomeScreen() {
             ? [activeRide.destination.lat, activeRide.destination.lng] as [number, number]
             : [activeRide.pickupLocation.lat, activeRide.pickupLocation.lng] as [number, number])
           : null}
-        driverRoutePoints={activeRide?.driverRoutePoints
-          ?? activeRide?.bookingRoutePoints
-          ?? (!activeRide && selectedQuote?.routePoints ? selectedQuote.routePoints : null)}
+        driverRoutePoints={displayedRoutePoints}
+        routeOverview={routeOverview}
         bookingPickupTimeLabel={!activeRide && destination ? bookingMapTimes?.pickup ?? null : null}
         bookingDropoffTimeLabel={!activeRide && destination ? bookingMapTimes?.dropoff ?? null : null}
         tripStatus={activeRide?.status ?? null}
@@ -3406,6 +3426,40 @@ export default function RiderHomeScreen() {
           <MaterialIcons name="notifications" size={20} color={TEXT} />
         </TouchableOpacity>
       </View>}
+
+      {!showAddressFirstHome && canShowRouteOverview && routeOverviewDestination && (
+        <>
+          <TouchableOpacity
+            onPress={() => setRouteOverview((visible) => !visible)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: routeOverview }}
+            accessibilityLabel={routeOverview ? "Return to close live map" : "Show full route details"}
+            accessibilityHint="Changes only the map camera between the close live view and the complete server route"
+            style={{ position: "absolute", right: 16, bottom: sheetHeight + (routeOverview ? 142 : 22), width: 52, height: 52, borderRadius: 26, backgroundColor: routeOverview ? GREEN : "rgba(17,17,17,0.94)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: routeOverview ? "#67D89E" : BORDER, zIndex: 9, shadowColor: "#000", shadowOpacity: 0.24, shadowRadius: 7, shadowOffset: { width: 0, height: 3 }, elevation: 6 }}
+          >
+            <MaterialIcons name={routeOverview ? "my-location" : "alt-route"} size={25} color={routeOverview ? "#FFFFFF" : GOLD} />
+          </TouchableOpacity>
+
+          {routeOverview && (
+            <View style={{ position: "absolute", left: 16, right: 82, bottom: sheetHeight + 22, backgroundColor: "rgba(17,17,17,0.96)", borderRadius: 17, paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, borderColor: BORDER, zIndex: 9, shadowColor: "#000", shadowOpacity: 0.24, shadowRadius: 7, shadowOffset: { width: 0, height: 3 }, elevation: 6 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <Text style={{ color: GOLD, fontSize: 11, fontWeight: "900", letterSpacing: 0.8 }}>ROUTE DETAILS</Text>
+                <Text style={{ color: TEXT, fontSize: 12, fontWeight: "800" }}>
+                  {routeOverviewDurationMinutes ? `${Math.max(1, Math.ceil(routeOverviewDurationMinutes))} min` : "Live route"}{routeOverviewDistanceKm ? ` · ${routeOverviewDistanceKm.toFixed(1)} km` : ""}
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 9, marginTop: 9 }}>
+                <MaterialIcons name="radio-button-checked" size={17} color={GREEN} />
+                <Text style={{ flex: 1, color: TEXT, fontSize: 13, fontWeight: "700" }} numberOfLines={1}>{activeRide?.status === "in_progress" ? "Current trip" : "Pickup"}</Text>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 9, marginTop: 5 }}>
+                <MaterialIcons name="place" size={17} color={GOLD} />
+                <Text style={{ flex: 1, color: TEXT, fontSize: 13, fontWeight: "700" }} numberOfLines={1}>{routeOverviewDestination.name}</Text>
+              </View>
+            </View>
+          )}
+        </>
+      )}
 
       {/* Bottom Sheet */}
       {showAddressFirstHome ? renderAddressFirstHome() : <View style={{

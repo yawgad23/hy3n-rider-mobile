@@ -30,6 +30,17 @@ export function isNativeMapPoint(value: unknown): value is NativeMapPoint {
     && Math.abs(Number(value[1])) <= 180;
 }
 
+/**
+ * A Rider may ask to see the complete route, but the map must only frame
+ * server-published road geometry. Returning an empty list keeps the overview
+ * control unavailable until the quote or active trip has a real route.
+ */
+export function authoritativeRouteOverviewPoints(routePoints: unknown): NativeMapPoint[] {
+  if (!Array.isArray(routePoints)) return [];
+  const points = routePoints.filter(isNativeMapPoint);
+  return points.length > 1 ? points : [];
+}
+
 function bounded(value: number, minimum: number, maximum: number) {
   return Math.max(minimum, Math.min(maximum, value));
 }

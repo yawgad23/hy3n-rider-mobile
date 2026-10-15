@@ -3,7 +3,7 @@ import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'r
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { matchPointToServerRoute } from '@/lib/rider-route-matching';
 import { planRiderRouteAnimation } from '@/lib/rider-route-animation';
-import { bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
+import { authoritativeRouteOverviewPoints, bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
 
 export type NearbyDriver = {
   id: string;
@@ -32,6 +32,8 @@ type NativeGoogleMapProps = {
   driverTracking?: boolean;
   driverTrackingTarget?: NativeMapPoint | null;
   driverRoutePoints?: NativeMapPoint[] | null;
+  /** Explicit Rider request to view server-published route details. */
+  routeOverview?: boolean;
   bookingPickupTimeLabel?: string | null;
   bookingDropoffTimeLabel?: string | null;
   tripStatus?: string | null;
@@ -150,6 +152,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   driverTracking = false,
   driverTrackingTarget = null,
   driverRoutePoints = null,
+  routeOverview = false,
   bookingPickupTimeLabel = null,
   bookingDropoffTimeLabel = null,
   tripStatus = null,
@@ -162,6 +165,8 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const previousDriverUpdatedAtRef = useRef<number | null>(null);
   const animationGenerationRef = useRef(0);
   const lastAnimatedDriverKeyRef = useRef<string | null>(null);
+  const routeOverviewFitRef = useRef(false);
+  const previousRouteOverviewRef = useRef(false);
   const previousFreshRouteRef = useRef<{ points: NativeMapPoint[]; updatedAt: string | null; tripStatus: string | null }>({ points: [], updatedAt: null, tripStatus: null });
   const trustedDriverRoute = useMemo(
     () => (driverRoutePoints || []).filter(isNativeMapPoint),
@@ -188,6 +193,10 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     // service publish the geometry that is safe to show to a Rider.
     return [];
   }, [destination, displayDriverPoint, driverRoutePoints, driverTracking, trackedTarget, userLocation]);
+  const routeOverviewPoints = useMemo(
+    () => authoritativeRouteOverviewPoints(driverRoutePoints),
+    [driverRoutePoints],
+  );
   const nearby = useMemo(() => nearbyDrivers
     .filter((driver) => isNativeMapPoint([driver.lat, driver.lng]))
     .slice(0, 8), [nearbyDrivers]);
@@ -311,10 +320,20 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   }, [driverRouteUpdatedAt, tripStatus, trustedDriverRoute]);
 
   useEffect(() => {
+    // Closing the overview intentionally restores the close live camera even
+    // if the Rider had panned around the full route.
+    if (previousRouteOverviewRef.current && !routeOverview) userMovedMapRef.current = false;
+    previousRouteOverviewRef.current = routeOverview;
+  }, [routeOverview]);
+
+  useEffect(() => {
     // A completed trip unmounts this surface. On its remount, a camera command
     // issued before Google Maps reports ready is ignored by iOS, which leaves
     // the SDK's whole-world fallback viewport visible behind the home sheet.
     if (!mapReady) return;
+    // The Rider explicitly requested the full server route. Do not overwrite
+    // that overview with the normal close-range live camera.
+    if (routeOverview) return;
     if (userMovedMapRef.current) return;
     if (bookingPreview) {
       const region = bookingPreviewRegion(
@@ -344,7 +363,24 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     );
     if (!region) return;
     mapRef.current?.animateToRegion(region, displayDriverPoint && trackedTarget ? 650 : 350);
-  }, [bookingPreview, center, displayDriverPoint, driverRoutePoints, driverTracking, mapReady, nearby, routeCoordinates, trackedTarget, userLocation]);
+  }, [bookingPreview, center, displayDriverPoint, driverRoutePoints, driverTracking, mapReady, nearby, routeCoordinates, routeOverview, trackedTarget, userLocation]);
+
+  useEffect(() => {
+    if (!routeOverview) {
+      routeOverviewFitRef.current = false;
+      return;
+    }
+    if (!mapReady || routeOverviewFitRef.current || routeOverviewPoints.length < 2) return;
+    // This only changes the camera. The green route geometry, live Driver
+    // marker, tracking cadence, and server-owned booking fields are untouched.
+    mapRef.current?.fitToCoordinates(routeOverviewPoints.map(coordinate), {
+      edgePadding: { top: 112, right: 32, bottom: 330, left: 32 },
+      animated: true,
+    });
+    // Do not repeatedly pull the Rider's camera back while they explore the
+    // overview. Toggling back to Close map resets this for a later overview.
+    routeOverviewFitRef.current = true;
+  }, [mapReady, routeOverview, routeOverviewPoints]);
 
   useImperativeHandle(ref, () => ({
     panTo(latitude, longitude) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bookingPreviewRegion, nativeTrackingRegion } from '../lib/native-map-camera';
+import { authoritativeRouteOverviewPoints, bookingPreviewRegion, nativeTrackingRegion } from '../lib/native-map-camera';
 
 describe('native Google Maps tracking camera', () => {
   it('keeps a Driver and pickup in a road-level visible frame', () => {
@@ -42,5 +42,14 @@ describe('native Google Maps tracking camera', () => {
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
     });
+  });
+
+  it('allows the route overview only when server route geometry has at least two valid points', () => {
+    expect(authoritativeRouteOverviewPoints([[5.6037, -0.187], ['bad', -0.18], [5.61, -0.18]])).toEqual([
+      [5.6037, -0.187],
+      [5.61, -0.18],
+    ]);
+    expect(authoritativeRouteOverviewPoints([[5.6037, -0.187]])).toEqual([]);
+    expect(authoritativeRouteOverviewPoints(null)).toEqual([]);
   });
 });

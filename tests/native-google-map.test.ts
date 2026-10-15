@@ -57,6 +57,18 @@ describe('Rider native Google Maps migration', () => {
     expect(screen).toContain('bookingMapTimeLabels');
   });
 
+  it('lets the Rider switch to full server-route details without changing tracking', () => {
+    expect(component).toContain('routeOverview?: boolean;');
+    expect(component).toContain('authoritativeRouteOverviewPoints(driverRoutePoints)');
+    expect(component).toContain('if (routeOverview) return;');
+    expect(component).toContain('mapRef.current?.fitToCoordinates(routeOverviewPoints.map(coordinate)');
+    expect(component).toContain('routeOverviewFitRef.current = true;');
+    expect(screen).toContain('const [routeOverview, setRouteOverview] = useState(false);');
+    expect(screen).toContain('accessibilityLabel={routeOverview ? "Return to close live map" : "Show full route details"}');
+    expect(screen).toContain('ROUTE DETAILS');
+    expect(screen).toContain('routeOverview={routeOverview}');
+  });
+
   it('uses a car-with-box marker for Car Delivery and keeps bike delivery markers separate', () => {
     expect(component).toContain("type.includes('car_delivery')");
     expect(component).toContain("require('../assets/images/hy3n-car-delivery.png')");
