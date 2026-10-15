@@ -337,6 +337,10 @@ export default function RiderHomeScreen() {
   const [activeRideSheetCollapsed, setActiveRideSheetCollapsed] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState(RIDE_CATEGORIES[0]);
   const [selectedPayment, setSelectedPayment] = useState(PAYMENT_METHODS[0]);
+  // The start screen previews every HY3N service without showing a fare. A
+  // Rider still chooses pickup and destination before the server returns a
+  // category quote, so this never turns the home screen into a pricing engine.
+  const homeServiceCategories = RIDE_CATEGORIES.filter((category) => category.id !== "executive");
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([
     { name: "Home", address: "Set location" },
     { name: "Work", address: "Set location" },
@@ -2792,20 +2796,6 @@ export default function RiderHomeScreen() {
         </View>
       </View>
 
-      {bookingMapTimes && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, backgroundColor: `${GREEN}14`, borderRadius: 12, borderWidth: 1, borderColor: `${GREEN}44`, paddingHorizontal: 12, paddingVertical: 9, marginTop: -4, marginBottom: 12 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-            <MaterialIcons name="my-location" size={15} color={GREEN} />
-            <Text style={{ color: TEXT, fontSize: 12, fontWeight: '800' }}>{bookingMapTimes.pickup.replace('\n', ' ')}</Text>
-          </View>
-          <MaterialIcons name="arrow-forward" size={16} color={MUTED} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'flex-end' }}>
-            <Text style={{ color: TEXT, fontSize: 12, fontWeight: '800' }}>{bookingMapTimes.dropoff.replace('\n', ' ')}</Text>
-            <MaterialIcons name="place" size={16} color={GOLD} />
-          </View>
-        </View>
-      )}
-
       {/* Ride options use a clear vertical list, like Bolt and Uber, so every
           category can be read and chosen rather than being clipped sideways. */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
@@ -2890,6 +2880,20 @@ export default function RiderHomeScreen() {
           );
         })}
       </View>
+
+      {bookingMapTimes && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, backgroundColor: `${GREEN}14`, borderRadius: 12, borderWidth: 1, borderColor: `${GREEN}44`, paddingHorizontal: 12, paddingVertical: 9, marginTop: -3, marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+            <MaterialIcons name="my-location" size={15} color={GREEN} />
+            <Text style={{ color: TEXT, fontSize: 12, fontWeight: '800' }}>{bookingMapTimes.pickup.replace('\n', ' ')}</Text>
+          </View>
+          <MaterialIcons name="arrow-forward" size={16} color={MUTED} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'flex-end' }}>
+            <Text style={{ color: TEXT, fontSize: 12, fontWeight: '800' }}>{bookingMapTimes.dropoff.replace('\n', ' ')}</Text>
+            <MaterialIcons name="place" size={16} color={GOLD} />
+          </View>
+        </View>
+      )}
 
       {selectedCategory.id === "express_delivery" && (
         <View style={{ backgroundColor: CARD, borderRadius: 18, borderWidth: 1, borderColor: GOLD, marginBottom: 14, padding: 14, gap: 10 }}>
@@ -3055,46 +3059,85 @@ export default function RiderHomeScreen() {
     </View>
   );
 
-  const renderDefaultSheet = () => (
-    <View style={{ flex: 1 }}>
-    <ScrollView style={{ maxHeight: SCREEN_HEIGHT * 0.28 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 }}>
-      {/* Pickup row */}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8, paddingHorizontal: 4 }}>
-        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: GREEN, borderWidth: 2, borderColor: '#00FF88' }} />
-        <Text style={{ color: MUTED, fontSize: 12, flex: 1 }} numberOfLines={1}>{pickupAddress}</Text>
-        <TouchableOpacity onPress={() => Alert.alert("Pickup", "Drag the map pin to change your pickup location")}>
-          <MaterialIcons name="edit-location" size={18} color={GOLD} />
-        </TouchableOpacity>
-      </View>
-      {/* Divider line */}
-      <View style={{ width: 1, height: 10, backgroundColor: BORDER, marginLeft: 8, marginBottom: 4 }} />
-      {/* Destination search */}
-      <TouchableOpacity
-        onPress={() => openLocationSearch("destination")}
-        style={{ flexDirection: "row", alignItems: "center", gap: 14, backgroundColor: CARD, borderRadius: 16, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: BORDER }}
+  const renderAddressFirstHome = () => (
+    <View style={{ flex: 1, backgroundColor: BG }}>
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: safeTop + 12, paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}
       >
-        <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
-          <MaterialIcons name="search" size={22} color="#000" />
+        <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <View style={{ flex: 1, paddingRight: 16 }}>
+            <Image
+              source={require('@/assets/images/icon.png')}
+              style={{ width: 66, height: 38, resizeMode: 'contain', marginLeft: -7 }}
+            />
+            <Text style={{ color: greetingColor, fontSize: 28, fontWeight: '900', letterSpacing: -0.5, marginTop: 10 }}>
+              Akwaaba{riderProfile?.full_name ? `, ${riderProfile.full_name.split(' ')[0]}` : ''}! 👋
+            </Text>
+            <Text style={{ color: greetingSubtitleColor, fontSize: 15, fontWeight: '700', fontStyle: 'italic', marginTop: 2 }}>
+              Wo ho te sɛn?
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => Alert.alert("Notifications", "No new notifications")}
+            accessibilityRole="button"
+            accessibilityLabel="Notifications"
+            style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: CARD, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: BORDER }}
+          >
+            <MaterialIcons name="notifications-none" size={24} color={TEXT} />
+          </TouchableOpacity>
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 16 }}>Wo kɔ he?</Text>
-          <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>Where are you going?</Text>
-        </View>
-        <MaterialIcons name="location-on" size={20} color={MUTED} />
-      </TouchableOpacity>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          {savedPlaces.map((place, i) => {
+
+        <Text style={{ color: TEXT, fontSize: 24, fontWeight: "900", marginTop: 34, letterSpacing: -0.35 }}>Let’s get you moving.</Text>
+        <Text style={{ color: MUTED, fontSize: 14, lineHeight: 20, marginTop: 5 }}>Enter your destination first, then compare live HY3N ride prices.</Text>
+
+        <TouchableOpacity
+          onPress={() => openLocationSearch("destination")}
+          accessibilityRole="button"
+          accessibilityLabel="Where to"
+          accessibilityHint="Choose a destination before selecting a live ride price"
+          style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: CARD, borderRadius: 18, padding: 15, marginTop: 24, borderWidth: 1.5, borderColor: GOLD }}
+        >
+          <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
+            <MaterialIcons name="search" size={25} color="#151515" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: TEXT, fontSize: 19, fontWeight: "900" }}>Wo kɔ he?</Text>
+            <Text style={{ color: MUTED, fontSize: 13, marginTop: 2 }}>Where are you going?</Text>
+          </View>
+          <MaterialIcons name="arrow-forward-ios" size={18} color={MUTED} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => openLocationSearch("pickup")}
+          accessibilityRole="button"
+          accessibilityLabel="Change pickup location"
+          style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 16, paddingBottom: 12 }}
+        >
+          <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: `${GREEN}22`, alignItems: "center", justifyContent: "center" }}>
+            <MaterialIcons name="my-location" size={17} color={GREEN} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: MUTED, fontSize: 11, fontWeight: "800", letterSpacing: 0.6, textTransform: "uppercase" }}>Pickup</Text>
+            <Text style={{ color: TEXT, fontSize: 14, fontWeight: "700", marginTop: 2 }} numberOfLines={1}>{pickupAddress || "Current location"}</Text>
+          </View>
+          <MaterialIcons name="edit" size={17} color={GOLD} />
+        </TouchableOpacity>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9, paddingTop: 2, paddingBottom: 4 }}>
+          {savedPlaces.map((place) => {
             const iconName: any = place.name.toLowerCase() === "home" ? "home" : place.name.toLowerCase() === "work" ? "work" : "star";
             return (
               <TouchableOpacity
-                key={i}
+                key={place.name}
                 onPress={() => handleQuickPlace(place)}
-                style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: CARD, borderRadius: 12, borderWidth: 1, borderColor: BORDER, minWidth: 110 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Choose saved place ${place.name}`}
+                style={{ flexDirection: "row", alignItems: "center", gap: 7, minWidth: 112, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}
               >
                 <MaterialIcons name={iconName} size={16} color={GOLD} />
-                <View>
-                  <Text style={{ color: TEXT, fontWeight: "600", fontSize: 13 }}>{place.name}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: TEXT, fontSize: 12, fontWeight: "800" }}>{place.name}</Text>
                   <Text style={{ color: MUTED, fontSize: 10 }} numberOfLines={1}>{place.address}</Text>
                 </View>
               </TouchableOpacity>
@@ -3102,27 +3145,47 @@ export default function RiderHomeScreen() {
           })}
           <TouchableOpacity
             onPress={() => openLocationSearch("destination")}
-            style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: `${CARD}80`, borderRadius: 12, borderWidth: 1, borderColor: BORDER }}
+            accessibilityRole="button"
+            accessibilityLabel="Add a saved destination"
+            style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: BORDER }}
           >
             <MaterialIcons name="add" size={16} color={MUTED} />
-            <Text style={{ color: MUTED, fontSize: 13, fontWeight: "500" }}>Add</Text>
+            <Text style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>Add</Text>
           </TouchableOpacity>
-        </View>
-      </ScrollView>
+        </ScrollView>
 
-    </ScrollView>
-    <View style={{ borderTopWidth: 1, borderTopColor: BORDER, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 2, backgroundColor: SURFACE }}>
-      <TouchableOpacity
-        onPress={() => openLocationSearch("destination")}
-        accessibilityRole="button"
-        accessibilityLabel="Choose a destination to request HY3N"
-        style={{ backgroundColor: GREEN, borderRadius: 14, paddingVertical: 15, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }}
-      >
-        <MaterialIcons name="navigation" size={20} color="#fff" />
-        <Text style={{ color: "#fff", fontWeight: "bold", fontSize: 16 }}>Request HY3N</Text>
-      </TouchableOpacity>
-      <Text style={{ color: MUTED, fontSize: 11, textAlign: "center", marginTop: 6 }}>Choose your destination to continue</Text>
-    </View>
+        <View style={{ height: 1, backgroundColor: BORDER, marginTop: 3, marginBottom: 20 }} />
+        <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }}>Choose a HY3N service</Text>
+        <Text style={{ color: MUTED, fontSize: 13, marginTop: 4 }}>Pick one now or choose after entering your destination.</Text>
+
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 14 }}>
+          {homeServiceCategories.map((category) => {
+            const selected = selectedCategory.id === category.id;
+            return (
+              <TouchableOpacity
+                key={category.id}
+                onPress={() => {
+                  setSelectedCategory(category);
+                  openLocationSearch("destination");
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Choose ${category.name} and enter destination`}
+                style={{ width: "31%", minHeight: 108, justifyContent: "space-between", backgroundColor: selected ? `${GOLD}1A` : CARD, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
+              >
+                <View style={{ width: 35, height: 35, borderRadius: 12, backgroundColor: selected ? GOLD : `${GREEN}20`, alignItems: "center", justifyContent: "center" }}>
+                  <MaterialIcons name={category.icon as any} size={20} color={selected ? "#151515" : GREEN} />
+                </View>
+                <View>
+                  <Text style={{ color: TEXT, fontSize: 13, fontWeight: "900" }} numberOfLines={2}>{category.name}</Text>
+                  <Text style={{ color: MUTED, fontSize: 10, marginTop: 3 }} numberOfLines={1}>{category.seats ? `${category.seats} seats` : "Parcel"}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", lineHeight: 18, marginTop: 22, paddingHorizontal: 12 }}>Choose your destination to see live prices and available Drivers.</Text>
+      </ScrollView>
     </View>
   );
 
@@ -3164,14 +3227,15 @@ export default function RiderHomeScreen() {
           : SCREEN_HEIGHT * 0.58)
     : destination
     ? (bookingSheetCollapsed ? SCREEN_HEIGHT * 0.18 : SCREEN_HEIGHT * 0.54)
-    : SCREEN_HEIGHT * 0.38;
+    : 0;
+  const showAddressFirstHome = !terminalRide && !activeRide && !destination;
 
   return (
     <View style={{ flex: 1, backgroundColor: BG }}>
       {terminalRide ? renderTerminalRide() : <>
       {/* The live native Google map, route feeds and ride sheet are deliberately
           unmounted before a completed trip is displayed. */}
-      <NativeGoogleMap
+      {!showAddressFirstHome && <NativeGoogleMap
         style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
         colorScheme={colorScheme}
         center={userLocation}
@@ -3208,21 +3272,14 @@ export default function RiderHomeScreen() {
           ? nearbyVehiclesForMap.slice(0, 4)
           : []}
         onRouteMetrics={handleLiveRouteMetrics}
-      />
+      />}
 
-      {/* Header */}
-      <View style={{ position: "absolute", top: safeTop + 4, left: 16, right: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 10 }}>
+      {!showAddressFirstHome && <View style={{ position: "absolute", top: safeTop + 4, left: 16, right: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 10 }}>
         <View style={{ flexDirection: "column" }}>
           <Image
             source={require('@/assets/images/icon.png')}
-            style={{ width: 80, height: 40, resizeMode: 'contain' }}
+            style={{ width: 58, height: 34, resizeMode: 'contain' }}
           />
-          <Text style={{ color: greetingColor, fontSize: 20, fontWeight: '800', letterSpacing: 0.3, marginTop: 3, textShadowColor: isDarkMode ? 'rgba(212,175,55,0.4)' : 'rgba(255,255,255,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 }}>
-            Akwaaba{riderProfile?.full_name ? `, ${riderProfile.full_name.split(' ')[0]}` : ''}! 👋
-          </Text>
-          <Text style={{ color: greetingSubtitleColor, fontSize: 13, fontWeight: '600', fontStyle: 'italic', marginTop: 1 }}>
-            Wo ho te sɛn?
-          </Text>
         </View>
         <TouchableOpacity
           style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(17,17,17,0.9)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: BORDER }}
@@ -3230,10 +3287,10 @@ export default function RiderHomeScreen() {
         >
           <MaterialIcons name="notifications" size={20} color={TEXT} />
         </TouchableOpacity>
-      </View>
+      </View>}
 
       {/* Bottom Sheet */}
-      <View style={{
+      {showAddressFirstHome ? renderAddressFirstHome() : <View style={{
         position: "absolute",
         bottom: 0,
         left: 0,
@@ -3303,8 +3360,9 @@ export default function RiderHomeScreen() {
               </View>
             </View>
           ) : renderBookingSheet()
-        ) : renderDefaultSheet()}
+        ) : null}
       </View>
+      }
       </>}
 
       {/* Search Modal */}
