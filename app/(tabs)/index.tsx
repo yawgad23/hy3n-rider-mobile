@@ -27,6 +27,7 @@ import { useColors } from "@/hooks/use-colors";
 import { auth, firestoreDB, COLLECTIONS } from "@/lib/firebase";
 import { dispatchService, calculateETA, type RideRequest as DispatchRide } from "@/lib/dispatch";
 import * as ExpoLocation from "expo-location";
+import * as Contacts from "expo-contacts";
 import * as Haptics from "expo-haptics";
 import {
   RIDE_CATEGORIES,
@@ -73,6 +74,8 @@ import {
   removeRiderRouteStop,
   setRiderRouteStop,
 } from "@/lib/rider-multi-stop";
+import { normalizeGhanaMobilePhone, toGhanaLocalPhoneInput } from "@/lib/ghana-phone";
+import { passengerFromDeviceContact } from "@/lib/rider-passenger-contact";
 import {
   parseRiderStoredRebookDestination,
   parseRiderStoredSavedPlaces,
@@ -575,6 +578,8 @@ export default function RiderHomeScreen() {
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
   const [recipientAddress, setRecipientAddress] = useState("");
+  const [recipientContactLoading, setRecipientContactLoading] = useState(false);
+  const recipientNameInputRef = useRef<TextInput | null>(null);
   // Express Delivery uses separate collection and drop-off contacts. These
   // details accompany the protected quote but never contribute to fare math.
   const [deliverySenderName, setDeliverySenderName] = useState("");
@@ -1452,6 +1457,47 @@ export default function RiderHomeScreen() {
     return handleSelectLocation(loc, "destination");
   };
 
+  const handleChoosePassengerFromContacts = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Use the mobile app', 'Choose from contacts is available in the HY3N mobile app. You can still enter the passenger name and number below.');
+      return;
+    }
+
+    setRecipientContactLoading(true);
+    try {
+      const contactsAvailable = await Contacts.isAvailableAsync();
+      if (!contactsAvailable) throw new Error('Contacts are not available on this device.');
+
+      if (Platform.OS === 'android') {
+        const permission = await Contacts.requestPermissionsAsync();
+        if (permission.status !== Contacts.PermissionStatus.GRANTED) {
+          Alert.alert('Contacts permission needed', 'Allow HY3N to access contacts only when you want to choose a passenger. You can also type the name and number manually.');
+          return;
+        }
+      }
+
+      const pickedContact = await Contacts.presentContactPickerAsync();
+      if (!pickedContact) return;
+
+      const contactWithPhone = pickedContact.phoneNumbers?.length
+        ? pickedContact
+        : await Contacts.getContactByIdAsync(pickedContact.id, [Contacts.Fields.PhoneNumbers]);
+      const passenger = passengerFromDeviceContact(contactWithPhone ?? pickedContact);
+      if (!passenger) {
+        Alert.alert('Ghana mobile number needed', 'Choose a contact with a valid Ghana mobile number, or enter the passenger name and +233 number manually.');
+        return;
+      }
+
+      setRecipientName(passenger.name);
+      setRecipientPhone(passenger.localPhone);
+      setTimeout(() => recipientNameInputRef.current?.blur(), 0);
+    } catch (error) {
+      Alert.alert('Contacts unavailable', error instanceof Error ? error.message : 'We could not open your contacts. You can enter the passenger name and number manually.');
+    } finally {
+      setRecipientContactLoading(false);
+    }
+  };
+
   const handleBook = async (paymentOverride = selectedPayment, cardCheckoutTransactionId?: string) => {
     const paymentMethod = paymentOverride;
     if (!destination) {
@@ -1514,11 +1560,9 @@ export default function RiderHomeScreen() {
       : bookForSomeone ? recipientName.trim() : (riderProfile?.full_name || user.displayName || 'Rider');
     const passengerPhone = isDelivery
       ? deliveryDetails!.sender.phone
-      : bookForSomeone ? recipientPhone.replace(/\s/g, '') : (riderProfile?.phone || user.phoneNumber || '');
+      : bookForSomeone ? (normalizeGhanaMobilePhone(recipientPhone) || '') : (riderProfile?.phone || user.phoneNumber || '');
     if (bookForSomeone && !isDelivery) {
-      const normalizedPassengerPhone = passengerPhone.replace(/\D/g, '');
-      const isGhanaPhone = /^0\d{9}$/.test(normalizedPassengerPhone) || /^233\d{9}$/.test(normalizedPassengerPhone);
-      if (passengerName.length < 2 || !isGhanaPhone) {
+      if (passengerName.length < 2 || !passengerPhone) {
         Alert.alert('Passenger details needed', 'Enter the passenger’s full name and a valid Ghana phone number before requesting the ride.');
         return;
       }
@@ -2977,21 +3021,41 @@ export default function RiderHomeScreen() {
         )}
         {bookForSomeone && !isDeliveryCategory(selectedCategory.id) && (
           <View style={{ borderTopWidth: 1, borderTopColor: BORDER, padding: 12, gap: 10 }}>
+            <TouchableOpacity
+              onPress={() => { void handleChoosePassengerFromContacts(); }}
+              disabled={recipientContactLoading}
+              accessibilityRole="button"
+              accessibilityLabel="Choose passenger from contacts"
+              accessibilityHint="Opens the device contact picker and fills the passenger name and Ghana mobile number"
+              style={{ minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 12, borderRadius: 11, backgroundColor: `${GOLD}18`, borderWidth: 1, borderColor: `${GOLD}66`, opacity: recipientContactLoading ? 0.55 : 1 }}
+            >
+              {recipientContactLoading ? <ActivityIndicator size="small" color={GOLD} /> : <MaterialIcons name="contacts" size={20} color={GOLD} />}
+              <Text style={{ color: GOLD, fontSize: 14, fontWeight: "800" }}>{recipientContactLoading ? "Opening contacts…" : "Choose from contacts"}</Text>
+            </TouchableOpacity>
+            <Text style={{ color: MUTED, fontSize: 11, lineHeight: 15 }}>Or type the passenger’s details manually. HY3N only reads the contact you choose and does not upload your contact list.</Text>
             <TextInput
+              ref={recipientNameInputRef}
               value={recipientName}
               onChangeText={setRecipientName}
               placeholder="Passenger name"
               placeholderTextColor={MUTED}
               style={{ backgroundColor: BG, borderRadius: 10, padding: 11, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }}
             />
-            <TextInput
-              value={recipientPhone}
-              onChangeText={setRecipientPhone}
-              placeholder="Phone number (e.g., 0501234567)"
-              placeholderTextColor={MUTED}
-              keyboardType="phone-pad"
-              style={{ backgroundColor: BG, borderRadius: 10, padding: 11, color: TEXT, fontSize: 14, borderWidth: 1, borderColor: BORDER }}
-            />
+            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: BG, borderRadius: 10, borderWidth: 1, borderColor: BORDER, overflow: "hidden" }}>
+              <View style={{ paddingHorizontal: 12, paddingVertical: 11, borderRightWidth: 1, borderRightColor: BORDER }}>
+                <Text style={{ color: TEXT, fontSize: 14, fontWeight: "800" }}>🇬🇭 +233</Text>
+              </View>
+              <TextInput
+                value={recipientPhone}
+                onChangeText={(value) => setRecipientPhone(toGhanaLocalPhoneInput(value))}
+                placeholder="24 123 4567"
+                placeholderTextColor={MUTED}
+                keyboardType="phone-pad"
+                maxLength={9}
+                accessibilityLabel="Passenger Ghana mobile number"
+                style={{ flex: 1, padding: 11, color: TEXT, fontSize: 14 }}
+              />
+            </View>
             <TextInput
               value={recipientAddress}
               onChangeText={setRecipientAddress}

@@ -82,8 +82,9 @@ const config: ExpoConfig = {
       ? { config: { googleMapsApiKey: nativeGoogleMaps.iosApiKey } }
       : {}),
     "infoPlist": {
-      "ITSAppUsesNonExemptEncryption": false
-      }
+      "ITSAppUsesNonExemptEncryption": false,
+      "NSContactsUsageDescription": "HY3N uses the contact you choose to fill in a passenger name and phone number when you book a ride for someone else."
+    }
   },
   android: {
     adaptiveIcon: {
@@ -135,6 +136,12 @@ const config: ExpoConfig = {
     "expo-audio",
     "expo-font",
     "expo-notifications",
+    [
+      "expo-contacts",
+      {
+        "contactsPermission": "HY3N uses the contact you choose to fill in a passenger name and phone number when you book a ride for someone else."
+      }
+    ],
     "@react-native-firebase/app",
     "@react-native-firebase/messaging",
     [
