@@ -131,4 +131,15 @@ describe('Rider nearby Driver live movement', () => {
     expect(vehicleServesRideCategory(comfort, 'comfort')).toBe(true);
     expect(vehicleServesRideCategory(comfort, 'kantanka')).toBe(false);
   });
+
+  it('shows Car Delivery availability only for opted-in car Drivers and legacy Executive cars', () => {
+    const location = { latitude: 5.6041, longitude: -0.1861, recorded_at: new Date(now - 5_000).toISOString() };
+    const carDelivery = nearbyVehicleFromProfile({ ...driverProfile(location), ride_categories: ['car_delivery'] }, now)!;
+    const legacyExecutive = nearbyVehicleFromProfile({ ...driverProfile(location), ride_categories: ['executive'] }, now)!;
+    const standard = nearbyVehicleFromProfile({ ...driverProfile(location), ride_categories: ['standard'] }, now)!;
+
+    expect(vehicleServesRideCategory(carDelivery, 'car_delivery')).toBe(true);
+    expect(vehicleServesRideCategory(legacyExecutive, 'car_delivery')).toBe(true);
+    expect(vehicleServesRideCategory(standard, 'car_delivery')).toBe(false);
+  });
 });

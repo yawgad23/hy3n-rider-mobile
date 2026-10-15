@@ -61,7 +61,7 @@ import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-sha
 import { payWithHubtelCard } from "@/lib/card-checkout";
 import { nearbyVehicleFromProfile, type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
 import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } from "@/lib/rider-completion-presentation";
-import { deliveryRequestDetails, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
+import { deliveryRequestDetails, isDeliveryCategory, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
 import { destinationArrivalReminder, shouldPromptForDestinationArrival } from "@/lib/rider-trip-feedback";
 import { bookingMapTimeLabels } from "@/lib/booking-map-presentation";
@@ -340,7 +340,7 @@ export default function RiderHomeScreen() {
   // The start screen previews every HY3N service without showing a fare. A
   // Rider still chooses pickup and destination before the server returns a
   // category quote, so this never turns the home screen into a pricing engine.
-  const homeServiceCategories = RIDE_CATEGORIES.filter((category) => category.id !== "executive");
+  const homeServiceCategories = RIDE_CATEGORIES;
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([
     { name: "Home", address: "Set location" },
     { name: "Work", address: "Set location" },
@@ -1462,8 +1462,8 @@ export default function RiderHomeScreen() {
       return;
     }
 
-    const isExpressDelivery = selectedCategory.id === 'express_delivery';
-    const deliveryValidation = isExpressDelivery
+    const isDelivery = isDeliveryCategory(selectedCategory.id);
+    const deliveryValidation = isDelivery
       ? validateDeliveryBookingDetails({
           senderName: deliverySenderName,
           senderPhone: deliverySenderPhone,
@@ -1478,7 +1478,7 @@ export default function RiderHomeScreen() {
       Alert.alert('Delivery details needed', deliveryValidation);
       return;
     }
-    const deliveryDetails = isExpressDelivery
+    const deliveryDetails = isDelivery
       ? deliveryRequestDetails({
           senderName: deliverySenderName,
           senderPhone: deliverySenderPhone,
@@ -1489,13 +1489,13 @@ export default function RiderHomeScreen() {
           dropoffInstructions: deliveryDropoffInstructions,
         })
       : undefined;
-    const passengerName = isExpressDelivery
+    const passengerName = isDelivery
       ? deliveryDetails!.sender.name
       : bookForSomeone ? recipientName.trim() : (riderProfile?.full_name || user.displayName || 'Rider');
-    const passengerPhone = isExpressDelivery
+    const passengerPhone = isDelivery
       ? deliveryDetails!.sender.phone
       : bookForSomeone ? recipientPhone.replace(/\s/g, '') : (riderProfile?.phone || user.phoneNumber || '');
-    if (bookForSomeone && !isExpressDelivery) {
+    if (bookForSomeone && !isDelivery) {
       const normalizedPassengerPhone = passengerPhone.replace(/\D/g, '');
       const isGhanaPhone = /^0\d{9}$/.test(normalizedPassengerPhone) || /^233\d{9}$/.test(normalizedPassengerPhone);
       if (passengerName.length < 2 || !isGhanaPhone) {
@@ -2839,7 +2839,7 @@ export default function RiderHomeScreen() {
           const driverLabel = `${matchingVehicles.length} ${cat.name} Driver${matchingVehicles.length === 1 ? '' : 's'}`;
           const vehicleArtwork = cat.id === "okada"
             ? require("@/assets/images/ride-list-map-okada.png")
-            : cat.id === "express_delivery"
+            : isDeliveryCategory(cat.id)
               ? require("@/assets/images/ride-list-map-delivery.png")
               : require("@/assets/images/ride-list-map-car.png");
           return (
@@ -2895,7 +2895,7 @@ export default function RiderHomeScreen() {
         </View>
       )}
 
-      {selectedCategory.id === "express_delivery" && (
+      {isDeliveryCategory(selectedCategory.id) && (
         <View style={{ backgroundColor: CARD, borderRadius: 18, borderWidth: 1, borderColor: GOLD, marginBottom: 14, padding: 14, gap: 10 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
             <MaterialIcons name="local-shipping" size={22} color={GOLD} />
@@ -2924,17 +2924,17 @@ export default function RiderHomeScreen() {
         >
           <MaterialIcons name="person-outline" size={25} color={GOLD} />
           <View style={{ flex: 1 }}>
-            <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }}>{selectedCategory.id === "express_delivery" ? "Book delivery for someone else" : "Book for someone else"}</Text>
-            <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>{selectedCategory.id === "express_delivery" ? (bookForSomeone ? "Another person is sending this package" : "You are sending this package") : `Booking for ${bookForSomeone ? "another person" : "yourself"}`}</Text>
+            <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }}>{isDeliveryCategory(selectedCategory.id) ? "Book delivery for someone else" : "Book for someone else"}</Text>
+            <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>{isDeliveryCategory(selectedCategory.id) ? (bookForSomeone ? "Another person is sending this package" : "You are sending this package") : `Booking for ${bookForSomeone ? "another person" : "yourself"}`}</Text>
           </View>
           <MaterialIcons name={bookForSomeone ? "keyboard-arrow-up" : "chevron-right"} size={24} color={MUTED} />
         </TouchableOpacity>
-        {bookForSomeone && selectedCategory.id === "express_delivery" && (
+        {bookForSomeone && isDeliveryCategory(selectedCategory.id) && (
           <View style={{ borderTopWidth: 1, borderTopColor: BORDER, padding: 12 }}>
             <Text style={{ color: MUTED, fontSize: 12, lineHeight: 17 }}>The sender details above identify the person handing the package to the Driver. The recipient details identify the person receiving it.</Text>
           </View>
         )}
-        {bookForSomeone && selectedCategory.id !== "express_delivery" && (
+        {bookForSomeone && !isDeliveryCategory(selectedCategory.id) && (
           <View style={{ borderTopWidth: 1, borderTopColor: BORDER, padding: 12, gap: 10 }}>
             <TextInput
               value={recipientName}

@@ -8,6 +8,12 @@ export type DeliveryBookingDetails = {
   dropoffInstructions?: string;
 };
 
+export const DELIVERY_CATEGORY_IDS = ['express_delivery', 'car_delivery'] as const;
+
+export function isDeliveryCategory(category: unknown): boolean {
+  return DELIVERY_CATEGORY_IDS.includes(String(category || '').trim().toLowerCase() as typeof DELIVERY_CATEGORY_IDS[number]);
+}
+
 function normalizedPhone(value: string): string {
   return value.replace(/[\s()-]/g, '');
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deliveryRequestDetails, validateDeliveryBookingDetails } from '../lib/delivery-booking';
+import { deliveryRequestDetails, isDeliveryCategory, validateDeliveryBookingDetails } from '../lib/delivery-booking';
 
 const validDetails = {
   senderName: 'Yaw Mensah',
@@ -12,6 +12,12 @@ const validDetails = {
 };
 
 describe('Express Delivery booking details', () => {
+  it('recognizes both parcel categories', () => {
+    expect(isDeliveryCategory('express_delivery')).toBe(true);
+    expect(isDeliveryCategory('car_delivery')).toBe(true);
+    expect(isDeliveryCategory('standard')).toBe(false);
+  });
+
   it('requires both delivery contacts and a package description', () => {
     expect(validateDeliveryBookingDetails({ ...validDetails, senderPhone: '123' })).toMatch(/sender/i);
     expect(validateDeliveryBookingDetails({ ...validDetails, recipientName: '' })).toMatch(/recipient/i);

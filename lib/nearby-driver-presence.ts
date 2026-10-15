@@ -152,6 +152,9 @@ export const vehicleServesRideCategory = (vehicle: NearbyVehicle, categoryId: st
   if (category === 'okada') return vehicle.serviceType === 'okada';
   if (category === 'express_delivery') return vehicle.serviceType === 'delivery';
   if (vehicle.serviceType !== 'car') return false;
+  // Car Delivery is car-only. Former Executive Drivers remain eligible while
+  // their category is migrated by an administrator.
+  if (category === 'car_delivery') return vehicle.rideCategories.some((value) => value === 'car_delivery' || value === 'executive');
 
   // A Rider must see the same availability that the Driver can actually
   // accept. Kantanka is a premium Comfort-compatible vehicle; a Comfort-only

@@ -60,16 +60,18 @@ export const RIDE_CATEGORIES: RideCategory[] = [
     icon: "directions-car",
   },
   {
-    id: "executive",
-    name: "Executive",
-    description: "Luxury travel for special occasions",
-    basePrice: 27.50,
-    pricePerKm: 6.60,
-    pricePerMin: 1.10,
-    waitingFeePerMin: 1.65,
-    minFare: 44.00,
-    seats: 4,
-    icon: "verified-user",
+    id: "car_delivery",
+    name: "Car Delivery",
+    description: "Packages delivered safely by a car Driver",
+    // The server remains authoritative. These mirrors make the service clear
+    // before a destination is selected and match the Standard fare formula.
+    basePrice: 10.00,
+    pricePerKm: 3.65,
+    pricePerMin: 0.43,
+    waitingFeePerMin: 0.55,
+    minFare: 16.50,
+    seats: 0,
+    icon: "local-shipping",
   },
   {
     id: "okada",

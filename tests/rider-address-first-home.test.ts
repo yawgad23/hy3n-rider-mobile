@@ -20,7 +20,8 @@ describe('Rider address-first home flow', () => {
   });
 
   it('keeps service choices visible on the address-first page and selects a category before address search', () => {
-    expect(screen).toContain('const homeServiceCategories = RIDE_CATEGORIES.filter');
+    expect(screen).toContain('const homeServiceCategories = RIDE_CATEGORIES;');
+    expect(screen).toContain('isDeliveryCategory(cat.id)');
     expect(screen).toContain('Choose a HY3N service');
     expect(screen).toContain('setSelectedCategory(category);');
     expect(screen).toContain('openLocationSearch("destination");');
