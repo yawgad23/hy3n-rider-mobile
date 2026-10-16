@@ -311,7 +311,7 @@ Production Logs (Firebase Cloud Logging):
 ```bash
 # Test Hubtel commission charge API
 curl -X POST https://rmp.hubtel.com/merchantaccount/merchants/5809/receive/mobilemoney \
-  -H "Authorization: Basic $(echo -n '295WvzM:279782ed8a88420ebb629843cfbedf49' | base64)" \
+  -H "Authorization: Basic $(echo -n '${HUBTEL_API_ID}:${HUBTEL_API_KEY}' | base64)" \
   -H "Content-Type: application/json" \
   -d '{
     "CustomerMsisdn": "233244654321",
