@@ -74,7 +74,7 @@ const SAVED_PLACES_DEFAULT = [
 
 export default function AccountScreen() {
   const router = useRouter();
-  const { user, riderProfile, signOut, deleteAccount, updateProfile } = useAuth();
+  const { user, riderProfile, signOut, deleteAccount, updateProfile, signingOut } = useAuth();
   const { colorScheme } = useThemeContext();
   const colors = useColors();
   const BG = colors.background;
@@ -169,7 +169,7 @@ export default function AccountScreen() {
           onPress: async () => {
             try {
               await deleteAccount();
-              router.replace('/login' as any);
+              // The tab auth guard owns the one post-sign-out redirect.
             } catch (err: any) {
               Alert.alert('Error', err.message || 'Failed to delete account. Please try again.');
             }
@@ -198,6 +198,25 @@ export default function AccountScreen() {
     } catch (err: any) {
       Alert.alert('Profile not saved', err?.message || 'Failed to save profile');
     }
+  };
+
+  const handleSignOut = () => {
+    if (signingOut) return;
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await signOut();
+            // The tab auth guard owns the one post-sign-out redirect.
+          } catch (err: any) {
+            Alert.alert('Error', err?.message || 'Failed to sign out. Please try again.');
+          }
+        },
+      },
+    ]);
   };
 
   const handleSavePlace = () => {
@@ -381,7 +400,8 @@ export default function AccountScreen() {
 
         {/* Sign Out */}
         <TouchableOpacity
-          onPress={() => Alert.alert('Sign Out', 'Are you sure you want to sign out?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Sign Out', style: 'destructive', onPress: async () => { await signOut(); router.replace('/login' as any); } }])}
+          onPress={handleSignOut}
+          disabled={signingOut}
           style={{ marginHorizontal: 16, marginBottom: 8, backgroundColor: `${RED}1A`, borderRadius: 16, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1, borderColor: `${RED}4D` }}
         >
           <MaterialIcons name="logout" size={18} color={RED} />

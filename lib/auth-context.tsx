@@ -3,6 +3,7 @@ import { firebaseAuth, firestoreDB, COLLECTIONS } from './firebase';
 import type { User } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { waitForRiderNativeUnmount } from './rider-signout-transition';
 
 export interface RiderProfile {
   id: string;
@@ -25,6 +26,7 @@ interface AuthContextType {
   user: User | null;
   riderProfile: RiderProfile | null;
   loading: boolean;
+  signingOut: boolean;
   guestMode: boolean;
   setGuestMode: (val: boolean) => void;
   signIn: (email: string, password: string) => Promise<void>;
@@ -48,16 +50,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [riderProfile, setRiderProfile] = useState<RiderProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
   const [guestMode, setGuestMode] = useState(false);
   const pendingRegistrationRef = useRef<RiderProfileBootstrap | null>(null);
+  // A late profile response must never restore the prior Rider's Home shell
+  // after Firebase has already begun signing that Rider out.
+  const authTransitionRef = useRef(0);
+  const signOutPromiseRef = useRef<Promise<void> | null>(null);
 
-  const loadProfile = async (firebaseUser: User, bootstrap?: RiderProfileBootstrap) => {
+  const loadProfile = async (
+    firebaseUser: User,
+    authTransition = authTransitionRef.current,
+    bootstrap?: RiderProfileBootstrap,
+  ) => {
+    const isCurrentSession = () => (
+      authTransition === authTransitionRef.current
+      && firebaseAuth.getCurrentUser()?.uid === firebaseUser.uid
+    );
     try {
       const registrationDetails = bootstrap ?? pendingRegistrationRef.current ?? undefined;
       const canonical = await firestoreDB.get(COLLECTIONS.RIDER_PROFILES, firebaseUser.uid);
       const profiles = canonical
         ? [canonical]
         : await firestoreDB.list(COLLECTIONS.RIDER_PROFILES, { user_id: firebaseUser.uid });
+      if (!isCurrentSession()) return;
       if (profiles.length > 0) {
         const existing = profiles[0] as RiderProfile;
         setRiderProfile(existing);
@@ -67,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setRiderProfile(null);
       }
     } catch (err) {
-      console.error('Error loading rider profile:', err);
+      if (isCurrentSession()) console.error('Error loading rider profile:', err);
     }
   };
 
@@ -83,34 +99,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     setupAuth();
     
-    const unsubscribe = firebaseAuth.onAuthStateChanged(async (firebaseUser) => {
+    const unsubscribe = firebaseAuth.onAuthStateChanged((firebaseUser) => {
+      const authTransition = ++authTransitionRef.current;
+      setSigningOut(false);
       setUser(firebaseUser);
       if (firebaseUser) {
+        // Do not leave a previous account's name, wallet, or Home screen visible
+        // while a newly restored Firebase session is loading its profile.
+        setRiderProfile(null);
+        setLoading(true);
         if (Platform.OS !== 'web') {
-          await AsyncStorage.setItem('firebaseUser', JSON.stringify({
+          void AsyncStorage.setItem('firebaseUser', JSON.stringify({
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             displayName: firebaseUser.displayName,
             phoneNumber: firebaseUser.phoneNumber,
-          }));
+          })).catch(() => {});
         }
-        await loadProfile(firebaseUser, pendingRegistrationRef.current ?? undefined);
+        void loadProfile(firebaseUser, authTransition, pendingRegistrationRef.current ?? undefined)
+          .finally(() => {
+            if (authTransition === authTransitionRef.current) setLoading(false);
+          });
       } else {
         if (Platform.OS !== 'web') {
-          await AsyncStorage.removeItem('firebaseUser');
+          void AsyncStorage.removeItem('firebaseUser').catch(() => {});
         }
         setRiderProfile(null);
+        setGuestMode(false);
+        setLoading(false);
       }
-      setLoading(false);
     });
-    return unsubscribe;
+    return () => {
+      authTransitionRef.current += 1;
+      unsubscribe();
+    };
   }, []);
 
 
   const signIn = async (email: string, password: string) => {
-    const firebaseUser = await firebaseAuth.loginWithEmail(email, password);
+    await firebaseAuth.loginWithEmail(email, password);
     setGuestMode(false);
-    await loadProfile(firebaseUser);
   };
 
   const signUp = async (email: string, password: string, fullName: string, phone: string, inviteCode?: string) => {
@@ -136,30 +164,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         inviteCode: bootstrap.invite_code_used,
       });
       setGuestMode(false);
-      await loadProfile(firebaseUser, bootstrap);
+      await loadProfile(firebaseUser, authTransitionRef.current, bootstrap);
     } finally {
       pendingRegistrationRef.current = null;
     }
   };
 
   const signOutUser = async () => {
-    await firebaseAuth.logout();
-    setUser(null);
-    setRiderProfile(null);
-    setGuestMode(false);
+    // Every control shares one transition so a fast double tap cannot produce
+    // duplicate route replacements or remount the Rider Home tab.
+    if (signOutPromiseRef.current) return signOutPromiseRef.current;
+
+    const operation = (async () => {
+      setSigningOut(true);
+      authTransitionRef.current += 1;
+      setRiderProfile(null);
+      // Commit a map-free shell before Firebase changes its auth state. This
+      // removes inactive Home-map views and prevents the visible Home repeat.
+      await waitForRiderNativeUnmount();
+      try {
+        await firebaseAuth.logout();
+      } catch (error) {
+        const currentUser = firebaseAuth.getCurrentUser();
+        if (currentUser) {
+          setSigningOut(false);
+          setLoading(true);
+          await loadProfile(currentUser, authTransitionRef.current)
+            .finally(() => {
+              if (currentUser.uid === firebaseAuth.getCurrentUser()?.uid) setLoading(false);
+            });
+        }
+        throw error;
+      }
+    })();
+
+    signOutPromiseRef.current = operation;
+    try {
+      await operation;
+    } finally {
+      if (signOutPromiseRef.current === operation) signOutPromiseRef.current = null;
+    }
   };
 
   const deleteAccount = async () => {
     if (!user) return;
     await firebaseAuth.deactivateAccount();
-    await firebaseAuth.logout();
-    setUser(null);
-    setRiderProfile(null);
-    setGuestMode(false);
+    await signOutUser();
   };
 
   const refreshProfile = async () => {
-    if (user) await loadProfile(user);
+    if (user) await loadProfile(user, authTransitionRef.current);
   };
 
   const updateProfileData = async (data: Partial<RiderProfile>) => {
@@ -189,7 +243,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const firebaseUser = await firebaseAuth.loginWithGoogle();
       console.log("Firebase loginWithGoogle returned user:", firebaseUser?.uid);
       setGuestMode(false);
-      await loadProfile(firebaseUser);
     } catch (e: any) {
       console.error("Error in signInWithGoogle helper:", e);
       throw e;
@@ -201,6 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       riderProfile,
       loading,
+      signingOut,
       guestMode,
       setGuestMode,
       signIn,

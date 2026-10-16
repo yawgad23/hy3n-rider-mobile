@@ -10,7 +10,7 @@ describe('Rider required identity route guard', () => {
   it('sends incomplete Google and phone sign-ins to the completion screen before tabs render', () => {
     expect(tabs).toContain('riderProfileIsComplete(riderProfile)');
     expect(tabs).toContain("router.replace('/complete-profile' as any)");
-    expect(tabs).toContain('if (!user || !riderProfileIsComplete(riderProfile)) return null;');
+    expect(tabs).toContain('if (!user || !onboardingChecked || !riderProfileIsComplete(riderProfile)) return null;');
   });
 
   it('registers a completion screen with a server-owned save operation', () => {

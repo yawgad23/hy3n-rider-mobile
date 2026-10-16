@@ -1,5 +1,5 @@
 import { Tabs, router } from "expo-router";
-import { View, ActivityIndicator } from "react-native";
+import { View, Text, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/use-colors";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -36,7 +36,7 @@ function TabBarIcon({ name, color, focused }: TabBarIconProps) {
 export default function TabLayout() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user, riderProfile, loading } = useAuth();
+  const { user, riderProfile, loading, signingOut } = useAuth();
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [activeRideCount, setActiveRideCount] = useState(0);
 
@@ -57,9 +57,15 @@ export default function TabLayout() {
   }, [user?.uid]);
 
   useEffect(() => {
-    if (loading) return;
-    (async () => {
+    let cancelled = false;
+    // Reset the render gate for every auth transition. The tab tree must never
+    // render a prior Rider's Home screen while sign-out is redirecting.
+    setOnboardingChecked(false);
+    if (loading || signingOut) return () => { cancelled = true; };
+
+    void (async () => {
       const seen = await AsyncStorage.getItem('hasSeenOnboarding');
+      if (cancelled) return;
       if (!seen) {
         router.replace('/onboarding' as any);
         return;
@@ -74,7 +80,20 @@ export default function TabLayout() {
       }
       setOnboardingChecked(true);
     })();
-  }, [user, riderProfile, loading]);
+    return () => { cancelled = true; };
+  }, [user?.uid, riderProfile, loading, signingOut]);
+
+  // AuthProvider renders this lightweight shell before it revokes Firebase
+  // authentication. It unmounts the tabs and native Home map once, instead of
+  // allowing the Home screen to flash repeatedly during the redirect.
+  if (signingOut) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color="#D4AF37" />
+        <Text style={{ color: colors.muted, marginTop: 14, fontSize: 14 }}>Signing out safely…</Text>
+      </View>
+    );
+  }
 
   if (loading) {
     return (
@@ -84,7 +103,7 @@ export default function TabLayout() {
     );
   }
 
-  if (!user || !riderProfileIsComplete(riderProfile)) return null;
+  if (!user || !onboardingChecked || !riderProfileIsComplete(riderProfile)) return null;
   const bottomPadding = Math.max(insets.bottom, 12);
   const tabBarHeight = 70 + bottomPadding;
 
