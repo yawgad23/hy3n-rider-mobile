@@ -71,7 +71,9 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    buildNumber: "94",
+    // Build 95 contains the corrected booking-sheet action placement and the
+    // single server-owned route distance/time display for TestFlight testers.
+    buildNumber: "95",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
