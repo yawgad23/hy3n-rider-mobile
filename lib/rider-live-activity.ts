@@ -18,7 +18,11 @@ type ActiveActivity = {
   activityId: string;
   rideId: string;
   user: User;
+  /** Last numeric display position of the native HY3N trip car. */
+  progress: number;
 };
+
+type NativeActivityState = Parameters<typeof startActivity>[0];
 
 const activitiesByRideId = new Map<string, ActiveActivity>();
 const activitiesById = new Map<string, ActiveActivity>();
@@ -69,7 +73,7 @@ async function registerActivityToken(activity: ActiveActivity, activityPushToken
       throw new Error(`Live Activity token registration returned ${response.status}`);
     }
   } catch (error) {
-    // The on-device countdown remains useful. The next token rotation or ride
+    // The on-device display remains useful. The next token rotation or ride
     // update retries remote registration without blocking the trip UI.
     console.warn('[HY3N] Live Activity token registration failed:', error);
   }
@@ -84,15 +88,20 @@ function ensureTokenListener() {
   });
 }
 
-function stateForRide(ride: RiderLiveActivityRide) {
-  const presentation = riderLiveActivityPresentation(ride);
-  return {
+function stateForRide(ride: RiderLiveActivityRide, previousProgress: number) {
+  const presentation = riderLiveActivityPresentation(ride, Date.now(), previousProgress);
+  // expo-live-activity 0.4.2 declares its ETA date and numeric progress as
+  // mutually exclusive, but its native ActivityKit content state accepts and
+  // needs both: the date renders the ETA while numeric progress positions the
+  // HY3N car on the actual-trip line. This is display-only state.
+  const state = {
     title: presentation.title,
     subtitle: presentation.subtitle,
-    progressBar: { date: presentation.arrivalAt },
-    imageName: 'hy3n_wordmark',
-    dynamicIslandImageName: 'hy3n_wordmark',
-  };
+    progressBar: { date: presentation.arrivalAt, progress: presentation.progress },
+    imageName: 'hy3n_trip_car',
+    dynamicIslandImageName: 'hy3n_trip_car',
+  } as unknown as NativeActivityState;
+  return { state, progress: presentation.progress };
 }
 
 const activityConfig = {
@@ -113,10 +122,11 @@ export async function syncRiderLiveActivity(user: User | null | undefined, ride:
   ensureTokenListener();
 
   const previous = activitiesByRideId.get(ride.id);
-  const state = stateForRide(ride);
+  const rendered = stateForRide(ride, previous?.progress ?? 0);
   if (previous) {
     try {
-      await updateActivity(previous.activityId, state);
+      await updateActivity(previous.activityId, rendered.state);
+      previous.progress = rendered.progress;
       return;
     } catch {
       activitiesByRideId.delete(ride.id);
@@ -125,9 +135,9 @@ export async function syncRiderLiveActivity(user: User | null | undefined, ride:
   }
 
   try {
-    const activityId = await startActivity(state, activityConfig);
+    const activityId = await startActivity(rendered.state, activityConfig);
     if (!activityId) return;
-    const activity = { activityId, rideId: ride.id, user };
+    const activity = { activityId, rideId: ride.id, user, progress: rendered.progress };
     activitiesByRideId.set(ride.id, activity);
     activitiesById.set(activityId, activity);
   } catch (error) {
@@ -148,8 +158,8 @@ export async function endRiderLiveActivity(rideId: string, completed: boolean) {
       title: completed ? 'Trip complete' : 'Ride cancelled',
       subtitle: completed ? 'Medaase for riding with HY3N' : 'Open HY3N to book another ride',
       progressBar: { progress: 1 },
-      imageName: 'hy3n_wordmark',
-      dynamicIslandImageName: 'hy3n_wordmark',
+      imageName: 'hy3n_trip_car',
+      dynamicIslandImageName: 'hy3n_trip_car',
     });
   } catch (error) {
     console.warn('[HY3N] Live Activity end unavailable:', error);
