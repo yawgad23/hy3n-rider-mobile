@@ -71,8 +71,8 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    // Build 100 adds fresh automatic pickup validation for TestFlight.
-    buildNumber: "100",
+    // Build 101 packages the validated live-route ordering repair for TestFlight.
+    buildNumber: "101",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
