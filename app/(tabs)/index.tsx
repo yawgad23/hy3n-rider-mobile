@@ -49,7 +49,7 @@ import { driverMobileCallUrl } from "@/lib/driver-mobile-call";
 import { expireStaleRiderSearch } from "@/lib/rider-search-expiry-api";
 import { getRiderRideStatus } from "@/lib/rider-ride-status-api";
 import { nonRegressiveRideStatus, riderTerminalStatus } from "@/lib/rider-ride-status";
-import { RIDER_STATUS_RECONCILIATION_INTERVAL_MS } from "@/lib/rider-status-reconciliation";
+import { mergeRiderStatusSnapshot, RIDER_STATUS_RECONCILIATION_INTERVAL_MS } from "@/lib/rider-status-reconciliation";
 import { buildEmergencyAssistMessage, getSafetySignal, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 import { trpc } from "@/lib/trpc";
 import { type ReceiptEmailStatus } from "@/lib/receipt-email";
@@ -1075,7 +1075,11 @@ export default function RiderHomeScreen() {
       if (!recovered.length) return;
       setActiveRides((current) => current.map((ride) => {
         const serverRide = recovered.find((candidate) => candidate.id === ride.id);
-        return serverRide ? { ...ride, ...serverRide } : ride;
+        // This endpoint is a recovery fallback, not a second live-GPS source.
+        // Keep newer Firestore presence/route data when its status response was
+        // read from an older document revision, so the car cannot jump back or
+        // show the road the Driver has already left.
+        return serverRide ? mergeRiderStatusSnapshot(ride, serverRide) : ride;
       }));
       setSelectedRideId((current) => current || recovered[0].id);
     };
