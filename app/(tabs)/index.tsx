@@ -15,6 +15,7 @@ import {
   Linking,
   Image,
   PanResponder,
+  AppState,
 } from "react-native";
 import NativeGoogleMap from "@/components/NativeGoogleMap";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -84,6 +85,11 @@ import {
   parseRiderStoredSearchHistory,
 } from "@/lib/rider-persisted-location";
 import { currentPickupLabel } from "@/lib/rider-current-pickup";
+import {
+  riderPickupIsReadyForBooking,
+  shouldRefreshRiderPickupOnForeground,
+  type RiderPickupSelectionSource,
+} from "@/lib/rider-pickup-freshness";
 import {
   quoteRiderTripRouteChange,
   requestRiderTripRouteChange,
@@ -273,19 +279,30 @@ export default function RiderHomeScreen() {
   const safeTop = insets.top > 0 ? insets.top : (Constants.statusBarHeight ?? 44);
   const [userLocation, setUserLocation] = useState<[number, number]>(DEFAULT_LOCATION);
   const [pickupAddress, setPickupAddress] = useState<string>("Getting your location...");
+  const [pickupLocationReady, setPickupLocationReady] = useState(false);
   const [refreshingPickupLocation, setRefreshingPickupLocation] = useState(false);
+  // An explicit map-search pickup belongs to the Rider. Otherwise each fresh
+  // foreground opening takes a new device location, never a prior automatic one.
+  const pickupSelectionSourceRef = useRef<RiderPickupSelectionSource>('device');
+  const pickupRefreshGenerationRef = useRef(0);
+  const riderAppStateRef = useRef(AppState.currentState);
   const [surge, setSurge] = useState({ multiplier: 1, active: false, reason: null as string | null });
 
   const refreshCurrentPickupLocation = useCallback(async (): Promise<boolean> => {
+    const generation = ++pickupRefreshGenerationRef.current;
+    pickupSelectionSourceRef.current = 'device';
+    setPickupLocationReady(false);
     setRefreshingPickupLocation(true);
     try {
       const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
+        if (generation !== pickupRefreshGenerationRef.current) return false;
         setPickupAddress('Location permission needed');
         return false;
       }
 
       const location = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy.Balanced });
+      if (generation !== pickupRefreshGenerationRef.current) return false;
       setUserLocation([location.coords.latitude, location.coords.longitude]);
 
       let label = 'Current location';
@@ -298,14 +315,17 @@ export default function RiderHomeScreen() {
       } catch {
         // The GPS point remains valid for a ride even if an address label is unavailable.
       }
+      if (generation !== pickupRefreshGenerationRef.current) return false;
       setPickupAddress(label);
+      setPickupLocationReady(true);
       void Haptics.selectionAsync().catch(() => {});
       return true;
     } catch {
+      if (generation !== pickupRefreshGenerationRef.current) return false;
       setPickupAddress('Location unavailable');
       return false;
     } finally {
-      setRefreshingPickupLocation(false);
+      if (generation === pickupRefreshGenerationRef.current) setRefreshingPickupLocation(false);
     }
   }, []);
 
@@ -345,6 +365,20 @@ export default function RiderHomeScreen() {
   // Request GPS and center the map on the Rider's actual starting pickup.
   useEffect(() => {
     void refreshCurrentPickupLocation();
+  }, [refreshCurrentPickupLocation]);
+
+  // Returning to a still-mounted app used to retain the prior automatic pickup
+  // coordinate. Refresh on every foreground transition unless the Rider chose a
+  // specific pickup in this session. A manual pickup is never silently moved.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      const returnedToForeground = riderAppStateRef.current !== 'active' && nextAppState === 'active';
+      riderAppStateRef.current = nextAppState;
+      if (returnedToForeground && shouldRefreshRiderPickupOnForeground(pickupSelectionSourceRef.current)) {
+        void refreshCurrentPickupLocation();
+      }
+    });
+    return () => subscription.remove();
   }, [refreshCurrentPickupLocation]);
   // ─── Nearby Drivers ─────────────────────────────────────────────────────────
   const [nearbyDrivers, setNearbyDrivers] = useState<NearbyVehicle[]>([]);
@@ -1305,6 +1339,7 @@ export default function RiderHomeScreen() {
     .filter(Boolean)
     .map((stop) => ({ lat: stop!.lat, lng: stop!.lng })), [stops]);
   const quoteRouteKey = destination
+    && pickupLocationReady
     ? [
         userLocation[0].toFixed(5),
         userLocation[1].toFixed(5),
@@ -1354,7 +1389,7 @@ export default function RiderHomeScreen() {
   // fare locally. A price edit in the admin dashboard applies on this refresh;
   // accepting the ride locks the same server quote into the ride record.
   useEffect(() => {
-    if (!destination || !user || !quoteRouteKey) {
+    if (!destination || !user || !pickupLocationReady || !quoteRouteKey) {
       setServerQuotes({});
       setQuotedRouteKey(null);
       setQuoteLoading(false);
@@ -1444,7 +1479,7 @@ export default function RiderHomeScreen() {
   // Rider taps another category; already returned background quotes are used.
   // A route, pickup, stop, session, or explicit retry still refreshes safely.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destination?.lat, destination?.lng, user?.uid, userLocation[0], userLocation[1], quoteRouteKey, quoteRefreshNonce]);
+  }, [destination?.lat, destination?.lng, user?.uid, userLocation[0], userLocation[1], pickupLocationReady, quoteRouteKey, quoteRefreshNonce]);
 
   const selectRideCategory = useCallback((category: (typeof RIDE_CATEGORIES)[number]) => {
     const quote = serverQuotes[category.id];
@@ -1604,8 +1639,14 @@ export default function RiderHomeScreen() {
     }
 
     if (selectedMode === "pickup") {
+      // Invalidate a foreground GPS request that began before the Rider chose
+      // an address. The Rider's deliberate map selection always wins.
+      pickupRefreshGenerationRef.current += 1;
+      pickupSelectionSourceRef.current = 'rider-selected';
       setUserLocation([resolved.lat, resolved.lng]);
       setPickupAddress(resolved.address || resolved.name || "Selected pickup");
+      setPickupLocationReady(true);
+      setRefreshingPickupLocation(false);
       setSearchOpen(false);
       setSearchQuery("");
       return;
@@ -1688,6 +1729,15 @@ export default function RiderHomeScreen() {
     const paymentMethod = paymentOverride;
     if (!destination) {
       openLocationSearch("destination");
+      return;
+    }
+
+    if (!riderPickupIsReadyForBooking(pickupLocationReady, userLocation)) {
+      Alert.alert(
+        'Current pickup needed',
+        'HY3N is updating your current location. Please wait, or choose a different pickup location yourself.',
+      );
+      void refreshCurrentPickupLocation();
       return;
     }
 

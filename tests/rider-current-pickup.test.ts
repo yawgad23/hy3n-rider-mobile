@@ -19,4 +19,12 @@ describe('Rider current pickup selection', () => {
     expect(screen).toContain('accessibilityLabel="Use current location for pickup"');
     expect(screen).toContain('onPress={() => openLocationSearch("pickup")}');
   });
+
+  it('refreshes an automatic pickup on foreground return and blocks booking until coordinates are fresh', () => {
+    expect(screen).toContain("AppState.addEventListener('change'");
+    expect(screen).toContain('shouldRefreshRiderPickupOnForeground(pickupSelectionSourceRef.current)');
+    expect(screen).toContain('riderPickupIsReadyForBooking(pickupLocationReady, userLocation)');
+    expect(screen).toContain("pickupSelectionSourceRef.current = 'rider-selected';");
+    expect(screen).toContain('pickupRefreshGenerationRef.current += 1;');
+  });
 });

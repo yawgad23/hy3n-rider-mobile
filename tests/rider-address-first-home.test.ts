@@ -47,8 +47,8 @@ describe('Rider address-first home flow', () => {
     expect(screen).toContain('accessibilityLabel="HY3N Comfort car"');
   });
 
-  it('retains server-owned pricing only after a destination is available', () => {
-    expect(screen).toContain('if (!destination || !user || !quoteRouteKey)');
+  it('retains server-owned pricing only after destination and fresh pickup are available', () => {
+    expect(screen).toContain('if (!destination || !user || !pickupLocationReady || !quoteRouteKey)');
     expect(screen).toContain('requestAuthoritativeRideQuotes<ServerRideQuote>');
     expect(screen).toContain('const renderBookingSheet = () => (');
   });
