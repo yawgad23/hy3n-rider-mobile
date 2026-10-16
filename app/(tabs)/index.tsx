@@ -107,6 +107,7 @@ const TEXT = "#FAFAFA";
 const MUTED = "#9CA3AF";
 const HY3N_CAR_WORDMARK = require("@/assets/images/hy3n-car-wordmark-transparent.png");
 const HY3N_CAR_DELIVERY = require("@/assets/images/hy3n-car-delivery-open-trunk-card-clean.png");
+const HY3N_COMFORT_CAR = require("@/assets/images/hy3n-comfort-car-3d.png");
 const EMPTY_ROUTE_POINTS: [number, number][] = [];
 
 interface Location {
@@ -3357,6 +3358,10 @@ export default function RiderHomeScreen() {
                 {category.id === 'car_delivery' ? (
                   <View style={{ width: 54, height: 42, alignItems: 'center', justifyContent: 'center', marginLeft: -4, marginTop: -3 }}>
                     <Image source={HY3N_CAR_DELIVERY} accessibilityLabel="HY3N car with delivery box" style={{ width: 54, height: 42 }} resizeMode="contain" />
+                  </View>
+                ) : category.id === 'comfort' ? (
+                  <View style={{ width: 54, height: 42, alignItems: 'center', justifyContent: 'center', marginLeft: -4, marginTop: -3 }}>
+                    <Image source={HY3N_COMFORT_CAR} accessibilityLabel="HY3N Comfort car" style={{ width: 54, height: 42 }} resizeMode="contain" />
                   </View>
                 ) : (
                   <View style={{ width: 35, height: 35, borderRadius: 12, backgroundColor: selected ? GOLD : `${GREEN}20`, alignItems: "center", justifyContent: "center" }}>

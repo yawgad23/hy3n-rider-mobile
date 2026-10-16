@@ -43,7 +43,7 @@ export const RIDE_CATEGORIES: RideCategory[] = [
     waitingFeePerMin: 0.88,
     minFare: 27.50,
     seats: 4,
-    icon: "star",
+    icon: "directions-car",
   },
   {
     id: "kantanka",
@@ -57,7 +57,7 @@ export const RIDE_CATEGORIES: RideCategory[] = [
     waitingFeePerMin: 0.88,
     minFare: 27.50,
     seats: 4,
-    icon: "directions-car",
+    icon: "star",
   },
   {
     id: "car_delivery",

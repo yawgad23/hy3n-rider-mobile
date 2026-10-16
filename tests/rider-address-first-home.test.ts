@@ -41,6 +41,12 @@ describe('Rider address-first home flow', () => {
     expect(screen).toContain('accessibilityLabel="HY3N car with delivery box"');
   });
 
+  it('uses the branded Comfort car artwork while Kantanka retains the star identity', () => {
+    expect(screen).toContain('const HY3N_COMFORT_CAR = require("@/assets/images/hy3n-comfort-car-3d.png");');
+    expect(screen).toContain("category.id === 'comfort'");
+    expect(screen).toContain('accessibilityLabel="HY3N Comfort car"');
+  });
+
   it('retains server-owned pricing only after a destination is available', () => {
     expect(screen).toContain('if (!destination || !user || !quoteRouteKey)');
     expect(screen).toContain('requestAuthoritativeRideQuotes<ServerRideQuote>');
