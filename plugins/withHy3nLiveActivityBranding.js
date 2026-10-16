@@ -2,8 +2,8 @@ const { withFinalizedMod } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
-const TRIP_PROGRESS_WIDGET_MARKER = '// HY3N trip-progress presentation v2';
-const TRIP_PROGRESS_LOCK_SCREEN_MARKER = '// HY3N trip-progress Lock Screen presentation v2';
+const TRIP_PROGRESS_WIDGET_MARKER = '// HY3N trip-progress presentation v3';
+const TRIP_PROGRESS_LOCK_SCREEN_MARKER = '// HY3N trip-progress Lock Screen presentation v3';
 
 function replaceRequired(source, startMarker, endMarker, replacement, description) {
   const start = source.indexOf(startMarker);
@@ -91,18 +91,26 @@ function brandedWidgetSource(source) {
     private func hy3nTripProgress(progress: Double, progressViewTint: String?) -> some View {
       GeometryReader { proxy in
         let clampedProgress = min(max(progress, 0), 1)
-        let carWidth: CGFloat = 32
-        let usableWidth = max(0, proxy.size.width - carWidth)
+        let carWidth: CGFloat = 36
+        let carHeight: CGFloat = 18
+        // The vehicle's centre, rather than its leading edge, is the actual
+        // route position. That keeps the line visibly running through the
+        // middle of the owned top-down HY3N car, like a route progress marker.
+        let routePosition = proxy.size.width * clampedProgress
+        let carOffset = min(
+          max(0, routePosition - carWidth / 2),
+          max(0, proxy.size.width - carWidth)
+        )
         ZStack(alignment: .leading) {
           Capsule()
             .fill(Color.white.opacity(0.22))
             .frame(height: 6)
           Capsule()
             .fill(progressViewTint.map { Color(hex: $0) } ?? Color(hex: "D4AF37"))
-            .frame(width: max(0, proxy.size.width * clampedProgress), height: 6)
+            .frame(width: max(0, min(proxy.size.width, routePosition)), height: 6)
           resizableImage(imageName: "hy3n_trip_car")
-            .frame(width: carWidth, height: 18)
-            .offset(x: usableWidth * clampedProgress)
+            .frame(width: carWidth, height: carHeight)
+            .offset(x: carOffset)
             .animation(.easeInOut(duration: 0.65), value: clampedProgress)
         }
         .frame(height: 22, alignment: .center)
@@ -130,20 +138,28 @@ function brandedLockScreenSource(source) {
 
     private func hy3nTripProgressLine(progress: Double) -> some View {
       GeometryReader { proxy in
-        let carWidth: CGFloat = 38
-        let usableWidth = max(0, proxy.size.width - carWidth)
+        let carWidth: CGFloat = 42
+        let carHeight: CGFloat = 21
+        // Keep the car centred on the exact journey point. The coloured line
+        // ends under its centre instead of looking like the car has fallen to
+        // one side of the track.
+        let routePosition = proxy.size.width * progress
+        let carOffset = min(
+          max(0, routePosition - carWidth / 2),
+          max(0, proxy.size.width - carWidth)
+        )
         ZStack(alignment: .leading) {
           Capsule()
             .fill(Color.white.opacity(0.22))
             .frame(height: 7)
           Capsule()
             .fill(progressViewTint ?? Color(hex: "D4AF37"))
-            .frame(width: max(0, proxy.size.width * progress), height: 7)
+            .frame(width: max(0, min(proxy.size.width, routePosition)), height: 7)
           // This is an owned HY3N vehicle asset, not a third-party ride-hailing
           // mark. It advances only when the server sends lower remaining distance.
           resizableImage(imageName: "hy3n_trip_car")
-            .frame(width: carWidth, height: 21)
-            .offset(x: usableWidth * progress)
+            .frame(width: carWidth, height: carHeight)
+            .offset(x: carOffset)
             .animation(.easeInOut(duration: 0.65), value: progress)
         }
         .frame(height: 27, alignment: .center)

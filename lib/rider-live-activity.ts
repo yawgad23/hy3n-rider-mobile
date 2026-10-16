@@ -26,6 +26,10 @@ type NativeActivityState = Parameters<typeof startActivity>[0];
 
 const activitiesByRideId = new Map<string, ActiveActivity>();
 const activitiesById = new Map<string, ActiveActivity>();
+// ActivityKit can emit its APNs token immediately after startActivity resolves.
+// Keep an early token briefly so it is never lost between native creation and
+// insertion into the JavaScript activity map.
+const pendingActivityPushTokens = new Map<string, string>();
 let tokenListenerReady = false;
 let fcmTokenPromise: Promise<string | null> | null = null;
 
@@ -50,7 +54,7 @@ async function riderFcmToken() {
   return fcmTokenPromise;
 }
 
-async function registerActivityToken(activity: ActiveActivity, activityPushToken: string) {
+async function registerActivityToken(activity: ActiveActivity, activityPushToken: string, attempt = 0) {
   const baseUrl = getApiBaseUrl();
   const fcmToken = await riderFcmToken();
   if (!baseUrl || !fcmToken || !activityPushToken) return;
@@ -73,9 +77,18 @@ async function registerActivityToken(activity: ActiveActivity, activityPushToken
       throw new Error(`Live Activity token registration returned ${response.status}`);
     }
   } catch (error) {
-    // The on-device display remains useful. The next token rotation or ride
-    // update retries remote registration without blocking the trip UI.
+    // The on-device display remains useful. Transient launch/network timing
+    // must not leave an otherwise active Lock Screen card without its first
+    // remote Driver-location update, so retry twice while this activity lives.
     console.warn('[HY3N] Live Activity token registration failed:', error);
+    if (attempt < 2) {
+      const delayMs = 1_500 * (attempt + 1);
+      setTimeout(() => {
+        if (activitiesById.get(activity.activityId) === activity) {
+          void registerActivityToken(activity, activityPushToken, attempt + 1);
+        }
+      }, delayMs);
+    }
   }
 }
 
@@ -84,7 +97,11 @@ function ensureTokenListener() {
   tokenListenerReady = true;
   addActivityTokenListener((event) => {
     const activity = activitiesById.get(event.activityID);
-    if (activity) void registerActivityToken(activity, event.activityPushToken);
+    if (activity) {
+      void registerActivityToken(activity, event.activityPushToken);
+    } else {
+      pendingActivityPushTokens.set(event.activityID, event.activityPushToken);
+    }
   });
 }
 
@@ -140,6 +157,11 @@ export async function syncRiderLiveActivity(user: User | null | undefined, ride:
     const activity = { activityId, rideId: ride.id, user, progress: rendered.progress };
     activitiesByRideId.set(ride.id, activity);
     activitiesById.set(activityId, activity);
+    const earlyPushToken = pendingActivityPushTokens.get(activityId);
+    if (earlyPushToken) {
+      pendingActivityPushTokens.delete(activityId);
+      void registerActivityToken(activity, earlyPushToken);
+    }
   } catch (error) {
     // Devices below iOS 16.2 or with Live Activities disabled still use the
     // normal in-app tracker; this must never affect a ride lifecycle action.
@@ -153,6 +175,7 @@ export async function endRiderLiveActivity(rideId: string, completed: boolean) {
   if (!activity) return;
   activitiesByRideId.delete(rideId);
   activitiesById.delete(activity.activityId);
+  pendingActivityPushTokens.delete(activity.activityId);
   try {
     await stopActivity(activity.activityId, {
       title: completed ? 'Trip complete' : 'Ride cancelled',
