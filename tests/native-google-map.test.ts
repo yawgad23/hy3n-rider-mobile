@@ -36,7 +36,9 @@ describe('Rider native Google Maps migration', () => {
   });
 
   it('shows only the Driver vehicle on the Rider map after a trip starts', () => {
-    expect(component).toContain("!bookingPreview && tripStatus !== 'in_progress' && isNativeMapPoint(userLocation)");
+    expect(component).toContain("!bookingPreview && !driverTracking && tripStatus !== 'in_progress' && isNativeMapPoint(userLocation)");
+    expect(component).toContain('overlapping green pins');
+    expect(component).toContain('{pickupPoint && <Marker');
     expect(component).toContain("title={tripStatus === 'in_progress' ? 'HY3N Driver en route' : 'Your HY3N Driver'}");
   });
 

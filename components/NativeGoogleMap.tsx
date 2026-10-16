@@ -450,7 +450,10 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         >
           <BookingEndpointMarker label={bookingDropoffTimeLabel || 'Drop-off\nCalculating'} tone="dropoff" />
         </Marker>}
-        {!bookingPreview && tripStatus !== 'in_progress' && isNativeMapPoint(userLocation) && <Marker
+        {/* Once a Driver is matched, `pickupPoint` below is the one server-owned
+            pickup marker. Rendering the changing phone location too creates two
+            overlapping green pins and makes the car hard to read. */}
+        {!bookingPreview && !driverTracking && tripStatus !== 'in_progress' && isNativeMapPoint(userLocation) && <Marker
           coordinate={coordinate(userLocation)}
           pinColor="#006B3F"
           title="Your pickup spot"
