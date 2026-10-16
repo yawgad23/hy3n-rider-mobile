@@ -22,6 +22,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { buildLostItemDescription, buildLostItemSupportMessage, validateLostItemForm, type LostItemContactMethod } from "@/lib/lost-item-support";
 import { buildSupportMailto, buildSupportWhatsAppUrl, SUPPORT_PHONE_E164 } from "@/lib/support-contact";
 import { useColors } from "@/hooks/use-colors";
+import { getRiderHistory } from "@/lib/rider-history-api";
 import {
   normalizeRiderHistoryRide,
   riderHistoryStatusLabel,
@@ -98,20 +99,26 @@ export default function ActivityScreen() {
   const [rides, setRides] = useState<Ride[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingRides, setLoadingRides] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const loadRides = useCallback(async () => {
-    if (!user) return;
-    setLoadingRides(true);
-    try {
-      // Rides are saved to the 'rides' collection by dispatch.ts using 'created_at' as the timestamp field
-      let firestoreRides = await firestoreDB.list('rides', { rider_id: user.uid }, 'created_at', 'desc', 50);
-      // Historical Firestore records span several release schemas. Normalize
-      // every numeric/date field before a list card or detail sheet calls
-      // `.toFixed`, so opening an older trip cannot crash the Rider app.
-      firestoreRides = (firestoreRides || []).map((ride: Record<string, unknown>) => normalizeRiderHistoryRide(ride));
-      setRides(firestoreRides as Ride[]);
-    } catch (err) {
+    if (!user) {
       setRides([]);
+      setHistoryError(null);
+      setLoadingRides(false);
+      return;
+    }
+    setLoadingRides(true);
+    setHistoryError(null);
+    try {
+      // A protected API derives ownership from the Rider's Firebase token and
+      // returns only display-safe trip fields. Normalization remains local so
+      // every legacy number/date is safe before the detail sheet renders it.
+      const serverRides = await getRiderHistory(50);
+      setRides(serverRides.map(normalizeRiderHistoryRide));
+    } catch {
+      setRides([]);
+      setHistoryError('Your ride history is temporarily unavailable. Pull to refresh.');
     } finally {
       setLoadingRides(false);
     }
@@ -348,6 +355,17 @@ export default function ActivityScreen() {
             <View style={{ alignItems: "center", paddingVertical: 60 }}>
               <ActivityIndicator color={GOLD} size="large" />
               <Text style={{ color: MUTED, fontSize: 13, marginTop: 16 }}>Loading your rides...</Text>
+            </View>
+          ) : historyError ? (
+            <View style={{ alignItems: "center", paddingVertical: 60, paddingHorizontal: 24 }}>
+              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: `${RED}18`, alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+                <MaterialIcons name="cloud-off" size={32} color={RED} />
+              </View>
+              <Text style={{ color: TEXT, fontWeight: "bold", fontSize: 16, marginBottom: 6, textAlign: "center" }}>History is temporarily unavailable</Text>
+              <Text style={{ color: MUTED, fontSize: 13, textAlign: "center", lineHeight: 19 }}>{historyError}</Text>
+              <TouchableOpacity onPress={onRefresh} style={{ marginTop: 18, backgroundColor: GREEN, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 11 }} accessibilityRole="button" accessibilityLabel="Retry ride history">
+                <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 14 }}>Try again</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={{ alignItems: "center", paddingVertical: 60 }}>

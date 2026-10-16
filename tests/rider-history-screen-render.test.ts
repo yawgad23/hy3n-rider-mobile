@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const mockList = vi.fn();
+const mockHistory = vi.fn();
 const mockRider = { uid: 'rider-render-test' };
 
 vi.mock('react-native', () => {
@@ -45,8 +45,9 @@ vi.mock('expo-router', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/lib/auth-context', () => ({ useAuth: () => ({ user: mockRider }) }));
 vi.mock('@/lib/firebase', () => ({
   COLLECTIONS: { RIDE_REPORTS: 'ride_reports', SUPPORT_TICKETS: 'support_tickets' },
-  firestoreDB: { list: mockList, create: vi.fn(async () => ({ id: 'created' })) },
+  firestoreDB: { create: vi.fn(async () => ({ id: 'created' })) },
 }));
+vi.mock('@/lib/rider-history-api', () => ({ getRiderHistory: mockHistory }));
 vi.mock('@react-native-async-storage/async-storage', () => ({ default: { setItem: vi.fn(async () => undefined) } }));
 vi.mock('@/hooks/use-colors', () => ({
   useColors: () => ({
@@ -67,7 +68,7 @@ async function renderHistoryWith(record: Record<string, unknown>) {
   // the classic runtime, so expose the same React binding only in this harness.
   (globalThis as any).React = React;
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
-  mockList.mockResolvedValueOnce([record]);
+  mockHistory.mockResolvedValueOnce([record]);
 
   let view: ReturnType<Renderer['create']> | undefined;
   await renderer.act(async () => {
@@ -81,7 +82,7 @@ async function renderHistoryWith(record: Record<string, unknown>) {
 }
 
 afterEach(() => {
-  mockList.mockReset();
+  mockHistory.mockReset();
 });
 
 describe('Rider History screen rendering', () => {
@@ -92,6 +93,13 @@ describe('Rider History screen rendering', () => {
     expect(source).not.toContain('import * as Sharing from "expo-sharing"');
     expect(source).toContain('const Print = await import("expo-print")');
     expect(source).toContain('const Sharing = await import("expo-sharing")');
+  });
+
+  it('uses the protected Rider history client rather than a direct Firestore rides query', () => {
+    const source = readFileSync(resolve(process.cwd(), 'app/(tabs)/activity.tsx'), 'utf8');
+
+    expect(source).toContain('getRiderHistory(50)');
+    expect(source).not.toContain("firestoreDB.list('rides'");
   });
 
   it('renders a legacy Firestore record and opens an in-screen detail view without throwing', async () => {
