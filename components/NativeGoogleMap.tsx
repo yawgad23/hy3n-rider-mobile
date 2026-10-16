@@ -448,7 +448,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         >
           <BookingEndpointMarker label={bookingDropoffTimeLabel || 'Drop-off\nCalculating'} tone="dropoff" />
         </Marker>}
-        {!bookingPreview && isNativeMapPoint(userLocation) && <Marker
+        {!bookingPreview && tripStatus !== 'in_progress' && isNativeMapPoint(userLocation) && <Marker
           coordinate={coordinate(userLocation)}
           pinColor="#006B3F"
           title="Your pickup spot"

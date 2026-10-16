@@ -31,6 +31,11 @@ describe('Rider native Google Maps migration', () => {
     expect(screen).toContain('driverRouteUpdatedAt={activeRide?.driverRouteUpdatedAt ?? null}');
   });
 
+  it('shows only the Driver vehicle on the Rider map after a trip starts', () => {
+    expect(component).toContain("!bookingPreview && tripStatus !== 'in_progress' && isNativeMapPoint(userLocation)");
+    expect(component).toContain("title={tripStatus === 'in_progress' ? 'HY3N Driver en route' : 'Your HY3N Driver'}");
+  });
+
   it('renders the active Rider screen with the native renderer', () => {
     expect(screen).toContain('NativeGoogleMap');
     expect(screen).not.toContain('import LeafletMap from');

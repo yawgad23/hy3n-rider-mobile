@@ -846,11 +846,19 @@ export default function RiderHomeScreen() {
               .filter(([lat, lng]: [number, number]) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180)
               .slice(0, 180)
             : undefined;
-          const nextDriverLocation = hasDriverLocation
-            ? { lat: Number(driver!.location.lat), lng: Number(driver!.location.lng) }
+          // A ride document retains the Driver's acceptance-time position. The
+          // `driver_presence` stream is the authority for live GPS, so an old
+          // ride snapshot cannot pull the moving vehicle back to its start.
+          const rideDriverUpdate = hasDriverLocation
+            ? nextRiderDriverLocation(driver!.location, prev.driverLocationUpdatedAt, prev.driverLocation)
+            : null;
+          const nextDriverLocation = rideDriverUpdate
+            ? { lat: rideDriverUpdate.lat, lng: rideDriverUpdate.lng }
             : prev.driverLocation;
-          const driverBearing = nextDriverLocation && prev.driverLocation
-            ? calculateBearing(prev.driverLocation.lat, prev.driverLocation.lng, nextDriverLocation.lat, nextDriverLocation.lng)
+          const driverBearing = rideDriverUpdate && nextDriverLocation && prev.driverLocation
+            ? (Number.isFinite(Number(rideDriverUpdate.heading))
+              ? Number(rideDriverUpdate.heading)
+              : calculateBearing(prev.driverLocation.lat, prev.driverLocation.lng, nextDriverLocation.lat, nextDriverLocation.lng))
             : prev.driverBearing;
           const reportedDriverTripTotal = toFiniteNumber((driver as any)?.total_trips ?? (driver as any)?.total_rides);
           const reportedDriverRatingCount = toFiniteNumber((driver as any)?.rating_count ?? rawRide.driver_rating_count);
@@ -898,9 +906,11 @@ export default function RiderHomeScreen() {
               : prev.eta;
           const enteredTrip = ride.status === 'in_progress' && prev.status !== 'in_progress';
           const routeDeviationKm = Number((ride as any).route_deviation_km ?? prev.routeDeviationKm ?? 0);
-          const driverStoppedAt = nextDriverLocation && prev.driverLocation && calculateDistance(prev.driverLocation.lat, prev.driverLocation.lng, nextDriverLocation.lat, nextDriverLocation.lng) < 0.01
-            ? (prev.driverStoppedAt ?? Date.now())
-            : undefined;
+          const driverStoppedAt = rideDriverUpdate && nextDriverLocation && prev.driverLocation
+            ? (calculateDistance(prev.driverLocation.lat, prev.driverLocation.lng, nextDriverLocation.lat, nextDriverLocation.lng) < 0.01
+              ? (prev.driverStoppedAt ?? Date.now())
+              : undefined)
+            : prev.driverStoppedAt;
           const stoppedSeconds = driverStoppedAt ? Math.max(0, Math.floor((Date.now() - driverStoppedAt) / 1000)) : 0;
           const safetySignal = getSafetySignal({ status: ride.status, distanceFromRouteKm: routeDeviationKm, stoppedSeconds });
 
@@ -957,7 +967,7 @@ export default function RiderHomeScreen() {
               : undefined,
             driverLocation: reassignedAfterDriverCancellation ? undefined : nextDriverLocation,
             driverBearing: reassignedAfterDriverCancellation ? undefined : driverBearing,
-            driverLocationUpdatedAt: reassignedAfterDriverCancellation ? undefined : String((driver as any)?.location?.recorded_at || (driver as any)?.last_location_update || (ride as any).driver_location_updated_at || prev.driverLocationUpdatedAt || ''),
+            driverLocationUpdatedAt: reassignedAfterDriverCancellation ? undefined : (rideDriverUpdate?.updatedAt ?? prev.driverLocationUpdatedAt),
             driverRouteUpdatedAt: reassignedAfterDriverCancellation ? undefined : (hasCurrentServerRoute && serverRoutePoints?.length
               ? serverRouteUpdatedAt
               : undefined),
@@ -1070,12 +1080,17 @@ export default function RiderHomeScreen() {
 
     return firestoreDB.subscribeDoc(COLLECTIONS.DRIVER_PRESENCE, driverId, (profile: any) => {
       const current = profile?.current_location || profile?.location;
-      const incoming = nextRiderDriverLocation(current || profile);
+      const currentRide = activeRidesRef.current.find((item) => item.id === ride.id);
+      const incoming = nextRiderDriverLocation(
+        current || profile,
+        currentRide?.driverLocationUpdatedAt,
+        currentRide?.driverLocation,
+      );
       if (!incoming) return;
       const point = { lat: incoming.lat, lng: incoming.lng };
       updateActiveRide((prev) => {
         if (prev.id !== ride.id) return prev;
-        const ordered = nextRiderDriverLocation(current || profile, prev.driverLocationUpdatedAt);
+        const ordered = nextRiderDriverLocation(current || profile, prev.driverLocationUpdatedAt, prev.driverLocation);
         if (!ordered) return prev;
         const nextPoint = { lat: ordered.lat, lng: ordered.lng };
         const bearing = Number.isFinite(Number(ordered.heading))
