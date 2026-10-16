@@ -71,9 +71,8 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    // Build 97 includes Live Activity reliability, protected Past Rides,
-    // in-trip route changes, and the Rider splash repair for TestFlight.
-    buildNumber: "97",
+    // Build 98 adds the Rider active-trip map position repair for TestFlight.
+    buildNumber: "98",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
