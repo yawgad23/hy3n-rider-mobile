@@ -66,6 +66,7 @@ import { deliveryRequestDetails, isDeliveryCategory, validateDeliveryBookingDeta
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
 import { destinationArrivalReminder, shouldPromptForDestinationArrival } from "@/lib/rider-trip-feedback";
 import { bookingMapTimeLabels } from "@/lib/booking-map-presentation";
+import { riderBookingRouteDisplay } from "@/lib/rider-booking-route-display";
 import { authoritativeRouteOverviewPoints } from "@/lib/native-map-camera";
 import { findAnotherRideOffer, type FindAnotherRideOffer } from "@/lib/rider-find-another-ride";
 import { assignmentReleaseActor, driverRedispatchCount, isAssignmentReleaseRedispatch } from "@/lib/rider-driver-redispatch";
@@ -1222,15 +1223,21 @@ export default function RiderHomeScreen() {
       ].join('~')
     : null;
   const selectedQuote = destination ? serverQuotes[selectedCategory.id] : undefined;
+  // A route quote belongs to a precise set of coordinates. Do not momentarily
+  // show the old route while a new pickup, destination, or stop is loading.
+  const selectedQuoteIsCurrent = isServerQuoteCurrent(quotedRouteKey, quoteRouteKey);
+  const currentServerQuotes = selectedQuoteIsCurrent ? serverQuotes : {};
+  const currentSelectedQuote = selectedQuoteIsCurrent ? selectedQuote : undefined;
+  const bookingRouteDisplay = riderBookingRouteDisplay(currentSelectedQuote);
   const bookingMapTimes = destination
     ? bookingMapTimeLabels({
         pickupEtaMinutes: closestVehicleEta,
-        routeDurationMinutes: selectedQuote?.durationMinutes,
+        routeDurationMinutes: currentSelectedQuote?.durationMinutes,
       })
     : null;
   const displayedRoutePoints = activeRide?.driverRoutePoints
     ?? activeRide?.bookingRoutePoints
-    ?? selectedQuote?.routePoints
+    ?? currentSelectedQuote?.routePoints
     ?? EMPTY_ROUTE_POINTS;
   const routeOverviewPoints = useMemo(
     () => authoritativeRouteOverviewPoints(displayedRoutePoints),
@@ -1238,12 +1245,12 @@ export default function RiderHomeScreen() {
   );
   const canShowRouteOverview = routeOverviewPoints.length > 1;
   const routeOverviewDestination = activeRide?.destination ?? destination;
-  const routeOverviewDurationMinutes = activeRide?.routeDurationMinutes ?? selectedQuote?.durationMinutes ?? null;
-  const routeOverviewDistanceKm = activeRide?.routeDistanceKm ?? selectedQuote?.distanceKm ?? null;
-  const requestQuoteReady = isServerQuoteCurrent(quotedRouteKey, quoteRouteKey)
-    && canRequestServerQuotedRide(selectedQuote, quoteLoading);
-  const bookingFare = selectedQuote?.available ? selectedQuote.total : 0;
-  const quoteSurgeMultiplier = selectedQuote?.surgeMultiplier ?? surge.multiplier;
+  const routeOverviewDurationMinutes = activeRide?.routeDurationMinutes ?? currentSelectedQuote?.durationMinutes ?? null;
+  const routeOverviewDistanceKm = activeRide?.routeDistanceKm ?? currentSelectedQuote?.distanceKm ?? null;
+  const requestQuoteReady = selectedQuoteIsCurrent
+    && canRequestServerQuotedRide(currentSelectedQuote, quoteLoading);
+  const bookingFare = currentSelectedQuote?.available ? currentSelectedQuote.total : 0;
+  const quoteSurgeMultiplier = currentSelectedQuote?.surgeMultiplier ?? surge.multiplier;
   const preTipAmount = selectedTipPercent ? (bookingFare * selectedTipPercent) / 100 : (customTip ? parseFloat(customTip) : 0);
 
   // A route overview is strictly a native map-camera preference. It never
@@ -2898,8 +2905,8 @@ export default function RiderHomeScreen() {
           ))}
         </View>
         <View style={{ minWidth: 66, alignItems: "flex-end", justifyContent: "center" }}>
-          <Text style={{ color: TEXT, fontSize: 16, fontWeight: "800" }}>{(selectedQuote?.distanceKm ?? distance).toFixed(1)} km</Text>
-          <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>~{selectedQuote?.durationMinutes ?? duration} min trip</Text>
+          <Text style={{ color: bookingRouteDisplay.ready ? TEXT : MUTED, fontSize: 16, fontWeight: "800" }} numberOfLines={1}>{bookingRouteDisplay.distance}</Text>
+          <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }} numberOfLines={1}>{bookingRouteDisplay.duration}</Text>
         </View>
       </View>
 
@@ -2934,7 +2941,7 @@ export default function RiderHomeScreen() {
       ) : null}
       <View style={{ gap: 9, paddingBottom: 14 }}>
         {RIDE_CATEGORIES.map((cat) => {
-          const quote = serverQuotes[cat.id];
+          const quote = currentServerQuotes[cat.id];
           const fare = quote?.total ?? 0;
           const isAvailable = quote?.available === true;
           const isConfirmedUnavailable = quote?.available === false;
@@ -3164,7 +3171,7 @@ export default function RiderHomeScreen() {
         <View style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 11 }}>
           <View>
             <Text style={{ color: MUTED, fontSize: 11, fontWeight: "800", letterSpacing: 0.9 }}>ESTIMATED FARE</Text>
-            <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>{distance.toFixed(1)} km · ~{duration} min</Text>
+            <Text style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>{bookingRouteDisplay.combined}</Text>
           </View>
             <Text style={{ color: GOLD, fontSize: 30, fontWeight: "900", letterSpacing: -0.5 }}>GH₵{bookingFare.toFixed(2)}</Text>
         </View>
@@ -3470,7 +3477,9 @@ export default function RiderHomeScreen() {
         backgroundColor: SURFACE,
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
-        paddingBottom: insets.bottom + 16,
+        // Tabs own the safe-area inset below this screen. Adding it to the
+        // sheet created an empty strip under Request HY3N and hid categories.
+        paddingBottom: 0,
         // A fixed height gives the booking ScrollView a real viewport. The
         // request action therefore stays visible below the scrolling options
         // instead of being pushed off-screen after a destination is selected.
