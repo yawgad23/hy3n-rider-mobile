@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import { Platform } from "react-native";
+import * as SplashScreen from "expo-splash-screen";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
@@ -22,9 +23,17 @@ import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 import { RiderErrorBoundary } from "@/components/RiderErrorBoundary";
+import { riderSplashRemainingMs } from "@/lib/rider-splash";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
+const riderSplashStartedAtMs = Date.now();
+
+// This needs to run before React renders. HY3N retains the native launch
+// artwork briefly, then restores the signed-in Rider directly to Home.
+if (Platform.OS !== "web") {
+  void SplashScreen.preventAutoHideAsync().catch(() => {});
+}
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -59,6 +68,14 @@ export default function RootLayout() {
 
   useEffect(() => {
     initManusRuntime();
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    const timer = setTimeout(() => {
+      void SplashScreen.hideAsync().catch(() => {});
+    }, riderSplashRemainingMs(riderSplashStartedAtMs));
+    return () => clearTimeout(timer);
   }, []);
 
   // Set up push notifications
