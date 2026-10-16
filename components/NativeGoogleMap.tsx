@@ -3,6 +3,7 @@ import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'r
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import { matchPointToServerRoute } from '@/lib/rider-route-matching';
 import { planRiderRouteAnimation } from '@/lib/rider-route-animation';
+import { riderDriverMarkerMotionDuration } from '@/lib/rider-driver-marker-motion';
 import { authoritativeRouteOverviewPoints, bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
 
 export type NearbyDriver = {
@@ -121,14 +122,6 @@ function initialRegion(center: NativeMapPoint): Region {
   };
 }
 
-function markerAnimationDuration(previousUpdatedAt: number | null, currentUpdatedAt: string | null | undefined) {
-  const current = currentUpdatedAt ? new Date(currentUpdatedAt).getTime() : Number.NaN;
-  if (!Number.isFinite(current) || previousUpdatedAt === null) return 2_650;
-  // Align each native interpolation to the server GPS cadence. A bounded range
-  // prevents a delayed mobile packet from making the marker jump or freeze.
-  return Math.max(900, Math.min(7_500, current - previousUpdatedAt));
-}
-
 /**
  * The active Rider map is native Google Maps, not a browser page. GPS changes
  * animate the branded vehicle marker in place and the server-published route
@@ -221,7 +214,10 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     const nextPoint = displayDriverPoint;
     const nextBearing = Number(displayDriverBearing) || 0;
     const nextUpdatedAt = driverLocationUpdatedAt ? new Date(driverLocationUpdatedAt).getTime() : Number.NaN;
-    const durationMs = markerAnimationDuration(previousDriverUpdatedAtRef.current, driverLocationUpdatedAt);
+    // Keep each verified segment moving for a small period beyond its GPS
+    // cadence. This absorbs normal network delivery delay without estimating a
+    // position beyond the newest authenticated Driver coordinate.
+    const durationMs = riderDriverMarkerMotionDuration(previousDriverUpdatedAtRef.current, driverLocationUpdatedAt);
     const generation = animationGenerationRef.current + 1;
     const retainedRoute = previousFreshRouteRef.current;
     animationGenerationRef.current = generation;
@@ -289,6 +285,12 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       finishSnapshot();
       return;
     }
+
+    // New GPS timestamps must advance as soon as the update arrives, rather
+    // than only after the prior native animation completes. Otherwise a
+    // healthy two/three-second stream is measured against an old point while
+    // the marker is still gliding, causing needless lag and visible jumps.
+    if (Number.isFinite(nextUpdatedAt)) previousDriverUpdatedAtRef.current = nextUpdatedAt;
 
     // Stop at the exact in-flight native coordinate before starting the newer
     // plan. This prevents delayed Firestore snapshots from building an animation

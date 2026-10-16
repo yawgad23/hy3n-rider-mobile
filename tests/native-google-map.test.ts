@@ -27,6 +27,10 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('previousFreshRouteRef');
     expect(component).toContain('rotation={visualDriverBearing}');
     expect(component).toContain('Stop at the exact in-flight native coordinate');
+    expect(component).toContain('riderDriverMarkerMotionDuration');
+    expect(component).toContain('without estimating a');
+    expect(component).toContain('previousDriverUpdatedAtRef.current = nextUpdatedAt');
+    expect(component).toContain('prior native animation completes');
     expect(screen).toContain('driverRouteUpdatedAt: reassignedAfterDriverCancellation ? undefined : (hasCurrentServerRoute');
     expect(screen).toContain('driverRouteUpdatedAt={activeRide?.driverRouteUpdatedAt ?? null}');
   });
