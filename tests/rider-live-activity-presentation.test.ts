@@ -19,7 +19,7 @@ describe('Rider Live Activity presentation', () => {
   it('shows a native pickup countdown with HY3N trip context', () => {
     expect(riderLiveActivityPresentation(ride, 1_000)).toEqual({
       title: 'Pickup in 7 min',
-      subtitle: 'Kofi is heading to Airport Junction',
+      subtitle: 'Kofi is heading to your pickup',
       etaMinutes: 7,
       arrivalAt: 421_000,
       progress: 0,

@@ -110,7 +110,9 @@ export function riderLiveActivityPresentation(
   const arrivalAt = currentTime + etaMinutes * 60_000;
   return {
     title: onTrip ? `Drop-off at ${accraClockTime(arrivalAt)}` : `Pickup in ${etaMinutes} min`,
-    subtitle: onTrip ? `Heading to ${destination}` : `${driver} is heading to ${pickup}`,
+    // Before pickup, show a clear Rider-facing message rather than exposing a
+    // shorthand address that can be mistaken for the Driver's destination.
+    subtitle: onTrip ? `Heading to ${destination}` : `${driver} is heading to your pickup`,
     etaMinutes,
     arrivalAt,
     progress: riderLiveTripProgress(ride, previousProgress),
