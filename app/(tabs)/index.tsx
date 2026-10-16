@@ -83,6 +83,7 @@ import {
   parseRiderStoredSavedPlaces,
   parseRiderStoredSearchHistory,
 } from "@/lib/rider-persisted-location";
+import { currentPickupLabel } from "@/lib/rider-current-pickup";
 import {
   endRiderLiveActivity,
   syncRiderLiveActivity,
@@ -258,7 +259,51 @@ export default function RiderHomeScreen() {
   const safeTop = insets.top > 0 ? insets.top : (Constants.statusBarHeight ?? 44);
   const [userLocation, setUserLocation] = useState<[number, number]>(DEFAULT_LOCATION);
   const [pickupAddress, setPickupAddress] = useState<string>("Getting your location...");
+  const [refreshingPickupLocation, setRefreshingPickupLocation] = useState(false);
   const [surge, setSurge] = useState({ multiplier: 1, active: false, reason: null as string | null });
+
+  const refreshCurrentPickupLocation = useCallback(async (): Promise<boolean> => {
+    setRefreshingPickupLocation(true);
+    try {
+      const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setPickupAddress('Location permission needed');
+        return false;
+      }
+
+      const location = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy.Balanced });
+      setUserLocation([location.coords.latitude, location.coords.longitude]);
+
+      let label = 'Current location';
+      try {
+        const geocoded = await ExpoLocation.reverseGeocodeAsync({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+        label = currentPickupLabel(geocoded);
+      } catch {
+        // The GPS point remains valid for a ride even if an address label is unavailable.
+      }
+      setPickupAddress(label);
+      void Haptics.selectionAsync().catch(() => {});
+      return true;
+    } catch {
+      setPickupAddress('Location unavailable');
+      return false;
+    } finally {
+      setRefreshingPickupLocation(false);
+    }
+  }, []);
+
+  const handleUseCurrentPickupLocation = useCallback(async () => {
+    const refreshed = await refreshCurrentPickupLocation();
+    if (!refreshed) {
+      Alert.alert(
+        'Current location unavailable',
+        'Turn on location services and allow HY3N to use your location, then try again.',
+      );
+    }
+  }, [refreshCurrentPickupLocation]);
 
   // Time of day never creates a surcharge. Only the administrator-controlled
   // backend setting can enable a temporary, clearly labelled multiplier.
@@ -283,37 +328,10 @@ export default function RiderHomeScreen() {
     return () => { disposed = true; clearInterval(interval); };
   }, []);
 
-  // Request GPS and center map on user's real position
+  // Request GPS and center the map on the Rider's actual starting pickup.
   useEffect(() => {
-    (async () => {
-      try {
-        const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          const loc = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy.Balanced });
-          setUserLocation([loc.coords.latitude, loc.coords.longitude]);
-          // Reverse geocode to get readable address
-          try {
-            const geo = await ExpoLocation.reverseGeocodeAsync({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-            if (geo && geo.length > 0) {
-              const g = geo[0];
-              const parts = [g.name, g.street, g.district, g.city].filter(Boolean);
-              setPickupAddress(parts.slice(0, 2).join(', ') || 'Current Location');
-            } else {
-              setPickupAddress('Current Location');
-            }
-          } catch {
-            setPickupAddress('Current Location');
-          }
-        } else {
-          setPickupAddress('Current Location');
-        }
-      } catch (err) {
-        // Fall back to default Accra location if GPS fails
-        console.log('GPS unavailable, using default location');
-        setPickupAddress('Accra, Ghana');
-      }
-    })();
-  }, []);
+    void refreshCurrentPickupLocation();
+  }, [refreshCurrentPickupLocation]);
   // ─── Nearby Drivers ─────────────────────────────────────────────────────────
   const [nearbyDrivers, setNearbyDrivers] = useState<NearbyVehicle[]>([]);
   const [onlineDriverProfiles, setOnlineDriverProfiles] = useState<Record<string, any>[]>([]);
@@ -2854,16 +2872,30 @@ export default function RiderHomeScreen() {
           <MaterialIcons name="location-on" size={21} color={GOLD} />
         </View>
         <View style={{ flex: 1, gap: 14 }}>
-          <TouchableOpacity
-            onPress={() => openLocationSearch("pickup")}
-            accessibilityRole="button"
-            accessibilityLabel="Change pickup location"
-            style={{ flex: 1 }}
-          >
-            <Text style={{ color: MUTED, fontSize: 12, marginBottom: 3 }}>Pickup</Text>
-            <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }} numberOfLines={1}>{pickupAddress || "Current Location"}</Text>
-            <Text style={{ color: GOLD, fontSize: 12, marginTop: 3 }}>Tap to change pickup</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <TouchableOpacity
+              onPress={handleUseCurrentPickupLocation}
+              disabled={refreshingPickupLocation}
+              accessibilityRole="button"
+              accessibilityLabel="Use current location for pickup"
+              accessibilityHint="Replaces a typed pickup with your live phone location"
+              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: `${GREEN}22`, alignItems: "center", justifyContent: "center", opacity: refreshingPickupLocation ? 0.55 : 1 }}
+            >
+              {refreshingPickupLocation
+                ? <ActivityIndicator size="small" color={GREEN} />
+                : <MaterialIcons name="my-location" size={19} color={GREEN} />}
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => openLocationSearch("pickup")}
+              accessibilityRole="button"
+              accessibilityLabel="Change pickup location"
+              style={{ flex: 1 }}
+            >
+              <Text style={{ color: MUTED, fontSize: 12, marginBottom: 3 }}>Pickup</Text>
+              <Text style={{ color: TEXT, fontSize: 16, fontWeight: "700" }} numberOfLines={1}>{pickupAddress || "Current location"}</Text>
+              <Text style={{ color: GOLD, fontSize: 12, marginTop: 3 }}>Tap to change pickup</Text>
+            </TouchableOpacity>
+          </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
             <TouchableOpacity
               onPress={() => openLocationSearch("destination")}
@@ -3245,21 +3277,34 @@ export default function RiderHomeScreen() {
           <MaterialIcons name="arrow-forward-ios" size={18} color={MUTED} />
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => openLocationSearch("pickup")}
-          accessibilityRole="button"
-          accessibilityLabel="Change pickup location"
-          style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 16, paddingBottom: 12 }}
-        >
-          <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: `${GREEN}22`, alignItems: "center", justifyContent: "center" }}>
-            <MaterialIcons name="my-location" size={17} color={GREEN} />
-          </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 16, paddingBottom: 12 }}>
+          <TouchableOpacity
+            onPress={handleUseCurrentPickupLocation}
+            disabled={refreshingPickupLocation}
+            accessibilityRole="button"
+            accessibilityLabel="Use current location for pickup"
+            accessibilityHint="Replaces a typed pickup with your live phone location"
+            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: `${GREEN}22`, alignItems: "center", justifyContent: "center", opacity: refreshingPickupLocation ? 0.55 : 1 }}
+          >
+            {refreshingPickupLocation
+              ? <ActivityIndicator size="small" color={GREEN} />
+              : <MaterialIcons name="my-location" size={19} color={GREEN} />}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => openLocationSearch("pickup")}
+            accessibilityRole="button"
+            accessibilityLabel="Change pickup location"
+            style={{ flex: 1 }}
+          >
           <View style={{ flex: 1 }}>
             <Text style={{ color: MUTED, fontSize: 11, fontWeight: "800", letterSpacing: 0.6, textTransform: "uppercase" }}>Pickup</Text>
             <Text style={{ color: TEXT, fontSize: 14, fontWeight: "700", marginTop: 2 }} numberOfLines={1}>{pickupAddress || "Current location"}</Text>
           </View>
-          <MaterialIcons name="edit" size={17} color={GOLD} />
-        </TouchableOpacity>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => openLocationSearch("pickup")} accessibilityRole="button" accessibilityLabel="Edit pickup location" style={{ padding: 5 }}>
+            <MaterialIcons name="edit" size={17} color={GOLD} />
+          </TouchableOpacity>
+        </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 9, paddingTop: 2, paddingBottom: 4 }}>
           {savedPlaces.map((place) => {
