@@ -21,6 +21,14 @@ const BOOKING_MAX_LONGITUDE_DELTA = 0.032;
 const BOOKING_ROUTE_LOOKAHEAD_KM = 1.2;
 const BOOKING_NEARBY_DRIVER_KM = 1.4;
 
+// An active trip can be many kilometres long. Fitting the Driver and final
+// destination into every automatic frame makes a real GPS update appear to be
+// no movement at all. Keep the default live view road-level around the car;
+// Route Details remains the deliberate whole-route view.
+const LIVE_TRACKING_TARGET_FIT_KM = 1.4;
+const LIVE_TRACKING_LATITUDE_DELTA = 0.014;
+const LIVE_TRACKING_LONGITUDE_DELTA = 0.016;
+
 export function isNativeMapPoint(value: unknown): value is NativeMapPoint {
   return Array.isArray(value)
     && value.length >= 2
@@ -101,9 +109,11 @@ export function bookingPreviewRegion(
 }
 
 /**
- * Frames the Driver and the next stop at a useful road-level zoom. The centre
- * is deliberately shifted south so both markers remain visible above the
- * Rider's bottom sheet without asking the Rider to pinch-zoom.
+ * Keeps a moving Driver visible at road level instead of constantly framing a
+ * distant pickup/drop-off. The target is included only when it is close enough
+ * to be useful (for example, approaching the pickup or final turn). This
+ * changes presentation only: it never synthesizes a Driver location, route,
+ * ETA, fare, or trip state.
  */
 export function nativeTrackingRegion(
   driverPoint: NativeMapPoint | null | undefined,
@@ -114,18 +124,38 @@ export function nativeTrackingRegion(
   const target = isNativeMapPoint(targetPoint) ? targetPoint : null;
   const fallback = isNativeMapPoint(fallbackPoint) ? fallbackPoint : null;
 
-  if (driver && target) {
-    const latitudeSpan = bounded(Math.abs(driver[0] - target[0]) * 2.25, MIN_LATITUDE_DELTA, MAX_LATITUDE_DELTA);
-    const longitudeSpan = bounded(Math.abs(driver[1] - target[1]) * 2.1, MIN_LONGITUDE_DELTA, MAX_LONGITUDE_DELTA);
+  if (driver && target && approximateDistanceKm(driver, target) <= LIVE_TRACKING_TARGET_FIT_KM) {
+    const latitudeDelta = bounded(
+      Math.abs(driver[0] - target[0]) * 2.35,
+      MIN_LATITUDE_DELTA,
+      LIVE_TRACKING_LATITUDE_DELTA,
+    );
+    const longitudeDelta = bounded(
+      Math.abs(driver[1] - target[1]) * 2.2,
+      MIN_LONGITUDE_DELTA,
+      LIVE_TRACKING_LONGITUDE_DELTA,
+    );
     return {
-      latitude: (driver[0] + target[0]) / 2 - latitudeSpan * 0.16,
+      // Preserve room above the sheet for the two nearby route points.
+      latitude: (driver[0] + target[0]) / 2 - latitudeDelta * 0.16,
       longitude: (driver[1] + target[1]) / 2,
-      latitudeDelta: latitudeSpan,
-      longitudeDelta: longitudeSpan,
+      latitudeDelta,
+      longitudeDelta,
     };
   }
 
-  const point = driver || target || fallback;
+  if (driver) {
+    return {
+      // Shift south so the vehicle is clearly visible above the active-trip
+      // sheet while individual GPS/road-route updates remain noticeable.
+      latitude: driver[0] - LIVE_TRACKING_LATITUDE_DELTA * 0.18,
+      longitude: driver[1],
+      latitudeDelta: LIVE_TRACKING_LATITUDE_DELTA,
+      longitudeDelta: LIVE_TRACKING_LONGITUDE_DELTA,
+    };
+  }
+
+  const point = target || fallback;
   if (!point) return null;
   return {
     latitude: point[0],

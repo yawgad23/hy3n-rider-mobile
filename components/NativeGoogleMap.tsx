@@ -353,6 +353,9 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       });
       return;
     }
+    // The live camera intentionally follows the vehicle at road level. A
+    // long destination belongs in the explicit Route Details overview, not
+    // the default frame where it would make real Driver movement invisible.
     const region = nativeTrackingRegion(
       displayDriverPoint,
       trackedTarget,

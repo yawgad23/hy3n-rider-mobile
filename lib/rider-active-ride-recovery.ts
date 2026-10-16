@@ -17,6 +17,19 @@ export type RecoveredRideLocation = {
   lng: number;
 };
 
+export type RecoveredRouteTarget = {
+  kind: 'destination' | 'stop';
+  location: RecoveredRideLocation;
+  stopId?: string;
+};
+
+export type RecoveredRouteChangeRequest = {
+  id?: string;
+  status: 'pending' | 'accepted' | 'declined';
+  kind: 'destination' | 'add_stop';
+  location: RecoveredRideLocation;
+};
+
 export type RecoveredActiveRide = {
   id: string;
   firestoreId: string;
@@ -63,6 +76,8 @@ export type RecoveredActiveRide = {
   waitingFee?: number;
   reassignmentCount?: number;
   assignmentReleaseActor?: 'rider' | 'driver';
+  routeTarget?: RecoveredRouteTarget;
+  routeChangeRequest?: RecoveredRouteChangeRequest;
 };
 
 const finiteNumber = (value: unknown, fallback = 0) => {
@@ -155,6 +170,29 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
   const liveRoute = rawRide.live_route_metrics && typeof rawRide.live_route_metrics === 'object'
     ? rawRide.live_route_metrics as Record<string, any>
     : {};
+  const rawRouteTarget = rawRide.route_target && typeof rawRide.route_target === 'object'
+    ? rawRide.route_target as Record<string, unknown>
+    : null;
+  const rawRouteChange = rawRide.route_change_request && typeof rawRide.route_change_request === 'object'
+    ? rawRide.route_change_request as Record<string, unknown>
+    : null;
+  const routeTarget = rawRouteTarget && (rawRouteTarget.kind === 'destination' || rawRouteTarget.kind === 'stop')
+    ? {
+        kind: rawRouteTarget.kind,
+        location: locationFrom(rawRouteTarget.location, destination.name),
+        ...(nonEmptyText(rawRouteTarget.stop_id) ? { stopId: nonEmptyText(rawRouteTarget.stop_id) } : {}),
+      } as RecoveredRouteTarget
+    : undefined;
+  const routeChangeRequest = rawRouteChange
+    && ['pending', 'accepted', 'declined'].includes(String(rawRouteChange.status))
+    && (rawRouteChange.kind === 'destination' || rawRouteChange.kind === 'add_stop')
+    ? {
+        ...(nonEmptyText(rawRouteChange.id) ? { id: nonEmptyText(rawRouteChange.id) } : {}),
+        status: rawRouteChange.status as RecoveredRouteChangeRequest['status'],
+        kind: rawRouteChange.kind,
+        location: locationFrom(rawRouteChange.location, destination.name),
+      } as RecoveredRouteChangeRequest
+    : undefined;
 
   return {
     id,
@@ -204,6 +242,8 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
     assignmentReleaseActor: rawRide.assignment_release_actor === 'rider' || rawRide.assignment_release_actor === 'driver'
       ? rawRide.assignment_release_actor
       : undefined,
+    routeTarget,
+    routeChangeRequest,
   };
 }
 

@@ -2,11 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { authoritativeRouteOverviewPoints, bookingPreviewRegion, nativeTrackingRegion } from '../lib/native-map-camera';
 
 describe('native Google Maps tracking camera', () => {
-  it('keeps a Driver and pickup in a road-level visible frame', () => {
+  it('keeps a Driver and nearby pickup in a road-level visible frame', () => {
     const region = nativeTrackingRegion([5.602, -0.19], [5.61, -0.184], null);
     expect(region).toMatchObject({ longitude: -0.187, latitudeDelta: expect.any(Number) });
     expect(region!.latitudeDelta).toBeGreaterThanOrEqual(0.0065);
-    expect(region!.latitudeDelta).toBeLessThanOrEqual(0.06);
+    expect(region!.latitudeDelta).toBeLessThanOrEqual(0.014);
+    expect(region!.longitudeDelta).toBeLessThanOrEqual(0.016);
+  });
+
+  it('keeps a long active journey close to the moving Driver instead of zooming the car out', () => {
+    const driver: [number, number] = [5.648, -0.121];
+    const region = nativeTrackingRegion(driver, [5.734, -0.042], null);
+
+    expect(region).toEqual({
+      latitude: driver[0] - 0.014 * 0.18,
+      longitude: driver[1],
+      latitudeDelta: 0.014,
+      longitudeDelta: 0.016,
+    });
   });
 
   it('uses the last valid position while no route is active', () => {

@@ -77,6 +77,17 @@ describe('Rider active ride relaunch recovery', () => {
     })?.driverRoutePoints).toEqual([[5.604, -0.175], [5.607, -0.171]]);
   });
 
+  it('restores the Driver-approved stop and pending Rider request after relaunch', () => {
+    expect(recoverActiveRide({
+      ...activeRide,
+      route_target: { kind: 'stop', stop_id: 'stop-1', location: { name: 'Accra Mall', address: 'Tetteh Quarshie', lat: 5.625, lng: -0.173 } },
+      route_change_request: { id: 'stop-1', status: 'pending', kind: 'add_stop', location: { name: 'Accra Mall', address: 'Tetteh Quarshie', lat: 5.625, lng: -0.173 } },
+    })).toMatchObject({
+      routeTarget: { kind: 'stop', stopId: 'stop-1', location: { lat: 5.625, lng: -0.173 } },
+      routeChangeRequest: { id: 'stop-1', status: 'pending', kind: 'add_stop', location: { lat: 5.625, lng: -0.173 } },
+    });
+  });
+
   it('does not revive completed or cancelled rides after relaunch', () => {
     expect(recoverActiveRide({ ...activeRide, status: 'completed' })).toBeNull();
     expect(recoverActiveRide({ ...activeRide, status: 'cancelled' })).toBeNull();

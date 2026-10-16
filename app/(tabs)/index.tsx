@@ -85,6 +85,12 @@ import {
 } from "@/lib/rider-persisted-location";
 import { currentPickupLabel } from "@/lib/rider-current-pickup";
 import {
+  quoteRiderTripRouteChange,
+  requestRiderTripRouteChange,
+  type RiderTripRouteChangeKind,
+  type RiderTripRouteChangeQuote,
+} from "@/lib/rider-trip-route-change-api";
+import {
   endRiderLiveActivity,
   syncRiderLiveActivity,
 } from "@/lib/rider-live-activity";
@@ -202,6 +208,13 @@ interface ActiveRide {
   shareExpiresAt?: string;
   reassignmentCount?: number;
   assignmentReleaseActor?: 'rider' | 'driver';
+  routeTarget?: { kind: 'destination' | 'stop'; location: Location; stopId?: string };
+  routeChangeRequest?: {
+    id?: string;
+    status: 'pending' | 'accepted' | 'declined';
+    kind: 'destination' | 'add_stop';
+    location: Location;
+  };
 }
 
 const DEFAULT_LOCATION: [number, number] = [5.6037, -0.187]; // Accra, Ghana
@@ -384,6 +397,10 @@ export default function RiderHomeScreen() {
   const rebookPromptedRideIdsRef = useRef(new Set<string>());
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const activeRide = activeRides.find((ride) => ride.id === selectedRideId) ?? activeRides[0] ?? null;
+  const [inTripRouteChangeKind, setInTripRouteChangeKind] = useState<RiderTripRouteChangeKind | null>(null);
+  const [inTripRouteChangeBusy, setInTripRouteChangeBusy] = useState(false);
+  const [showInTripRouteChangeOptions, setShowInTripRouteChangeOptions] = useState(false);
+  const [inTripRouteChangeQuote, setInTripRouteChangeQuote] = useState<RiderTripRouteChangeQuote | null>(null);
   const [shareActionBusy, setShareActionBusy] = useState(false);
   const unreadChatCount = useUnreadChatCount(activeRide?.firestoreId || activeRide?.id || null, user?.uid || '', 'rider');
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -837,8 +854,42 @@ export default function RiderHomeScreen() {
             : prev.driverBearing;
           const reportedDriverTripTotal = toFiniteNumber((driver as any)?.total_trips ?? (driver as any)?.total_rides);
           const reportedDriverRatingCount = toFiniteNumber((driver as any)?.rating_count ?? rawRide.driver_rating_count);
+          const locationFromRide = (candidate: unknown, fallback: Location): Location => {
+            const source = candidate && typeof candidate === 'object' ? candidate as Record<string, unknown> : null;
+            const lat = Number(source?.lat ?? source?.latitude);
+            const lng = Number(source?.lng ?? source?.longitude);
+            const name = String(source?.name ?? source?.address ?? '').trim();
+            const address = String(source?.address ?? source?.name ?? '').trim();
+            return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && name && address
+              ? { name, address, lat, lng }
+              : fallback;
+          };
+          const nextDestination = locationFromRide(rawRide.destination, prev.destination);
+          const rawRouteTarget = rawRide.route_target && typeof rawRide.route_target === 'object'
+            ? rawRide.route_target as Record<string, unknown>
+            : null;
+          const nextRouteTarget = rawRouteTarget && (rawRouteTarget.kind === 'destination' || rawRouteTarget.kind === 'stop')
+            ? {
+                kind: rawRouteTarget.kind,
+                location: locationFromRide(rawRouteTarget.location, nextDestination),
+                ...(typeof rawRouteTarget.stop_id === 'string' && rawRouteTarget.stop_id ? { stopId: rawRouteTarget.stop_id } : {}),
+              } as ActiveRide['routeTarget']
+            : undefined;
+          const rawRouteChange = rawRide.route_change_request && typeof rawRide.route_change_request === 'object'
+            ? rawRide.route_change_request as Record<string, unknown>
+            : null;
+          const nextRouteChangeRequest = rawRouteChange
+            && ['pending', 'accepted', 'declined'].includes(String(rawRouteChange.status))
+            && (rawRouteChange.kind === 'destination' || rawRouteChange.kind === 'add_stop')
+            ? {
+                id: String(rawRouteChange.id || '') || undefined,
+                status: rawRouteChange.status as NonNullable<ActiveRide['routeChangeRequest']>['status'],
+                kind: rawRouteChange.kind,
+                location: locationFromRide(rawRouteChange.location, nextDestination),
+              } as ActiveRide['routeChangeRequest']
+            : undefined;
           const etaTarget = ride.status === 'in_progress'
-            ? { lat: prev.destination.lat, lng: prev.destination.lng }
+            ? { lat: (nextRouteTarget?.location ?? nextDestination).lat, lng: (nextRouteTarget?.location ?? nextDestination).lng }
             : { lat: prev.pickupLocation.lat, lng: prev.pickupLocation.lng };
           const etaMin = serverRouteDuration !== null
             ? Math.max(1, Math.ceil(serverRouteDuration))
@@ -874,6 +925,9 @@ export default function RiderHomeScreen() {
 
           return {
             ...prev,
+            destination: nextDestination,
+            routeTarget: nextRouteTarget,
+            routeChangeRequest: nextRouteChangeRequest,
             // A Driver cancellation deliberately returns the same server-owned
             // request to searching. This is the only safe backward transition.
             status: reassignedAfterDriverCancellation
@@ -1266,7 +1320,7 @@ export default function RiderHomeScreen() {
     [displayedRoutePoints],
   );
   const canShowRouteOverview = routeOverviewPoints.length > 1;
-  const routeOverviewDestination = activeRide?.destination ?? destination;
+  const routeOverviewDestination = activeRide?.routeTarget?.location ?? activeRide?.destination ?? destination;
   const routeOverviewDurationMinutes = activeRide?.routeDurationMinutes ?? currentSelectedQuote?.durationMinutes ?? null;
   const routeOverviewDistanceKm = activeRide?.routeDistanceKm ?? currentSelectedQuote?.distanceKm ?? null;
   const requestQuoteReady = selectedQuoteIsCurrent
@@ -1461,10 +1515,76 @@ export default function RiderHomeScreen() {
     return loc;
   };
 
+  const beginInTripRouteChange = (kind: RiderTripRouteChangeKind) => {
+    if (!activeRide || activeRide.status !== 'in_progress') {
+      Alert.alert('Trip not started', 'You can ask to update the route after the Driver starts the trip.');
+      return;
+    }
+    if (activeRide.routeChangeRequest?.status === 'pending') {
+      Alert.alert('Driver reviewing', 'Your Driver is already reviewing the route change you sent.');
+      return;
+    }
+    setShowInTripRouteChangeOptions(false);
+    setInTripRouteChangeKind(kind);
+    setLocationSearchMode('destination');
+    setSearchQuery('');
+    setSearchOpen(true);
+  };
+
+  const previewInTripRouteChange = async (location: Location) => {
+    if (!activeRide || !inTripRouteChangeKind) return;
+    setInTripRouteChangeBusy(true);
+    try {
+      const quote = await quoteRiderTripRouteChange({
+        rideId: activeRide.firestoreId || activeRide.id,
+        kind: inTripRouteChangeKind,
+        location,
+      });
+      setSearchOpen(false);
+      setSearchQuery('');
+      setInTripRouteChangeKind(null);
+      setInTripRouteChangeQuote(quote);
+    } catch (error) {
+      Alert.alert('Updated fare unavailable', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setInTripRouteChangeBusy(false);
+    }
+  };
+
+  const confirmInTripRouteChange = async () => {
+    if (!activeRide || !inTripRouteChangeQuote) return;
+    setInTripRouteChangeBusy(true);
+    try {
+      const quote = inTripRouteChangeQuote;
+      await requestRiderTripRouteChange({
+        rideId: activeRide.firestoreId || activeRide.id,
+        kind: quote.kind,
+        location: quote.location,
+        quoteId: quote.id,
+      });
+      setInTripRouteChangeQuote(null);
+      Alert.alert(
+        'Sent to your Driver',
+        quote.kind === 'add_stop'
+          ? 'Your Driver must confirm the new stop before either map changes.'
+          : 'Your Driver must confirm the new destination before either map changes.',
+      );
+    } catch (error) {
+      Alert.alert('Route change not sent', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setInTripRouteChangeBusy(false);
+    }
+  };
+
   const handleSelectLocation = async (loc: Location, selectedMode = locationSearchMode) => {
     const resolved = await resolvePlaceLocation(loc);
     if (!Number.isFinite(resolved.lat) || !Number.isFinite(resolved.lng) || (resolved.lat === 0 && resolved.lng === 0)) {
       Alert.alert("Location unavailable", "We could not get coordinates for that place. Please choose another result.");
+      return;
+    }
+
+    if (inTripRouteChangeKind) {
+      await previewInTripRouteChange(resolved);
       return;
     }
 
@@ -1957,6 +2077,7 @@ export default function RiderHomeScreen() {
   };
 
   const dismissLocationSearch = () => {
+    if (inTripRouteChangeKind) setInTripRouteChangeKind(null);
     if (locationSearchMode === 'stop' && editingStopIndex !== null && stops[editingStopIndex] === null) {
       handleRemoveStop(editingStopIndex);
     }
@@ -2229,6 +2350,7 @@ export default function RiderHomeScreen() {
     const liveTripDistanceKm = activeRide.routePhase === 'destination' && Number.isFinite(activeRide.routeDistanceKm)
       ? activeRide.routeDistanceKm
       : activeRide.actualDistanceKm;
+    const activeTripTarget = activeRide.routeTarget?.location ?? activeRide.destination;
     const dropoffEtaMinutes = activeRide.status === 'in_progress'
       ? Math.max(1, Math.ceil(activeRide.routeDurationMinutes ?? activeRide.duration ?? 1))
       : null;
@@ -2296,7 +2418,7 @@ export default function RiderHomeScreen() {
                 <Text style={{ color: TEXT, fontSize: 22, fontWeight: "900", letterSpacing: -0.4 }}>{statusLabel}</Text>
                 <Text style={{ color: MUTED, fontSize: 12, fontWeight: "600", marginTop: 3 }} numberOfLines={1}>
                   {activeRide.status === "in_progress"
-                    ? `${liveTripDistanceKm && liveTripDistanceKm > 0 ? `${formatDistance(liveTripDistanceKm)} remaining · ` : ''}Heading to ${activeRide.destination.name}`
+                    ? `${liveTripDistanceKm && liveTripDistanceKm > 0 ? `${formatDistance(liveTripDistanceKm)} remaining · ` : ''}Heading to ${activeTripTarget.name}`
                     : activeRide.status === "driver_arrived"
                       ? `Meet ${pairingDriverName} at your pickup point`
                       : isSearching
@@ -2602,6 +2724,42 @@ export default function RiderHomeScreen() {
               </View>
             )}
 
+            {activeRide.status === 'in_progress' && (
+              <View style={{ backgroundColor: CARD, borderRadius: 14, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: activeRide.routeChangeRequest?.status === 'pending' ? `${GOLD}77` : BORDER }}>
+                {activeRide.routeChangeRequest?.status === 'pending' ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${GOLD}20`, alignItems: 'center', justifyContent: 'center' }}>
+                      <ActivityIndicator size="small" color={GOLD} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: GOLD, fontSize: 13, fontWeight: '900' }}>Driver is reviewing your route update</Text>
+                      <Text style={{ color: MUTED, fontSize: 11, marginTop: 3 }} numberOfLines={1}>
+                        {activeRide.routeChangeRequest.kind === 'add_stop' ? 'New stop' : 'New destination'}: {activeRide.routeChangeRequest.location.name}
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => setShowInTripRouteChangeOptions(true)}
+                    disabled={inTripRouteChangeBusy}
+                    accessibilityRole="button"
+                    accessibilityLabel="Request route update"
+                    accessibilityHint="Ask your Driver to approve a destination change or added stop"
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                  >
+                    <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${GOLD}20`, alignItems: 'center', justifyContent: 'center' }}>
+                      <MaterialIcons name="edit-location-alt" size={19} color={GOLD} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: TEXT, fontSize: 13, fontWeight: '900' }}>Update route</Text>
+                      <Text style={{ color: MUTED, fontSize: 11, marginTop: 3 }}>Your Driver must confirm before the map changes.</Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={22} color={GOLD} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             {activeRide.safetySignal === "route_deviation" && (
               <View style={{ flexDirection: "row", gap: 10, alignItems: "center", backgroundColor: `${RED}18`, borderColor: `${RED}66`, borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 10 }}>
                 <MaterialIcons name="route" size={20} color={RED} />
@@ -2634,8 +2792,8 @@ export default function RiderHomeScreen() {
                   <Text style={{ color: TEXT, fontSize: 13, fontWeight: "500" }}>{activeRide.pickup}</Text>
                 </View>
                 <View>
-                  <Text style={{ color: MUTED, fontSize: 10 }}>Destination</Text>
-                  <Text style={{ color: TEXT, fontSize: 13, fontWeight: "500" }}>{activeRide.destination.name}</Text>
+                  <Text style={{ color: MUTED, fontSize: 10 }}>{activeRide.routeTarget?.kind === 'stop' ? 'Next stop' : 'Destination'}</Text>
+                  <Text style={{ color: TEXT, fontSize: 13, fontWeight: "500" }}>{activeTripTarget.name}</Text>
                 </View>
               </View>
               <View style={{ alignItems: "flex-end" }}>
@@ -3456,7 +3614,10 @@ export default function RiderHomeScreen() {
         driverTracking={Boolean(activeRide && ['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(activeRide.status) && activeRide.driverLocation)}
         driverTrackingTarget={activeRide
           ? (activeRide.status === 'in_progress'
-            ? [activeRide.destination.lat, activeRide.destination.lng] as [number, number]
+            ? [
+                (activeRide.routeTarget?.location ?? activeRide.destination).lat,
+                (activeRide.routeTarget?.location ?? activeRide.destination).lng,
+              ] as [number, number]
             : [activeRide.pickupLocation.lat, activeRide.pickupLocation.lng] as [number, number])
           : null}
         driverRoutePoints={displayedRoutePoints}
@@ -3699,7 +3860,11 @@ export default function RiderHomeScreen() {
               <TextInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                placeholder={locationSearchMode === "pickup" ? "Choose pickup location" : "Where are you going?"}
+                placeholder={inTripRouteChangeKind === 'add_stop'
+                  ? 'Where is the new stop?'
+                  : inTripRouteChangeKind === 'destination'
+                    ? 'Where is the new destination?'
+                    : locationSearchMode === "pickup" ? "Choose pickup location" : "Where are you going?"}
                 placeholderTextColor={MUTED}
                 autoFocus
                 style={{ flex: 1, color: TEXT, fontSize: 16, paddingVertical: 8 }}
@@ -3774,6 +3939,81 @@ export default function RiderHomeScreen() {
               ) : null
             }
           />
+        </View>
+      </Modal>
+
+      {/* The Rider sees this server calculation before a request reaches the Driver. */}
+      <Modal
+        visible={Boolean(inTripRouteChangeQuote)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { if (!inTripRouteChangeBusy) setInTripRouteChangeQuote(null); }}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: SURFACE, borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 22, paddingBottom: insets.bottom + 22 }}>
+            <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: BORDER, alignSelf: 'center', marginBottom: 16 }} />
+            <Text style={{ color: TEXT, fontSize: 19, fontWeight: '900' }}>Review updated fare</Text>
+            <Text style={{ color: MUTED, fontSize: 13, lineHeight: 19, marginTop: 6 }}>This is a server-calculated estimated final fare for your requested route. The final charge still uses the Driver’s server GPS trip meter.</Text>
+            <View style={{ alignItems: 'center', backgroundColor: `${GOLD}13`, borderColor: `${GOLD}55`, borderWidth: 1, borderRadius: 18, marginTop: 18, paddingVertical: 18 }}>
+              <Text style={{ color: MUTED, fontSize: 10, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase' }}>Estimated final fare</Text>
+              <Text style={{ color: GOLD, fontSize: 36, fontWeight: '900', marginTop: 3 }}>GH₵{(() => {
+                const total = inTripRouteChangeQuote?.estimatedTotal ?? 0;
+                const whole = Math.floor(total);
+                return whole + (total - whole > 0.5 ? 1 : 0);
+              })()}</Text>
+              <Text style={{ color: TEXT, fontSize: 12, fontWeight: '700', marginTop: 5 }}>{Math.max(1, Math.ceil(inTripRouteChangeQuote?.remainingDurationMinutes ?? 0))} min · {(inTripRouteChangeQuote?.remainingDistanceKm ?? 0).toFixed(1)} km remaining</Text>
+            </View>
+            <View style={{ backgroundColor: CARD, borderRadius: 13, marginTop: 14, padding: 13 }}>
+              <Text style={{ color: MUTED, fontSize: 10, fontWeight: '900', textTransform: 'uppercase' }}>{inTripRouteChangeQuote?.kind === 'add_stop' ? 'New stop' : 'New destination'}</Text>
+              <Text style={{ color: TEXT, fontSize: 15, fontWeight: '800', marginTop: 4 }} numberOfLines={2}>{inTripRouteChangeQuote?.location.name}</Text>
+              <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }} numberOfLines={1}>{inTripRouteChangeQuote?.location.address}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={confirmInTripRouteChange}
+              disabled={inTripRouteChangeBusy}
+              style={{ alignItems: 'center', backgroundColor: GREEN, borderRadius: 14, flexDirection: 'row', gap: 8, justifyContent: 'center', marginTop: 18, minHeight: 50 }}
+            >
+              {inTripRouteChangeBusy ? <ActivityIndicator size="small" color="#FFF" /> : <><MaterialIcons name="send" size={18} color="#FFF" /><Text style={{ color: '#FFF', fontWeight: '900', fontSize: 15 }}>Confirm & send to Driver</Text></>}
+            </TouchableOpacity>
+            <TouchableOpacity disabled={inTripRouteChangeBusy} onPress={() => setInTripRouteChangeQuote(null)} style={{ alignItems: 'center', paddingVertical: 13 }}>
+              <Text style={{ color: MUTED, fontSize: 14, fontWeight: '700' }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* In-trip route changes are requests only; the Driver must accept first. */}
+      <Modal
+        visible={showInTripRouteChangeOptions}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowInTripRouteChangeOptions(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: SURFACE, borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 22, paddingBottom: insets.bottom + 22 }}>
+            <View style={{ width: 42, height: 4, borderRadius: 2, backgroundColor: BORDER, alignSelf: 'center', marginBottom: 16 }} />
+            <Text style={{ color: TEXT, fontSize: 19, fontWeight: '900' }}>Update your route</Text>
+            <Text style={{ color: MUTED, fontSize: 13, lineHeight: 19, marginTop: 6, marginBottom: 18 }}>Choose the change you want. Your Driver must approve it before either live map updates.</Text>
+            <TouchableOpacity
+              onPress={() => beginInTripRouteChange('destination')}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: CARD, borderRadius: 15, padding: 15, borderWidth: 1, borderColor: BORDER, marginBottom: 10 }}
+            >
+              <View style={{ width: 42, height: 42, borderRadius: 13, backgroundColor: `${GOLD}20`, alignItems: 'center', justifyContent: 'center' }}><MaterialIcons name="edit-location-alt" size={22} color={GOLD} /></View>
+              <View style={{ flex: 1 }}><Text style={{ color: TEXT, fontSize: 15, fontWeight: '900' }}>Change destination</Text><Text style={{ color: MUTED, fontSize: 11, marginTop: 3 }}>Ask your Driver to take you to a new final location.</Text></View>
+              <MaterialIcons name="chevron-right" size={22} color={GOLD} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => beginInTripRouteChange('add_stop')}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: CARD, borderRadius: 15, padding: 15, borderWidth: 1, borderColor: BORDER, marginBottom: 14 }}
+            >
+              <View style={{ width: 42, height: 42, borderRadius: 13, backgroundColor: `${GREEN}24`, alignItems: 'center', justifyContent: 'center' }}><MaterialIcons name="add-location-alt" size={22} color={GREEN} /></View>
+              <View style={{ flex: 1 }}><Text style={{ color: TEXT, fontSize: 15, fontWeight: '900' }}>Add a stop</Text><Text style={{ color: MUTED, fontSize: 11, marginTop: 3 }}>Ask your Driver to add the next stop before your final destination.</Text></View>
+              <MaterialIcons name="chevron-right" size={22} color={GOLD} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowInTripRouteChangeOptions(false)} style={{ alignItems: 'center', paddingVertical: 11 }}>
+              <Text style={{ color: MUTED, fontSize: 14, fontWeight: '700' }}>Not now</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
 
