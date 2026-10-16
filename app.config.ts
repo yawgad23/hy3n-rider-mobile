@@ -71,9 +71,9 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    // Build 96 includes the HY3N Live Activity trip-progress car/ETA display
-    // and the stabilized sign-out transition for internal TestFlight testers.
-    buildNumber: "96",
+    // Build 97 includes Live Activity reliability, protected Past Rides,
+    // in-trip route changes, and the Rider splash repair for TestFlight.
+    buildNumber: "97",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
