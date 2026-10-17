@@ -100,9 +100,9 @@ const config: ExpoConfig = {
     package: env.androidPackage,
     // Play Console requires each uploaded Android App Bundle to have a higher
     // version code than every previous artifact for com.hy3n.rider.
-    // 58009 adds Android Back navigation and the current map/booking updates
-    // for the existing worldwide Alpha testers.
-    versionCode: 58009,
+    // 58010 delivers the tested current Rider source to the existing Alpha
+    // testers, without changing the iOS build number.
+    versionCode: 58010,
     googleServicesFile: "./firebase/google-services.json",
     ...(nativeGoogleMaps.androidApiKey
       ? { config: { googleMaps: { apiKey: nativeGoogleMaps.androidApiKey } } }
