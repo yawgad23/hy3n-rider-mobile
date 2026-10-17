@@ -1,4 +1,5 @@
 import { isExpiredRiderSearch } from './rider-search-expiry';
+import { riderLiveRouteIsCurrent } from './rider-live-route-display';
 
 export const ACTIVE_RIDE_STATUSES = [
   'searching',
@@ -194,6 +195,9 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
       } as RecoveredRouteChangeRequest
     : undefined;
 
+  const liveTarget = status === 'in_progress' ? (routeTarget?.location ?? destination) : pickupLocation;
+  const currentLiveRoute = riderLiveRouteIsCurrent(liveRoute, status, liveTarget);
+
   return {
     id,
     firestoreId: id,
@@ -227,11 +231,11 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
     driverLocation,
     driverBearing: optionalFiniteNumber(driver.location?.heading ?? rawRide.driver_location?.heading),
     driverLocationUpdatedAt: nonEmptyText(driver.location?.recorded_at ?? rawRide.driver_location_updated_at) || undefined,
-    driverRouteUpdatedAt: nonEmptyText(liveRoute.updated_at) || undefined,
-    routeDistanceKm: optionalFiniteNumber(liveRoute.distance_km),
-    routeDurationMinutes: optionalFiniteNumber(liveRoute.duration_minutes),
-    routePhase: liveRoute.phase === 'destination' || liveRoute.phase === 'pickup' ? liveRoute.phase : undefined,
-    driverRoutePoints: routePointsFrom(liveRoute.points),
+    driverRouteUpdatedAt: currentLiveRoute ? nonEmptyText(liveRoute.calculated_at ?? liveRoute.updated_at) || undefined : undefined,
+    routeDistanceKm: currentLiveRoute ? optionalFiniteNumber(liveRoute.distance_km) : undefined,
+    routeDurationMinutes: currentLiveRoute ? optionalFiniteNumber(liveRoute.duration_minutes) : undefined,
+    routePhase: currentLiveRoute ? liveRoute.phase : undefined,
+    driverRoutePoints: currentLiveRoute ? routePointsFrom(liveRoute.points) : undefined,
     bookingRoutePoints: routePointsFrom(rawRide.booking_route_points),
     driverMomoNumber: nonEmptyText(rawRide.driver_momo_number ?? driver.momo_number) || undefined,
     driverMomoNetwork: nonEmptyText(rawRide.driver_momo_network ?? driver.momo_network) || undefined,

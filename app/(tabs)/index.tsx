@@ -69,6 +69,7 @@ import { destinationArrivalReminder, shouldPromptForDestinationArrival } from "@
 import { bookingMapTimeLabels } from "@/lib/booking-map-presentation";
 import { riderBookingRouteDisplay } from "@/lib/rider-booking-route-display";
 import { authoritativeRouteOverviewPoints } from "@/lib/native-map-camera";
+import { riderDisplayedRoute, riderLiveRouteIsCurrent } from "@/lib/rider-live-route-display";
 import { findAnotherRideOffer, type FindAnotherRideOffer } from "@/lib/rider-find-another-ride";
 import { assignmentReleaseActor, driverRedispatchCount, isAssignmentReleaseRedispatch } from "@/lib/rider-driver-redispatch";
 import {
@@ -865,8 +866,7 @@ export default function RiderHomeScreen() {
             ? liveRoute.phase
             : undefined;
           const expectedRoutePhase = ride.status === 'in_progress' ? 'destination' : 'pickup';
-          const hasCurrentServerRoute = serverRoutePhase === expectedRoutePhase;
-          const serverRouteUpdatedAt = String(liveRoute.updated_at || '').trim() || undefined;
+          const serverRouteUpdatedAt = String(liveRoute.calculated_at || liveRoute.updated_at || '').trim() || undefined;
           const serverRoutePoints = Array.isArray(liveRoute.points)
             ? liveRoute.points
               .map((point: any) => {
@@ -933,7 +933,9 @@ export default function RiderHomeScreen() {
           const etaTarget = ride.status === 'in_progress'
             ? { lat: (nextRouteTarget?.location ?? nextDestination).lat, lng: (nextRouteTarget?.location ?? nextDestination).lng }
             : { lat: prev.pickupLocation.lat, lng: prev.pickupLocation.lng };
-          const etaMin = serverRouteDuration !== null
+          const hasCurrentServerRoute = serverRoutePhase === expectedRoutePhase
+            && riderLiveRouteIsCurrent(liveRoute, ride.status, etaTarget);
+          const etaMin = hasCurrentServerRoute && serverRouteDuration !== null
             ? Math.max(1, Math.ceil(serverRouteDuration))
             : driver && nextDriverLocation
               ? calculateETA(nextDriverLocation, etaTarget)
@@ -1365,10 +1367,7 @@ export default function RiderHomeScreen() {
         routeDurationMinutes: currentSelectedQuote?.durationMinutes,
       })
     : null;
-  const displayedRoutePoints = activeRide?.driverRoutePoints
-    ?? activeRide?.bookingRoutePoints
-    ?? currentSelectedQuote?.routePoints
-    ?? EMPTY_ROUTE_POINTS;
+  const displayedRoutePoints = riderDisplayedRoute(activeRide, currentSelectedQuote?.routePoints);
   const routeOverviewPoints = useMemo(
     () => authoritativeRouteOverviewPoints(displayedRoutePoints),
     [displayedRoutePoints],

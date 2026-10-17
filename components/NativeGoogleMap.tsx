@@ -4,6 +4,7 @@ import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type Region
 import { matchPointToServerRoute } from '@/lib/rider-route-matching';
 import { planRiderRouteAnimation } from '@/lib/rider-route-animation';
 import { riderDriverMarkerMotionDuration } from '@/lib/rider-driver-marker-motion';
+import { riderRemainingLiveRoute, riderLiveRouteIsFresh } from '@/lib/rider-live-route-display';
 import { authoritativeRouteOverviewPoints, bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
 
 export type NearbyDriver = {
@@ -159,8 +160,9 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const previousRouteOverviewRef = useRef(false);
   const previousFreshRouteRef = useRef<{ points: NativeMapPoint[]; updatedAt: string | null; tripStatus: string | null }>({ points: [], updatedAt: null, tripStatus: null });
   const trustedDriverRoute = useMemo(
-    () => (driverRoutePoints || []).filter(isNativeMapPoint),
-    [driverRoutePoints],
+    () => driverTracking && !riderLiveRouteIsFresh(driverRouteUpdatedAt)
+      ? [] : (driverRoutePoints || []).filter(isNativeMapPoint),
+    [driverRoutePoints, driverRouteUpdatedAt, driverTracking, driverLocationUpdatedAt],
   );
   const displayDriverMatch = useMemo(
     () => matchPointToServerRoute(driverLocation, trustedDriverRoute),
@@ -171,18 +173,22 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       ?? (isNativeMapPoint(driverLocation) ? driverLocation : null);
   }, [displayDriverMatch, driverLocation]);
   const displayDriverBearing = useMemo(() => {
-    return displayDriverMatch?.bearing ?? driverBearing ?? 0;
+    // The vehicle's actual direction must not be replaced by the direction of
+    // an old route when the Driver reverses along the same road.
+    return driverBearing ?? displayDriverMatch?.bearing ?? 0;
   }, [displayDriverMatch, driverBearing]);
   const animatedDriverCoordinate = useRef(new AnimatedRegion(initialRegion(displayDriverPoint || FALLBACK_CENTER))).current;
   const [visualDriverBearing, setVisualDriverBearing] = useState(() => Number(displayDriverBearing) || 0);
   const trackedTarget = driverTracking && isNativeMapPoint(driverTrackingTarget) ? driverTrackingTarget : null;
   const routeCoordinates = useMemo(() => {
-    const serverRoute = (driverRoutePoints || []).filter(isNativeMapPoint);
+    const serverRoute = driverTracking
+      ? riderRemainingLiveRoute(driverLocation, trustedDriverRoute, routeOverview)
+      : trustedDriverRoute;
     if (serverRoute.length > 1) return serverRoute.map(coordinate);
     // A direct line is not a road route. The booking API and active-trip route
     // service publish the geometry that is safe to show to a Rider.
     return [];
-  }, [destination, displayDriverPoint, driverRoutePoints, driverTracking, trackedTarget, userLocation]);
+  }, [driverLocation, driverTracking, routeOverview, trustedDriverRoute]);
   const routeOverviewPoints = useMemo(
     () => authoritativeRouteOverviewPoints(driverRoutePoints),
     [driverRoutePoints],

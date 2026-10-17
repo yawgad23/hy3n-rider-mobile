@@ -34,8 +34,17 @@ function routePhase(status: unknown) {
 function sameRouteTarget(left: ReconciledRide, right: ReconciledRide) {
   const a = left.routeTarget;
   const b = right.routeTarget;
+  const actualTarget = (ride: ReconciledRide) => routePhase(ride.status) === 'destination'
+    ? (ride.routeTarget?.location ?? ride.destination)
+    : ride.pickupLocation;
+  const leftTarget = actualTarget(left);
+  const rightTarget = actualTarget(right);
+  if (leftTarget && rightTarget
+    && Number.isFinite(Number(leftTarget.lat)) && Number.isFinite(Number(rightTarget.lat))
+    && Number.isFinite(Number(leftTarget.lng)) && Number.isFinite(Number(rightTarget.lng))
+    && (Number(leftTarget.lat) !== Number(rightTarget.lat) || Number(leftTarget.lng) !== Number(rightTarget.lng))) return false;
   // Older snapshots omit this optional field. It is not proof that the target
-  // changed, so preserve the newer route unless a concrete target disagrees.
+  // changed, but a concrete new destination must still invalidate the old line.
   if (!a || !b) return true;
   return a.kind === b.kind
     && String(a.stopId || '') === String(b.stopId || '')

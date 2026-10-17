@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { riderDisplayedRoute } from '../lib/rider-live-route-display';
 
 const screen = readFileSync(path.join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
 
@@ -29,6 +30,8 @@ describe('Rider searching request sheet', () => {
 
   it('keeps a protected booking route visible after the request is created', () => {
     expect(screen).toContain('bookingRoutePoints: Array.isArray(createdRide.booking_route_points)');
-    expect(screen).toContain('activeRide?.bookingRoutePoints');
+    expect(screen).toContain('riderDisplayedRoute(activeRide, currentSelectedQuote?.routePoints)');
+    const bookingRoute: [number, number][] = [[5.6, -0.2], [5.61, -0.19]];
+    expect(riderDisplayedRoute({ status: 'searching', bookingRoutePoints: bookingRoute })).toBe(bookingRoute);
   });
 });
