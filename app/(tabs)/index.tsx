@@ -59,7 +59,7 @@ import { requestAuthoritativeRideQuotes } from "@/lib/rider-quote-request";
 import { mergeQuoteRecords, prioritizedQuoteCategories, quoteRecordByCategory } from "@/lib/rider-quote-priority";
 import { bookingSheetSwipeAction, shouldClaimBookingSheetSwipe } from "@/lib/booking-sheet-gesture";
 import { formatLiveDistance, riderPickupStatusLabel } from "@/lib/rider-live-tracking-presentation";
-import { createLiveTripShareLink, revokeLiveTripShareLink } from "@/lib/trip-share";
+import { createLiveTripShareLink, createRecipientTripShare, revokeLiveTripShareLink } from "@/lib/trip-share";
 import { payWithHubtelCard } from "@/lib/card-checkout";
 import { nearbyVehicleFromProfile, type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
 import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } from "@/lib/rider-completion-presentation";
@@ -675,6 +675,8 @@ export default function RiderHomeScreen() {
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // In-ride chat
   const [showChat, setShowChat] = useState(false);
+  const [showTripShareRecipient, setShowTripShareRecipient] = useState(false);
+  const [tripShareRecipientPhone, setTripShareRecipientPhone] = useState('');
   // Waiting timer (rider side) — shows how long driver has been waiting at pickup
   const [riderWaitSeconds, setRiderWaitSeconds] = useState(0);
   const riderWaitTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -2195,7 +2197,7 @@ export default function RiderHomeScreen() {
     setShowScheduleModal(false);
   };
 
-  const handleShareTrip = async () => {
+  const handleShareTripLink = async () => {
     if (!activeRide) return;
     const etaMinutes = activeRide.eta || (activeRide.etaSeconds ? Math.max(1, Math.ceil(activeRide.etaSeconds / 60)) : null);
     try {
@@ -2208,6 +2210,41 @@ export default function RiderHomeScreen() {
       await Share.share({ message: msg, title: 'Track my HY3N trip' });
     } catch (error: any) {
       Alert.alert('Unable to share live trip', error?.message || 'Please try again in a moment.');
+    } finally {
+      setShareActionBusy(false);
+    }
+  };
+
+  const handleShareTrip = () => {
+    if (!activeRide) return;
+    if (!['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(activeRide.status)) {
+      Alert.alert('Trip sharing is not ready', 'You can share after a Driver has been assigned.');
+      return;
+    }
+    Alert.alert('Share your trip', 'Choose a private HY3N invitation for someone who uses HY3N Rider, or an external tracking link.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Share in HY3N', onPress: () => setShowTripShareRecipient(true) },
+      { text: 'Share external link', onPress: () => { void handleShareTripLink(); } },
+    ]);
+  };
+
+  const handleShareTripWithRecipient = async () => {
+    if (!activeRide) return;
+    const phone = normalizeGhanaMobilePhone(tripShareRecipientPhone);
+    if (!phone) {
+      Alert.alert('Ghana mobile number needed', 'Enter the trusted person’s valid Ghana mobile number.');
+      return;
+    }
+    try {
+      setShareActionBusy(true);
+      const shareRideId = activeRide.firestoreId || activeRide.id;
+      const { expiresAt } = await createRecipientTripShare(shareRideId, phone);
+      updateActiveRide(activeRide.id, (ride) => ({ ...ride, sharingActive: true, shareExpiresAt: expiresAt }));
+      setTripShareRecipientPhone('');
+      setShowTripShareRecipient(false);
+      Alert.alert('Trip shared privately', 'HY3N has sent the trusted person a private invitation. They can open it in HY3N Rider.');
+    } catch (error: any) {
+      Alert.alert('Unable to share in HY3N', error?.message || 'Please try again in a moment.');
     } finally {
       setShareActionBusy(false);
     }
@@ -4081,6 +4118,30 @@ export default function RiderHomeScreen() {
             <TouchableOpacity onPress={() => setShowInTripRouteChangeOptions(false)} style={{ alignItems: 'center', paddingVertical: 11 }}>
               <Text style={{ color: MUTED, fontSize: 14, fontWeight: '700' }}>Not now</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showTripShareRecipient} transparent animationType="slide" onRequestClose={() => setShowTripShareRecipient(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: SURFACE, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 22, paddingBottom: insets.bottom + 22 }}>
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: BORDER, alignSelf: 'center', marginBottom: 18 }} />
+            <Text style={{ color: TEXT, fontSize: 19, fontWeight: '800' }}>Share in HY3N</Text>
+            <Text style={{ color: MUTED, fontSize: 13, lineHeight: 19, marginTop: 7, marginBottom: 16 }}>The person must use HY3N Rider. They will receive a private invitation to follow this active trip. You can stop sharing at any time.</Text>
+            <Text style={{ color: MUTED, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6 }}>TRUSTED PERSON’S GHANA MOBILE NUMBER</Text>
+            <TextInput
+              value={tripShareRecipientPhone}
+              onChangeText={setTripShareRecipientPhone}
+              placeholder="024 XXX XXXX or +233..."
+              placeholderTextColor="#6B7280"
+              keyboardType="phone-pad"
+              autoComplete="tel"
+              style={{ color: TEXT, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, borderRadius: 13, paddingHorizontal: 14, paddingVertical: 14, fontSize: 16 }}
+            />
+            <TouchableOpacity disabled={shareActionBusy} onPress={() => { void handleShareTripWithRecipient(); }} style={{ marginTop: 14, minHeight: 50, borderRadius: 13, backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center', opacity: shareActionBusy ? 0.65 : 1 }}>
+              {shareActionBusy ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 15, fontWeight: '800' }}>Send private HY3N invitation</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity disabled={shareActionBusy} onPress={() => setShowTripShareRecipient(false)} style={{ alignItems: 'center', paddingVertical: 14 }}><Text style={{ color: MUTED, fontWeight: '700' }}>Cancel</Text></TouchableOpacity>
           </View>
         </View>
       </Modal>

@@ -1,6 +1,6 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -88,11 +88,25 @@ export default function RootLayout() {
       console.log('[HY3N] Notification received:', notification.request.content.title);
     });
 
+    // A trip-share push carries only an opaque share ID. The destination
+    // validates the signed-in recipient again before any trip data is shown.
+    const openPrivateTripShare = (data: unknown) => {
+      const payload = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+      const shareId = typeof payload.shareId === 'string' ? payload.shareId.trim() : '';
+      if (payload.type === 'trip_share' && /^[A-Za-z0-9_-]{24,128}$/.test(shareId)) {
+        router.push({ pathname: '/trip-share/[shareId]', params: { shareId } });
+      }
+    };
     // Listen for user tapping a notification
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response: NotificationResponse) => {
       const data = response.notification.request.content.data;
-      console.log('[HY3N] Notification tapped:', data);
+      openPrivateTripShare(data);
     });
+    // Covers an invitation tapped while the app was fully closed. Do not log
+    // notification data: it can be safety-sensitive even when it is opaque.
+    Notifications.getLastNotificationResponseAsync?.().then((response: NotificationResponse | null) => {
+      if (response) openPrivateTripShare(response.notification.request.content.data);
+    }).catch(() => {});
 
     return () => {
       notificationListener.current?.remove();
@@ -155,6 +169,7 @@ export default function RootLayout() {
                 <Stack.Screen name="safety" options={{ presentation: "modal" }} />
                 <Stack.Screen name="scheduled" options={{ presentation: "modal" }} />
                 <Stack.Screen name="support" options={{ presentation: "modal" }} />
+                <Stack.Screen name="trip-share/[shareId]" />
 
               </Stack>
               <StatusBar style="auto" />
