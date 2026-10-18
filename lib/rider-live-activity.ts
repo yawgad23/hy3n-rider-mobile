@@ -20,6 +20,7 @@ type ActiveActivity = {
   user: User;
   /** Last numeric display position of the native HY3N trip car. */
   progress: number;
+  ending?: boolean;
 };
 
 type NativeActivityState = Parameters<typeof startActivity>[0];
@@ -32,6 +33,10 @@ const activitiesById = new Map<string, ActiveActivity>();
 const pendingActivityPushTokens = new Map<string, string>();
 let tokenListenerReady = false;
 let fcmTokenPromise: Promise<string | null> | null = null;
+const tokenRegistrationRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const liveActivityStopRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const MAX_ACTIVITY_TOKEN_REGISTRATION_ATTEMPTS = 3;
+const MAX_LIVE_ACTIVITY_STOP_ATTEMPTS = 3;
 
 function available() {
   return Platform.OS === 'ios';
@@ -44,9 +49,12 @@ async function riderFcmToken() {
       try {
         await messaging().registerDeviceForRemoteMessages().catch(() => undefined);
         const token = await messaging().getToken();
-        return token && token.length >= 20 ? token : null;
+        if (token && token.length >= 20) return token;
+        fcmTokenPromise = null;
+        return null;
       } catch (error) {
         console.warn('[HY3N] Live Activity FCM registration failed:', error);
+        fcmTokenPromise = null;
         return null;
       }
     })();
@@ -54,16 +62,35 @@ async function riderFcmToken() {
   return fcmTokenPromise;
 }
 
+function scheduleActivityTokenRegistrationRetry(activity: ActiveActivity, activityPushToken: string, attempt: number) {
+  if (attempt >= MAX_ACTIVITY_TOKEN_REGISTRATION_ATTEMPTS || !activitiesById.has(activity.activityId)) return;
+  const existing = tokenRegistrationRetryTimers.get(activity.activityId);
+  if (existing) clearTimeout(existing);
+  const delayMs = 1_500 * (attempt + 1);
+  const timer = setTimeout(() => {
+    tokenRegistrationRetryTimers.delete(activity.activityId);
+    if (activitiesById.get(activity.activityId) === activity && !activity.ending) {
+      void registerActivityToken(activity, activityPushToken, attempt + 1);
+    }
+  }, delayMs);
+  tokenRegistrationRetryTimers.set(activity.activityId, timer);
+}
+
 async function registerActivityToken(activity: ActiveActivity, activityPushToken: string, attempt = 0) {
   const baseUrl = getApiBaseUrl();
   const fcmToken = await riderFcmToken();
-  if (!baseUrl || !fcmToken || !activityPushToken) return;
+  if (!baseUrl || !fcmToken || !activityPushToken) {
+    scheduleActivityTokenRegistrationRetry(activity, activityPushToken, attempt);
+    return;
+  }
 
   try {
     const response = await fetch(`${baseUrl}/api/live-activities/token`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${await activity.user.getIdToken()}`,
+        // A retry refreshes Firebase credentials because the first registration
+        // can happen during app resume with an expired cached ID token.
+        Authorization: `Bearer ${await activity.user.getIdToken(attempt > 0)}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -81,14 +108,7 @@ async function registerActivityToken(activity: ActiveActivity, activityPushToken
     // must not leave an otherwise active Lock Screen card without its first
     // remote Driver-location update, so retry twice while this activity lives.
     console.warn('[HY3N] Live Activity token registration failed:', error);
-    if (attempt < 2) {
-      const delayMs = 1_500 * (attempt + 1);
-      setTimeout(() => {
-        if (activitiesById.get(activity.activityId) === activity) {
-          void registerActivityToken(activity, activityPushToken, attempt + 1);
-        }
-      }, delayMs);
-    }
+    scheduleActivityTokenRegistrationRetry(activity, activityPushToken, attempt);
   }
 }
 
@@ -141,6 +161,7 @@ export async function syncRiderLiveActivity(user: User | null | undefined, ride:
   const previous = activitiesByRideId.get(ride.id);
   const rendered = stateForRide(ride, previous?.progress ?? 0);
   if (previous) {
+    if (previous.ending) return;
     try {
       await updateActivity(previous.activityId, rendered.state);
       previous.progress = rendered.progress;
@@ -169,13 +190,21 @@ export async function syncRiderLiveActivity(user: User | null | undefined, ride:
   }
 }
 
-/** Ends the local Island/Lock Screen card immediately for a terminal trip state. */
-export async function endRiderLiveActivity(rideId: string, completed: boolean) {
-  const activity = activitiesByRideId.get(rideId);
-  if (!activity) return;
-  activitiesByRideId.delete(rideId);
-  activitiesById.delete(activity.activityId);
-  pendingActivityPushTokens.delete(activity.activityId);
+function scheduleLiveActivityStopRetry(activity: ActiveActivity, completed: boolean, attempt: number) {
+  if (attempt >= MAX_LIVE_ACTIVITY_STOP_ATTEMPTS || activitiesById.get(activity.activityId) !== activity) return;
+  const existing = liveActivityStopRetryTimers.get(activity.activityId);
+  if (existing) clearTimeout(existing);
+  const timer = setTimeout(() => {
+    liveActivityStopRetryTimers.delete(activity.activityId);
+    if (activitiesById.get(activity.activityId) === activity) {
+      void stopRiderLiveActivity(activity, completed, attempt + 1);
+    }
+  }, 1_000 * (attempt + 1));
+  liveActivityStopRetryTimers.set(activity.activityId, timer);
+}
+
+async function stopRiderLiveActivity(activity: ActiveActivity, completed: boolean, attempt = 0) {
+  activity.ending = true;
   try {
     await stopActivity(activity.activityId, {
       title: completed ? 'Trip complete' : 'Ride cancelled',
@@ -184,7 +213,27 @@ export async function endRiderLiveActivity(rideId: string, completed: boolean) {
       imageName: 'hy3n_trip_car',
       dynamicIslandImageName: 'hy3n_trip_car',
     });
+    const registrationTimer = tokenRegistrationRetryTimers.get(activity.activityId);
+    if (registrationTimer) clearTimeout(registrationTimer);
+    tokenRegistrationRetryTimers.delete(activity.activityId);
+    const stopTimer = liveActivityStopRetryTimers.get(activity.activityId);
+    if (stopTimer) clearTimeout(stopTimer);
+    liveActivityStopRetryTimers.delete(activity.activityId);
+    activitiesByRideId.delete(activity.rideId);
+    activitiesById.delete(activity.activityId);
+    pendingActivityPushTokens.delete(activity.activityId);
   } catch (error) {
+    // The server terminal push is the background/terminated-app safeguard.
+    // While this app is still alive, retain the Activity id and retry native
+    // cleanup rather than forgetting a Lock Screen card that could be stopped.
     console.warn('[HY3N] Live Activity end unavailable:', error);
+    scheduleLiveActivityStopRetry(activity, completed, attempt);
   }
+}
+
+/** Ends the local Island/Lock Screen card immediately for a terminal trip state. */
+export async function endRiderLiveActivity(rideId: string, completed: boolean) {
+  const activity = activitiesByRideId.get(rideId);
+  if (!activity) return;
+  await stopRiderLiveActivity(activity, completed);
 }
