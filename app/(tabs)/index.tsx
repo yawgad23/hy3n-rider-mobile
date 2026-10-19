@@ -65,7 +65,7 @@ import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } fro
 import { deliveryRequestDetails, isDeliveryCategory, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
 import { destinationArrivalReminder, shouldPromptForDestinationArrival } from "@/lib/rider-trip-feedback";
-import { bookingMapTimeLabels } from "@/lib/booking-map-presentation";
+import { bookingMapTimeLabels, bookingPickupEtaMinutes } from "@/lib/booking-map-presentation";
 import { riderBookingRouteDisplay } from "@/lib/rider-booking-route-display";
 import { authoritativeRouteOverviewPoints } from "@/lib/native-map-camera";
 import { riderDisplayedRoute, riderLiveRouteIsCurrent } from "@/lib/rider-live-route-display";
@@ -1285,10 +1285,17 @@ export default function RiderHomeScreen() {
   const selectedQuoteIsCurrent = isServerQuoteCurrent(quotedRouteKey, quoteRouteKey);
   const currentServerQuotes = selectedQuoteIsCurrent ? serverQuotes : {};
   const currentSelectedQuote = selectedQuoteIsCurrent ? selectedQuote : undefined;
+  const currentPickupEtaMinutes = bookingPickupEtaMinutes({
+    pickupEtaMinutes: currentSelectedQuote?.pickupEtaMinutes,
+    eligibleDriverCount: currentSelectedQuote?.eligibleDriverCount,
+    nearbyVehicleCount: currentSelectedQuote?.nearbyVehicles?.length,
+  });
   const bookingRouteDisplay = riderBookingRouteDisplay(currentSelectedQuote);
   const bookingMapTimes = destination
     ? bookingMapTimeLabels({
-        pickupEtaMinutes: currentSelectedQuote?.pickupEtaMinutes,
+        pickupEtaMinutes: currentPickupEtaMinutes,
+        eligibleDriverCount: currentSelectedQuote?.eligibleDriverCount,
+        nearbyVehicleCount: currentSelectedQuote?.nearbyVehicles?.length,
         routeDurationMinutes: currentSelectedQuote?.durationMinutes,
       })
     : null;
@@ -3136,11 +3143,11 @@ export default function RiderHomeScreen() {
           category can be read and chosen rather than being clipped sideways. */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600" }}>Ride options · {RIDE_CATEGORIES.length} available types</Text>
-        {currentSelectedQuote?.pickupEtaMinutes != null ? (
+        {currentPickupEtaMinutes != null ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
             <MaterialIcons name="directions-car" size={13} color={GREEN} />
             <Text style={{ color: GREEN, fontSize: 11, fontWeight: "800" }}>
-              {currentSelectedQuote.eligibleDriverCount ?? 1} eligible · {currentSelectedQuote.pickupEtaMinutes} min pickup
+              {currentSelectedQuote?.eligibleDriverCount ?? 0} eligible · {currentPickupEtaMinutes} min pickup
             </Text>
           </View>
         ) : (
@@ -3168,8 +3175,12 @@ export default function RiderHomeScreen() {
           const isAvailable = quote?.available === true;
           const isConfirmedUnavailable = quote?.available === false;
           const isSelected = selectedCategory.id === cat.id;
-          const pickupEta = quote?.pickupEtaMinutes ?? null;
           const eligibleDriverCount = Number(quote?.eligibleDriverCount ?? 0);
+          const pickupEta = bookingPickupEtaMinutes({
+            pickupEtaMinutes: quote?.pickupEtaMinutes,
+            eligibleDriverCount,
+            nearbyVehicleCount: quote?.nearbyVehicles?.length,
+          });
           const driverLabel = `${eligibleDriverCount} eligible ${cat.name} Driver${eligibleDriverCount === 1 ? '' : 's'}`;
           const vehicleArtwork = cat.id === "okada"
             ? require("@/assets/images/ride-list-map-okada.png")
