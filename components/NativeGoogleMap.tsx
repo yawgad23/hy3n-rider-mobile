@@ -87,7 +87,7 @@ function markerAsset(serviceType?: string | null) {
   if (type.includes('delivery') || type.includes('parcel') || type.includes('express')) {
     return require('../assets/images/map-delivery-marker.png');
   }
-  return require('../assets/images/map-car-marker.png');
+  return require('../assets/images/hy3n-comfort-car-3d.png');
 }
 
 function CompactVehicleMarker({ serviceType, vehicleColourHex, size }: { serviceType?: string | null; vehicleColourHex?: string | null; size: number }) {

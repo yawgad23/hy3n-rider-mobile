@@ -16,6 +16,8 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 38');
     expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 32');
     expect(component).toContain('CompactVehicleMarker');
+    expect(component).toContain("require('../assets/images/hy3n-comfort-car-3d.png')");
+    expect(component).not.toContain("return require('../assets/images/map-car-marker.png')");
     expect(component).not.toContain('react-native-webview');
   });
 
