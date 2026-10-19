@@ -86,12 +86,12 @@ describe('Rider native Google Maps migration', () => {
     expect(screen).toContain('isDeliveryCategory(activeRide?.categoryId) ? activeRide?.categoryId');
   });
 
-  it('keeps a fresh online Driver visible on the map while the Rider compares another category', () => {
-    expect(screen).toContain('const nearbyVehiclesForMap = nearbyDrivers');
-    expect(screen).toContain('nearbyDrivers={(!activeRide || activeRide.status === "searching")');
-    expect(screen).toContain('? nearbyVehiclesForMap.slice(0, 4)');
-    expect(screen).toContain('Drivers nearby for another ride type');
-    expect(screen).toContain('choose a matching type');
+  it('keeps server-projected anonymous eligible vehicles visible before a Driver is assigned', () => {
+    expect(screen).toContain('nearbyDrivers={!activeRide ? (currentSelectedQuote?.nearbyVehicles ?? []) : []}');
+    expect(screen).toContain('eligibleDriverCount');
+    expect(component).toContain('vehicleColourHex?: string | null;');
+    expect(component).toContain('vehicleColourHex={driver.vehicleColourHex}');
+    expect(screen).not.toContain('firestoreDB.subscribe(COLLECTIONS.DRIVER_PRESENCE');
   });
 
   it('keeps the Maps stub web-only and resolves native SDK keys for both stores', () => {

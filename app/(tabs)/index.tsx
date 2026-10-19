@@ -61,7 +61,6 @@ import { bookingSheetSwipeAction, shouldClaimBookingSheetSwipe } from "@/lib/boo
 import { formatLiveDistance, riderPickupStatusLabel } from "@/lib/rider-live-tracking-presentation";
 import { createLiveTripShareLink, createRecipientTripShare, revokeLiveTripShareLink } from "@/lib/trip-share";
 import { payWithHubtelCard } from "@/lib/card-checkout";
-import { nearbyVehicleFromProfile, type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
 import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } from "@/lib/rider-completion-presentation";
 import { deliveryRequestDetails, isDeliveryCategory, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
@@ -152,6 +151,19 @@ interface ServerRideQuote {
   breakdown: Record<string, unknown>;
   routePoints?: [number, number][];
   routeSource?: 'google_routes_traffic' | 'osrm' | 'server_coordinate_estimate';
+  /** Server-only availability count; no Driver identity or contact data. */
+  eligibleDriverCount?: number;
+  /** A road-route duration for the nearest currently offer-eligible Driver. */
+  pickupEtaMinutes?: number | null;
+  /** Fresh anonymous vehicle markers, projected by the authenticated backend. */
+  nearbyVehicles?: Array<{
+    id: string;
+    lat: number;
+    lng: number;
+    heading?: number;
+    serviceType: 'car' | 'okada' | 'delivery';
+    vehicleColourHex?: string;
+  }>;
 }
 
 interface ActiveRide {
@@ -381,35 +393,6 @@ export default function RiderHomeScreen() {
     });
     return () => subscription.remove();
   }, [refreshCurrentPickupLocation]);
-  // ─── Nearby Drivers ─────────────────────────────────────────────────────────
-  const [nearbyDrivers, setNearbyDrivers] = useState<NearbyVehicle[]>([]);
-  const [onlineDriverProfiles, setOnlineDriverProfiles] = useState<Record<string, any>[]>([]);
-
-  // Subscribe only to the server-published, map-safe Driver presence feed.
-  // Full Driver profiles contain private application and payment information.
-  useEffect(() => {
-    return firestoreDB.subscribe(COLLECTIONS.DRIVER_PRESENCE, {}, (profiles) => {
-      setOnlineDriverProfiles(profiles);
-    });
-  }, []);
-
-  // Firestore only notifies on document changes. Run the same filter every
-  // 30 seconds so a device that loses GPS or is force-closed disappears even
-  // when the old profile document is not updated to offline.
-  useEffect(() => {
-    const refreshNearbyDrivers = () => {
-      const unique = new Map<string, NearbyVehicle>();
-      onlineDriverProfiles.forEach((profile: any) => {
-        const vehicle = nearbyVehicleFromProfile(profile);
-        if (vehicle) unique.set(vehicle.id, vehicle);
-      });
-      setNearbyDrivers([...unique.values()]);
-    };
-    refreshNearbyDrivers();
-    const expiryTimer = setInterval(refreshNearbyDrivers, 30_000);
-    return () => clearInterval(expiryTimer);
-  }, [onlineDriverProfiles]);
-
   const [destination, setDestination] = useState<Location | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -445,25 +428,6 @@ export default function RiderHomeScreen() {
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quotedRouteKey, setQuotedRouteKey] = useState<string | null>(null);
   const [quoteRefreshNonce, setQuoteRefreshNonce] = useState(0);
-  const nearbyVehiclesForSelectedCategory = nearbyDrivers
-    .filter((vehicle) => vehicleServesRideCategory(vehicle, selectedCategory.id))
-    .map((vehicle) => ({
-      ...vehicle,
-      etaMinutes: calculateETA({ lat: vehicle.lat, lng: vehicle.lng }, { lat: userLocation[0], lng: userLocation[1] }),
-    }))
-    .sort((a, b) => (a.etaMinutes || 99) - (b.etaMinutes || 99));
-  const closestVehicleEta = nearbyVehiclesForSelectedCategory[0]?.etaMinutes ?? null;
-
-  // Keep all fresh, approved online vehicles on the map. A Standard Driver
-  // must remain visible when a Rider is comparing Comfort or Kantanka, while
-  // the category-specific list still controls who can receive the request.
-  const nearbyVehiclesForMap = nearbyDrivers
-    .map((vehicle) => ({
-      ...vehicle,
-      etaMinutes: calculateETA({ lat: vehicle.lat, lng: vehicle.lng }, { lat: userLocation[0], lng: userLocation[1] }),
-    }))
-    .sort((a, b) => (a.etaMinutes || 99) - (b.etaMinutes || 99));
-
   // Keep the map open while a request is searching. The expanded trip card is
   // is one tap away, but it should never cover the map when the rider needs
   // to follow the driver or see nearby vehicles.
@@ -882,9 +846,9 @@ export default function RiderHomeScreen() {
               .filter(([lat, lng]: [number, number]) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180)
               .slice(0, 180)
             : undefined;
-          // A ride document retains the Driver's acceptance-time position. The
-          // `driver_presence` stream is the authority for live GPS, so an old
-          // ride snapshot cannot pull the moving vehicle back to its start.
+          // The backend projects the assigned Driver's fresh map point into the
+          // participant-owned ride record. Ordering blocks an older ride
+          // snapshot from pulling the moving vehicle back to its start.
           const rideDriverUpdate = hasDriverLocation
             ? nextRiderDriverLocation(driver!.location, prev.driverLocationUpdatedAt, prev.driverLocation)
             : null;
@@ -1112,45 +1076,6 @@ export default function RiderHomeScreen() {
     return () => subscriptions.forEach((unsubscribe) => unsubscribe?.());
   }, [activeRideKeys, user?.uid]);
 
-  // Subscribe to the server-published map-safe presence document as well as
-  // the ride itself, so the Rider sees movement without reading private
-  // Driver application records.
-  useEffect(() => {
-    const ride = activeRides.find((item) => item.id === selectedRideId) || activeRides[0];
-    const driverId = ride?.driverId;
-    if (!driverId || !ride || !['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(ride.status)) return;
-
-    return firestoreDB.subscribeDoc(COLLECTIONS.DRIVER_PRESENCE, driverId, (profile: any) => {
-      const current = profile?.current_location || profile?.location;
-      const currentRide = activeRidesRef.current.find((item) => item.id === ride.id);
-      const incoming = nextRiderDriverLocation(
-        current || profile,
-        currentRide?.driverLocationUpdatedAt,
-        currentRide?.driverLocation,
-      );
-      if (!incoming) return;
-      const point = { lat: incoming.lat, lng: incoming.lng };
-      updateActiveRide((prev) => {
-        if (prev.id !== ride.id) return prev;
-        const ordered = nextRiderDriverLocation(current || profile, prev.driverLocationUpdatedAt, prev.driverLocation);
-        if (!ordered) return prev;
-        const nextPoint = { lat: ordered.lat, lng: ordered.lng };
-        const bearing = Number.isFinite(Number(ordered.heading))
-          ? Number(ordered.heading)
-          : prev.driverLocation
-            ? calculateBearing(prev.driverLocation.lat, prev.driverLocation.lng, nextPoint.lat, nextPoint.lng)
-            : prev.driverBearing;
-        return {
-          ...prev,
-          driverLocation: nextPoint,
-          driverBearing: bearing,
-          driverLocationUpdatedAt: ordered.updatedAt || prev.driverLocationUpdatedAt,
-        };
-      });
-      if (ride.id === selectedRideId) setDriverLocation(point);
-    });
-  }, [activeRides[0]?.id, activeRides[0]?.driverId, activeRides[0]?.status, selectedRideId, updateActiveRide]);
-
   // Keep the on-screen freshness indicator honest even when a Driver has
   // stopped moving and no new location snapshot is received.
   useEffect(() => {
@@ -1321,9 +1246,7 @@ export default function RiderHomeScreen() {
     searchTimeoutRef.current = setTimeout(() => {
       Alert.alert(
         "No Driver Found",
-        nearbyDrivers.length === 0
-          ? "No drivers are currently online in your area. Please try again shortly."
-          : "Drivers are online, but all are currently busy. Please try again in a few minutes."
+        "No eligible Driver accepted this request yet. Please try again shortly."
       );
       removeActiveRide(activeRide?.id);
     }, 6 * 60 * 1000);
@@ -1334,7 +1257,7 @@ export default function RiderHomeScreen() {
         searchTimeoutRef.current = null;
       }
     };
-  }, [activeRide?.status, nearbyDrivers.length]);
+  }, [activeRide?.status]);
 
   const distance = destination
     ? Math.sqrt(
@@ -1365,7 +1288,7 @@ export default function RiderHomeScreen() {
   const bookingRouteDisplay = riderBookingRouteDisplay(currentSelectedQuote);
   const bookingMapTimes = destination
     ? bookingMapTimeLabels({
-        pickupEtaMinutes: closestVehicleEta,
+        pickupEtaMinutes: currentSelectedQuote?.pickupEtaMinutes,
         routeDurationMinutes: currentSelectedQuote?.durationMinutes,
       })
     : null;
@@ -3213,16 +3136,16 @@ export default function RiderHomeScreen() {
           category can be read and chosen rather than being clipped sideways. */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
         <Text style={{ color: MUTED, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: "600" }}>Ride options · {RIDE_CATEGORIES.length} available types</Text>
-        {closestVehicleEta !== null ? (
+        {currentSelectedQuote?.pickupEtaMinutes != null ? (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
             <MaterialIcons name="directions-car" size={13} color={GREEN} />
             <Text style={{ color: GREEN, fontSize: 11, fontWeight: "800" }}>
-              {nearbyVehiclesForSelectedCategory.length} nearby · {closestVehicleEta} min pickup
+              {currentSelectedQuote.eligibleDriverCount ?? 1} eligible · {currentSelectedQuote.pickupEtaMinutes} min pickup
             </Text>
           </View>
         ) : (
           <Text style={{ color: MUTED, fontSize: 11, fontWeight: "600" }}>
-            {nearbyDrivers.length > 0 ? `${nearbyDrivers.length} Driver${nearbyDrivers.length === 1 ? '' : 's'} nearby · choose a matching type` : 'No live Driver in this category yet'}
+            {currentSelectedQuote?.eligibleDriverCount ? 'Calculating road pickup time…' : 'Finding an eligible Driver'}
           </Text>
         )}
       </View>
@@ -3245,11 +3168,9 @@ export default function RiderHomeScreen() {
           const isAvailable = quote?.available === true;
           const isConfirmedUnavailable = quote?.available === false;
           const isSelected = selectedCategory.id === cat.id;
-          const matchingVehicles = nearbyDrivers
-            .filter((vehicle) => vehicleServesRideCategory(vehicle, cat.id))
-            .map((vehicle) => calculateETA({ lat: vehicle.lat, lng: vehicle.lng }, { lat: userLocation[0], lng: userLocation[1] }));
-          const pickupEta = matchingVehicles.length ? Math.min(...matchingVehicles) : null;
-          const driverLabel = `${matchingVehicles.length} ${cat.name} Driver${matchingVehicles.length === 1 ? '' : 's'}`;
+          const pickupEta = quote?.pickupEtaMinutes ?? null;
+          const eligibleDriverCount = Number(quote?.eligibleDriverCount ?? 0);
+          const driverLabel = `${eligibleDriverCount} eligible ${cat.name} Driver${eligibleDriverCount === 1 ? '' : 's'}`;
           const vehicleArtwork = cat.id === "okada"
             ? require("@/assets/images/ride-list-map-okada.png")
             : cat.id === "car_delivery"
@@ -3284,7 +3205,7 @@ export default function RiderHomeScreen() {
                 </View>
                 <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{cat.description}</Text>
                 <Text style={{ color: !isAvailable ? MUTED : pickupEta !== null ? GREEN : MUTED, fontSize: 11, fontWeight: "800", marginTop: 5 }}>
-                  {!quote ? quoteError ? 'Protected fare needs retry' : backgroundQuoteLoading ? 'Updating protected fare…' : 'Tap to load protected fare' : !isAvailable ? 'Temporarily unavailable' : quoteLoading && isSelected ? 'Refreshing protected fare…' : pickupEta !== null ? `${driverLabel} nearby · ${pickupEta} min pickup` : nearbyDrivers.length > 0 ? 'Drivers nearby for another ride type' : `No ${cat.name} drivers nearby`}
+                  {!quote ? quoteError ? 'Protected fare needs retry' : backgroundQuoteLoading ? 'Updating protected fare…' : 'Tap to load protected fare' : !isAvailable ? 'Temporarily unavailable' : quoteLoading && isSelected ? 'Refreshing protected fare…' : pickupEta !== null ? `${driverLabel} · ${pickupEta} min pickup` : eligibleDriverCount > 0 ? 'Calculating road pickup time…' : `Finding an eligible ${cat.name} Driver`}
                 </Text>
               </View>
               <View style={{ alignItems: "flex-end", gap: 7 }}>
@@ -3731,9 +3652,7 @@ export default function RiderHomeScreen() {
         bookingDropoffTimeLabel={!activeRide && destination ? bookingMapTimes?.dropoff ?? null : null}
         tripStatus={activeRide?.status ?? null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
-        nearbyDrivers={(!activeRide || activeRide.status === "searching")
-          ? nearbyVehiclesForMap.slice(0, 4)
-          : []}
+        nearbyDrivers={!activeRide ? (currentSelectedQuote?.nearbyVehicles ?? []) : []}
         onRouteMetrics={handleLiveRouteMetrics}
       />}
 
