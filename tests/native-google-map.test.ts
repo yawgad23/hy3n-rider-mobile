@@ -18,6 +18,8 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('CompactVehicleMarker');
     expect(component).toContain("require('../assets/images/hy3n-comfort-car-3d.png')");
     expect(component).not.toContain("return require('../assets/images/map-car-marker.png')");
+    expect(component).not.toContain('tintColor: safeColour');
+    expect(component).toContain('Do not tint the realistic 3D car');
     expect(component).not.toContain('react-native-webview');
   });
 
@@ -92,7 +94,6 @@ describe('Rider native Google Maps migration', () => {
     expect(screen).toContain('nearbyDrivers={!activeRide ? (currentSelectedQuote?.nearbyVehicles ?? []) : []}');
     expect(screen).toContain('eligibleDriverCount');
     expect(component).toContain('vehicleColourHex?: string | null;');
-    expect(component).toContain('vehicleColourHex={driver.vehicleColourHex}');
     expect(screen).not.toContain('firestoreDB.subscribe(COLLECTIONS.DRIVER_PRESENCE');
   });
 
