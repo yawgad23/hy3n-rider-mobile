@@ -83,7 +83,9 @@ function markerAsset(serviceType?: string | null) {
   if (type.includes('delivery') || type.includes('parcel') || type.includes('express')) {
     return require('../assets/images/map-delivery-marker.png');
   }
-  return require('../assets/images/hy3n-comfort-car-3d.png');
+  // Map vehicles use HY3N's branded fleet artwork, not the Comfort-category
+  // card artwork. Category-specific cards remain separate from live markers.
+  return require('../assets/images/hy3n-standard-ride-3d.png');
 }
 
 function CompactVehicleMarker({ serviceType, size }: { serviceType?: string | null; size: number }) {
