@@ -71,8 +71,8 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    // Build 105 packages the no-driver pickup ETA display guard.
-    buildNumber: "105",
+    // Build 107 packages the restored Build 105 source without the later 3D marker asset.
+    buildNumber: "107",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
