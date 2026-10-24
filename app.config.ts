@@ -71,8 +71,8 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    // Build 106 packages the corrected realistic 3D Rider vehicle marker.
-    buildNumber: "106",
+    // Build 105 packages the no-driver pickup ETA display guard.
+    buildNumber: "105",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.

@@ -16,11 +16,6 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 38');
     expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 32');
     expect(component).toContain('CompactVehicleMarker');
-    expect(component).toContain("require('../assets/images/hy3n-standard-ride-3d.png')");
-    expect(component).toContain('HY3N\'s branded fleet artwork');
-    expect(component).not.toContain("return require('../assets/images/map-car-marker.png')");
-    expect(component).not.toContain('tintColor: safeColour');
-    expect(component).toContain('Do not tint the realistic 3D car');
     expect(component).not.toContain('react-native-webview');
   });
 
@@ -95,6 +90,7 @@ describe('Rider native Google Maps migration', () => {
     expect(screen).toContain('nearbyDrivers={!activeRide ? (currentSelectedQuote?.nearbyVehicles ?? []) : []}');
     expect(screen).toContain('eligibleDriverCount');
     expect(component).toContain('vehicleColourHex?: string | null;');
+    expect(component).toContain('vehicleColourHex={driver.vehicleColourHex}');
     expect(screen).not.toContain('firestoreDB.subscribe(COLLECTIONS.DRIVER_PRESENCE');
   });
 

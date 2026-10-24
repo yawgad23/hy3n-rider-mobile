@@ -75,6 +75,10 @@ function coordinate(point: NativeMapPoint) {
   return { latitude: point[0], longitude: point[1] };
 }
 
+function safeColour(value: string | null | undefined, fallback: string) {
+  return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : fallback;
+}
+
 function markerAsset(serviceType?: string | null) {
   const type = String(serviceType || '').toLowerCase();
   if (type.includes('okada') || type.includes('motor') || type.includes('bike')) {
@@ -83,21 +87,16 @@ function markerAsset(serviceType?: string | null) {
   if (type.includes('delivery') || type.includes('parcel') || type.includes('express')) {
     return require('../assets/images/map-delivery-marker.png');
   }
-  // Map vehicles use HY3N's branded fleet artwork, not the Comfort-category
-  // card artwork. Category-specific cards remain separate from live markers.
-  return require('../assets/images/hy3n-standard-ride-3d.png');
+  return require('../assets/images/map-car-marker.png');
 }
 
-function CompactVehicleMarker({ serviceType, size }: { serviceType?: string | null; size: number }) {
+function CompactVehicleMarker({ serviceType, vehicleColourHex, size }: { serviceType?: string | null; vehicleColourHex?: string | null; size: number }) {
+  const carMarker = !String(serviceType || '').toLowerCase().match(/okada|motor|bike|delivery|parcel|express/);
   return (
     <View pointerEvents="none" style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
       <Image
         source={markerAsset(serviceType)}
-        // Do not tint the realistic 3D car. React Native tintColor flattens
-        // the body, windows, wheels, and shadows into one pale silhouette,
-        // which is the ghost-like marker Riders were seeing. Motorbike and
-        // delivery artwork remains fully branded as well.
-        style={{ width: size, height: size }}
+        style={{ width: size, height: size, ...(carMarker ? { tintColor: safeColour(vehicleColourHex, '#F5F5F5') } : {}) }}
         resizeMode="contain"
       />
     </View>
@@ -507,7 +506,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           tracksViewChanges={false}
           zIndex={4}
         >
-          <CompactVehicleMarker serviceType={driver.serviceType} size={NEARBY_DRIVER_MARKER_SIZE} />
+          <CompactVehicleMarker serviceType={driver.serviceType} vehicleColourHex={driver.vehicleColourHex} size={NEARBY_DRIVER_MARKER_SIZE} />
         </Marker>)}
       </MapView>
     </View>
