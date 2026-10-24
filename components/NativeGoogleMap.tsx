@@ -13,7 +13,6 @@ export type NearbyDriver = {
   lng: number;
   heading?: number | null;
   serviceType?: string | null;
-  vehicleColourHex?: string | null;
 };
 
 type NativeGoogleMapProps = {
@@ -90,15 +89,10 @@ function markerAsset(serviceType?: string | null) {
   return require('../assets/images/map-car-marker.png');
 }
 
-function CompactVehicleMarker({ serviceType, vehicleColourHex, size }: { serviceType?: string | null; vehicleColourHex?: string | null; size: number }) {
-  const carMarker = !String(serviceType || '').toLowerCase().match(/okada|motor|bike|delivery|parcel|express/);
+function CompactVehicleMarker({ serviceType, size }: { serviceType?: string | null; size: number }) {
   return (
     <View pointerEvents="none" style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Image
-        source={markerAsset(serviceType)}
-        style={{ width: size, height: size, ...(carMarker ? { tintColor: safeColour(vehicleColourHex, '#F5F5F5') } : {}) }}
-        resizeMode="contain"
-      />
+      <Image source={markerAsset(serviceType)} style={{ width: size, height: size }} resizeMode="contain" />
     </View>
   );
 }
@@ -506,7 +500,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           tracksViewChanges={false}
           zIndex={4}
         >
-          <CompactVehicleMarker serviceType={driver.serviceType} vehicleColourHex={driver.vehicleColourHex} size={NEARBY_DRIVER_MARKER_SIZE} />
+          <CompactVehicleMarker serviceType={driver.serviceType} size={NEARBY_DRIVER_MARKER_SIZE} />
         </Marker>)}
       </MapView>
     </View>

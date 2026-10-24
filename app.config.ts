@@ -71,8 +71,8 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    // Build 108 packages the restored Build 104 source without the later ghost-car marker changes.
-    buildNumber: "108",
+    // Build 103 packages Live Activity terminal recovery and private trip sharing.
+    buildNumber: "103",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
@@ -100,9 +100,9 @@ const config: ExpoConfig = {
     package: env.androidPackage,
     // Play Console requires each uploaded Android App Bundle to have a higher
     // version code than every previous artifact for com.hy3n.rider.
-    // 58011 delivers the tested current Rider source to the existing Alpha
+    // 58010 delivers the tested current Rider source to the existing Alpha
     // testers, without changing the iOS build number.
-    versionCode: 58011,
+    versionCode: 58010,
     googleServicesFile: "./firebase/google-services.json",
     ...(nativeGoogleMaps.androidApiKey
       ? { config: { googleMaps: { apiKey: nativeGoogleMaps.androidApiKey } } }
