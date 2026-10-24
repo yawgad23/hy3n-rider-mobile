@@ -71,8 +71,8 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    // Build 104 packages protected pickup ETA and anonymous nearby vehicle previews.
-    buildNumber: "104",
+    // Build 108 packages the restored Build 104 source without the later ghost-car marker changes.
+    buildNumber: "108",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
