@@ -3,22 +3,6 @@ function finiteWholeMinutes(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? Math.max(0, Math.ceil(parsed)) : null;
 }
 
-/**
- * A booking pickup ETA is displayable only when the same quote also contains
- * at least one anonymous nearby vehicle. This prevents stale or partial quote
- * payloads from showing "1 min" over an empty map.
- */
-export function bookingPickupEtaMinutes(input: {
-  pickupEtaMinutes?: unknown;
-  eligibleDriverCount?: unknown;
-  nearbyVehicleCount?: unknown;
-}): number | null {
-  const eligible = Number(input.eligibleDriverCount);
-  const nearby = Number(input.nearbyVehicleCount);
-  if (!Number.isFinite(eligible) || eligible <= 0 || !Number.isFinite(nearby) || nearby <= 0) return null;
-  return finiteWholeMinutes(input.pickupEtaMinutes);
-}
-
 function clockTime(value: Date): string {
   const hours = value.getHours();
   const minutes = String(value.getMinutes()).padStart(2, '0');
@@ -32,12 +16,10 @@ function clockTime(value: Date): string {
  */
 export function bookingMapTimeLabels(input: {
   pickupEtaMinutes?: unknown;
-  eligibleDriverCount?: unknown;
-  nearbyVehicleCount?: unknown;
   routeDurationMinutes?: unknown;
   now?: Date;
 }): { pickup: string; dropoff: string } {
-  const pickupMinutes = bookingPickupEtaMinutes(input);
+  const pickupMinutes = finiteWholeMinutes(input.pickupEtaMinutes);
   const routeMinutes = finiteWholeMinutes(input.routeDurationMinutes);
   const now = input.now ?? new Date();
 
