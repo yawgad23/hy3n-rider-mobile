@@ -71,8 +71,8 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    // Build 103 packages Live Activity terminal recovery and private trip sharing.
-    buildNumber: "103",
+    // Package 110 contains the exact restored Build 103 source.
+    buildNumber: "110",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
