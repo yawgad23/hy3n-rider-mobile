@@ -100,9 +100,8 @@ const config: ExpoConfig = {
     package: env.androidPackage,
     // Play Console requires each uploaded Android App Bundle to have a higher
     // version code than every previous artifact for com.hy3n.rider.
-    // 58010 delivers the tested current Rider source to the existing Alpha
-    // testers, without changing the iOS build number.
-    versionCode: 58010,
+    // 58012 delivers the restored Build 103 source after the Android 16 target-SDK update.
+    versionCode: 58012,
     googleServicesFile: "./firebase/google-services.json",
     ...(nativeGoogleMaps.androidApiKey
       ? { config: { googleMaps: { apiKey: nativeGoogleMaps.androidApiKey } } }
@@ -169,7 +168,9 @@ const config: ExpoConfig = {
       {
         android: {
           buildArchs: ["armeabi-v7a", "arm64-v8a"],
+          compileSdkVersion: 36,
           minSdkVersion: 24,
+          targetSdkVersion: 36,
         },
       },
     ],
