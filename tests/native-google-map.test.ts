@@ -86,6 +86,12 @@ describe('Rider native Google Maps migration', () => {
     expect(screen).toContain('isDeliveryCategory(activeRide?.categoryId) ? activeRide?.categoryId');
   });
 
+  it('maps Car Delivery to a car marker instead of the delivery-bike marker', () => {
+    expect(component).toContain("type.includes('car delivery') || type.includes('car_delivery')");
+    expect(component).toContain("if (type === 'delivery' || type.includes('parcel') || type.includes('express') || type.includes('delivery bike'))");
+    expect(component.indexOf("type.includes('car delivery')")).toBeLessThan(component.indexOf("type === 'delivery'"));
+  });
+
   it('keeps a fresh online Driver visible on the map while the Rider compares another category', () => {
     expect(screen).toContain('const nearbyVehiclesForMap = nearbyDrivers');
     expect(screen).toContain('nearbyDrivers={(!activeRide || activeRide.status === "searching")');
