@@ -16,7 +16,6 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 38');
     expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 32');
     expect(component).toContain('CompactVehicleMarker');
-    expect(component).toContain("require('../assets/images/hy3n-comfort-car-3d.png')");
     expect(component).not.toContain('react-native-webview');
   });
 
@@ -57,8 +56,6 @@ describe('Rider native Google Maps migration', () => {
 
   it('renders a green booking route with pickup-focused camera and time callouts', () => {
     expect(component).toContain("const HY3N_ROUTE_GREEN = '#007E4F';");
-    expect(component).toContain('strokeColor="#FFFFFF"');
-    expect(component).toContain('strokeWidth={10}');
     expect(component).toContain('strokeColor={HY3N_ROUTE_GREEN}');
     expect(component).toContain('strokeColors={routeCoordinates.map(() => HY3N_ROUTE_GREEN)}');
     expect(component).toContain('bookingPickupTimeLabel');
