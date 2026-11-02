@@ -86,7 +86,7 @@ function markerAsset(serviceType?: string | null) {
   if (type.includes('delivery') || type.includes('parcel') || type.includes('express')) {
     return require('../assets/images/map-delivery-marker.png');
   }
-  return require('../assets/images/map-car-marker.png');
+  return require('../assets/images/hy3n-comfort-car-3d.png');
 }
 
 function CompactVehicleMarker({ serviceType, size }: { serviceType?: string | null; size: number }) {
@@ -431,15 +431,27 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         onMapReady={() => setMapReady(true)}
         onPanDrag={() => { userMovedMapRef.current = true; }}
       >
-        {routeCoordinates.length > 1 && <Polyline
-          coordinates={routeCoordinates}
-          strokeColor={HY3N_ROUTE_GREEN}
-          strokeColors={routeCoordinates.map(() => HY3N_ROUTE_GREEN)}
-          strokeWidth={6}
-          lineCap="round"
-          lineJoin="round"
-          zIndex={1}
-        />}
+        {routeCoordinates.length > 1 && <>
+          {/* Uber-style route hierarchy: a bright casing keeps the HY3N route
+              legible over satellite-like road detail and both map themes. */}
+          <Polyline
+            coordinates={routeCoordinates}
+            strokeColor="#FFFFFF"
+            strokeWidth={10}
+            lineCap="round"
+            lineJoin="round"
+            zIndex={1}
+          />
+          <Polyline
+            coordinates={routeCoordinates}
+            strokeColor={HY3N_ROUTE_GREEN}
+            strokeColors={routeCoordinates.map(() => HY3N_ROUTE_GREEN)}
+            strokeWidth={6}
+            lineCap="round"
+            lineJoin="round"
+            zIndex={2}
+          />
+        </>}
         {bookingPreview && isNativeMapPoint(userLocation) && <Marker
           coordinate={coordinate(userLocation)}
           anchor={{ x: 0.5, y: 1 }}
