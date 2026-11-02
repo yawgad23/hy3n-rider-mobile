@@ -79,11 +79,16 @@ function safeColour(value: string | null | undefined, fallback: string) {
 }
 
 function markerAsset(serviceType?: string | null) {
-  const type = String(serviceType || '').toLowerCase();
+  const type = String(serviceType || '').toLowerCase().replace(/[_-]+/g, ' ').trim();
+  // Car Delivery is a distinct HY3N service: it uses the car marker, not the
+  // motorcycle/delivery-bike marker. Check it before the generic Delivery rule.
+  if (type.includes('car delivery') || type.includes('car_delivery')) {
+    return require('../assets/images/map-car-marker.png');
+  }
   if (type.includes('okada') || type.includes('motor') || type.includes('bike')) {
     return require('../assets/images/map-okada-marker.png');
   }
-  if (type.includes('delivery') || type.includes('parcel') || type.includes('express')) {
+  if (type === 'delivery' || type.includes('parcel') || type.includes('express') || type.includes('delivery bike')) {
     return require('../assets/images/map-delivery-marker.png');
   }
   return require('../assets/images/map-car-marker.png');
