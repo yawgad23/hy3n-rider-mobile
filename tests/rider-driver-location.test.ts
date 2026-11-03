@@ -38,6 +38,13 @@ describe('Rider Driver presence ordering', () => {
     }, '2026-10-02T16:00:03.000Z')?.updatedAt).toBe(date.toISOString());
   });
 
+  it('normalizes JavaScript Date, epoch, and ISO-string timestamps consistently', () => {
+    const date = new Date('2026-10-02T16:00:04.000Z');
+    expect(nextRiderDriverLocation({ latitude: 5.604, longitude: -0.186, recorded_at: date }, '2026-10-02T16:00:03.000Z')?.updatedAt).toBe(date.toISOString());
+    expect(nextRiderDriverLocation({ latitude: 5.604, longitude: -0.186, recorded_at: 1790956805000 }, date.toISOString())?.updatedAt).toBe(new Date(1790956805000).toISOString());
+    expect(nextRiderDriverLocation({ latitude: 5.604, longitude: -0.186, recorded_at: '2026-10-02T16:00:06.000Z' }, date.toISOString())?.updatedAt).toBe('2026-10-02T16:00:06.000Z');
+  });
+
   it('rejects an older or undated presence replay after a timestamped update', () => {
     expect(nextRiderDriverLocation({ latitude: 5.6, longitude: -0.18, recorded_at: '2026-10-02T16:00:00.000Z' }, '2026-10-02T16:00:03.000Z')).toBeNull();
     expect(nextRiderDriverLocation({ latitude: 5.6, longitude: -0.18 }, '2026-10-02T16:00:03.000Z')).toBeNull();

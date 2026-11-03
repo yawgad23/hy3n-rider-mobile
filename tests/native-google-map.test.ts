@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { matchPointToServerRoute } from '../lib/rider-route-matching';
 
 const component = readFileSync(path.join(process.cwd(), 'components/NativeGoogleMap.tsx'), 'utf8');
 const screen = readFileSync(path.join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
@@ -8,6 +9,21 @@ const metroConfig = readFileSync(path.join(process.cwd(), 'metro.config.js'), 'u
 const appConfig = readFileSync(path.join(process.cwd(), 'app.config.ts'), 'utf8');
 
 describe('Rider native Google Maps migration', () => {
+  it('keeps route matching on the forward portion of a crossing or looping route', () => {
+    const loopRoute: [number, number][] = [
+      [5.0, 0.0],
+      [5.001, 0.0],
+      [5.001, 0.001],
+      [5.0, 0.001],
+      [5.0, 0.00002],
+    ];
+    expect(matchPointToServerRoute([5.0, 0.0], loopRoute)?.segmentIndex).toBe(0);
+    expect(matchPointToServerRoute([5.0, 0.0], loopRoute, undefined, 3)?.segmentIndex).toBe(3);
+    expect(component).toContain('routeProgressRef');
+    expect(component).toContain('routeProgressKey');
+    expect(component).toContain('routeProgressRef.current.segmentIndex - 2');
+  });
+
   it('uses Google Maps with an animated branded driver marker, not a WebView', () => {
     expect(component).toContain('provider={PROVIDER_GOOGLE}');
     expect(component).toContain('googleRenderer="LEGACY"');
