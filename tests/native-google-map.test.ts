@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const component = readFileSync(path.join(process.cwd(), 'components/NativeGoogleMap.tsx'), 'utf8');
+const routeMatching = readFileSync(path.join(process.cwd(), 'lib/rider-route-matching.ts'), 'utf8');
 const screen = readFileSync(path.join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
 const metroConfig = readFileSync(path.join(process.cwd(), 'metro.config.js'), 'utf8');
 const appConfig = readFileSync(path.join(process.cwd(), 'app.config.ts'), 'utf8');
@@ -25,7 +26,8 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('routeProgressKey');
     expect(component).toContain('riderRemainingLiveRoute(driverLocation, trustedDriverRoute, routeOverview, Math.max(0, routeProgressRef.current.segmentIndex - 2))');
     expect(component).toContain('routeProgressRef.current.segmentIndex = Math.max(routeProgressRef.current.segmentIndex, displayDriverMatch.segmentIndex)');
-    expect(component).toContain('Math.floor(minimumSegmentIndex)');
+    expect(routeMatching).toContain('Math.floor(minimumSegmentIndex)');
+    expect(routeMatching).toContain('ignore segments substantially');
   });
 
   it('moves the active vehicle through fresh server road turns and cancels stale native queues', () => {
