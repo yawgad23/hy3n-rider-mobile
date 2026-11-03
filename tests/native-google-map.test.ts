@@ -71,6 +71,9 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('if (!mapReady) return;');
     expect(component).toContain('onMapReady={() => setMapReady(true)}');
     expect(component).toContain('animateToRegion(region');
+    expect(component).toContain('previousCameraUpdatedAtRef');
+    expect(component).toContain('riderDriverMarkerMotionDuration(previousCameraAt, driverLocationUpdatedAt)');
+    expect(component).toContain('animateToRegion(region, cameraDurationMs)');
   });
 
   it('renders a green booking route with pickup-focused camera and time callouts', () => {

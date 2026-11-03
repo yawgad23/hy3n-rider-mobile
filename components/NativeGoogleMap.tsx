@@ -156,6 +156,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const userMovedMapRef = useRef(false);
   const previousDriverPointRef = useRef<NativeMapPoint | null>(null);
   const previousDriverUpdatedAtRef = useRef<number | null>(null);
+  const previousCameraUpdatedAtRef = useRef<number | null>(null);
   const routeProgressRef = useRef<{ key: string; segmentIndex: number }>({ key: '', segmentIndex: 0 });
   const animationGenerationRef = useRef(0);
   const lastAnimatedDriverKeyRef = useRef<string | null>(null);
@@ -349,7 +350,13 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     // The Rider explicitly requested the full server route. Do not overwrite
     // that overview with the normal close-range live camera.
     if (routeOverview) return;
-    if (userMovedMapRef.current) return;
+    if (userMovedMapRef.current) {
+      // Manual panning suspends auto-follow. Start with a short camera settle
+      // when follow resumes instead of comparing against an old GPS timestamp.
+      previousCameraUpdatedAtRef.current = null;
+      return;
+    }
+    if (!driverTracking) previousCameraUpdatedAtRef.current = null;
     if (bookingPreview) {
       const region = bookingPreviewRegion(
         userLocation,
@@ -380,8 +387,25 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       isNativeMapPoint(userLocation) ? userLocation : (isNativeMapPoint(center) ? center : FALLBACK_CENTER),
     );
     if (!region) return;
-    mapRef.current?.animateToRegion(region, displayDriverPoint && trackedTarget ? 650 : 350);
-  }, [bookingPreview, center, displayDriverPoint, driverRoutePoints, driverTracking, mapReady, nearby, routeCoordinates, routeOverview, trackedTarget, userLocation]);
+
+    // Keep the camera travelling with the same live GPS cadence as the marker.
+    // A fixed 350–650 ms camera pan reached the newest GPS point long before
+    // the vehicle's 1.7–2.6 s marker animation finished, making the car drift
+    // away from the visual focus. Matching both durations keeps the vehicle in
+    // the same part of the viewport without moving the camera on every frame.
+    let cameraDurationMs = displayDriverPoint && trackedTarget ? 650 : 350;
+    if (driverTracking && displayDriverPoint) {
+      const previousCameraAt = previousCameraUpdatedAtRef.current;
+      const currentCameraAt = driverLocationUpdatedAt ? Date.parse(driverLocationUpdatedAt) : Number.NaN;
+      if (previousCameraAt !== null && Number.isFinite(currentCameraAt) && currentCameraAt > previousCameraAt) {
+        cameraDurationMs = riderDriverMarkerMotionDuration(previousCameraAt, driverLocationUpdatedAt);
+      }
+      if (Number.isFinite(currentCameraAt)) previousCameraUpdatedAtRef.current = currentCameraAt;
+    } else {
+      previousCameraUpdatedAtRef.current = null;
+    }
+    mapRef.current?.animateToRegion(region, cameraDurationMs);
+  }, [bookingPreview, center, displayDriverPoint, driverLocationUpdatedAt, driverRoutePoints, driverTracking, mapReady, nearby, routeCoordinates, routeOverview, trackedTarget, userLocation]);
 
   useEffect(() => {
     if (!routeOverview) {
