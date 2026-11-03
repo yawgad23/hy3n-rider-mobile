@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View, Alert, Linking } from "react-native";
+import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View, Alert } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
