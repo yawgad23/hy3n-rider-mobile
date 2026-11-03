@@ -61,7 +61,7 @@ import { bookingSheetSwipeAction, shouldClaimBookingSheetSwipe } from "@/lib/boo
 import { formatLiveDistance, riderPickupStatusLabel } from "@/lib/rider-live-tracking-presentation";
 import { createLiveTripShareLink, createRecipientTripShare, revokeLiveTripShareLink } from "@/lib/trip-share";
 import { payWithHubtelCard } from "@/lib/card-checkout";
-import { nearbyVehicleFromProfile, type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
+import { type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
 import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } from "@/lib/rider-completion-presentation";
 import { deliveryRequestDetails, isDeliveryCategory, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
@@ -383,32 +383,53 @@ export default function RiderHomeScreen() {
   }, [refreshCurrentPickupLocation]);
   // ─── Nearby Drivers ─────────────────────────────────────────────────────────
   const [nearbyDrivers, setNearbyDrivers] = useState<NearbyVehicle[]>([]);
-  const [onlineDriverProfiles, setOnlineDriverProfiles] = useState<Record<string, any>[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState(RIDE_CATEGORIES[0]);
 
-  // Subscribe only to the server-published, map-safe Driver presence feed.
-  // Full Driver profiles contain private application and payment information.
+  // Driver presence is server-owned. The production Firestore rules correctly
+  // deny a Rider a collection-wide read, so use the authenticated endpoint that
+  // applies approval, freshness, category, radius, and fee gates before sending
+  // anonymous marker coordinates back to this app.
   useEffect(() => {
-    return firestoreDB.subscribe(COLLECTIONS.DRIVER_PRESENCE, {}, (profiles) => {
-      setOnlineDriverProfiles(profiles);
-    });
-  }, []);
-
-  // Firestore only notifies on document changes. Run the same filter every
-  // 30 seconds so a device that loses GPS or is force-closed disappears even
-  // when the old profile document is not updated to offline.
-  useEffect(() => {
-    const refreshNearbyDrivers = () => {
-      const unique = new Map<string, NearbyVehicle>();
-      onlineDriverProfiles.forEach((profile: any) => {
-        const vehicle = nearbyVehicleFromProfile(profile);
-        if (vehicle) unique.set(vehicle.id, vehicle);
-      });
-      setNearbyDrivers([...unique.values()]);
+    let disposed = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const loadNearbyDrivers = async () => {
+      const firebaseUser = auth.currentUser ?? user;
+      if (!firebaseUser || !Number.isFinite(userLocation[0]) || !Number.isFinite(userLocation[1])) {
+        if (!disposed) setNearbyDrivers([]);
+        return;
+      }
+      try {
+        const token = await firebaseUser.getIdToken();
+        const params = new URLSearchParams({
+          lat: String(userLocation[0]),
+          lng: String(userLocation[1]),
+          category: selectedCategory.id,
+        });
+        const response = await fetch(`${getApiBaseUrl()}/api/rider/nearby-vehicles?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json().catch(() => null) as { success?: boolean; nearbyVehicles?: Array<Record<string, any>> } | null;
+        if (!response.ok || !payload?.success) throw new Error('Nearby vehicle feed unavailable');
+        const vehicles: NearbyVehicle[] = (payload.nearbyVehicles || []).map((vehicle) => ({
+          id: String(vehicle.id),
+          lat: Number(vehicle.lat),
+          lng: Number(vehicle.lng),
+          heading: Number.isFinite(Number(vehicle.heading)) ? Number(vehicle.heading) : undefined,
+          vehicleColourHex: vehicle.vehicleColourHex,
+          serviceType: vehicle.serviceType === 'okada' || vehicle.serviceType === 'delivery' ? vehicle.serviceType : 'car',
+          rideCategories: [selectedCategory.id],
+        })).filter((vehicle) => Number.isFinite(vehicle.lat) && Number.isFinite(vehicle.lng));
+        if (!disposed) setNearbyDrivers(vehicles);
+      } catch (error) {
+        // Keep the last successful marker set during a transient API failure;
+        // do not turn a network blip into a false "no Drivers" state.
+        if (!disposed) return;
+      }
     };
-    refreshNearbyDrivers();
-    const expiryTimer = setInterval(refreshNearbyDrivers, 30_000);
-    return () => clearInterval(expiryTimer);
-  }, [onlineDriverProfiles]);
+    void loadNearbyDrivers();
+    timer = setInterval(() => { void loadNearbyDrivers(); }, 15_000);
+    return () => { disposed = true; if (timer) clearInterval(timer); };
+  }, [selectedCategory.id, user?.uid, userLocation[0], userLocation[1]]);
 
   const [destination, setDestination] = useState<Location | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -417,7 +438,6 @@ export default function RiderHomeScreen() {
   const [bookingSheetCollapsed, setBookingSheetCollapsed] = useState(false);
   const [activeRideSheetCollapsed, setActiveRideSheetCollapsed] = useState(true);
   const [routeOverview, setRouteOverview] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState(RIDE_CATEGORIES[0]);
   const [selectedPayment, setSelectedPayment] = useState(PAYMENT_METHODS[0]);
   // The start screen previews every HY3N service without showing a fare. A
   // Rider still chooses pickup and destination before the server returns a
