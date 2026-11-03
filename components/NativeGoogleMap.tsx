@@ -53,6 +53,8 @@ const FALLBACK_CENTER: NativeMapPoint = [5.6037, -0.187];
 // The supplied 256px artwork is intentionally high-resolution. Render it at
 // map-appropriate point sizes so a nearby vehicle does not cover roads or pins.
 const ACTIVE_DRIVER_MARKER_SIZE = 38;
+// Nearby cars can sit close to the pickup pin; keep the vehicle icon above
+// the pickup endpoint and use a smaller endpoint dot so neither hides the car.
 const NEARBY_DRIVER_MARKER_SIZE = 32;
 // On iOS Google Maps, the native bridge creates an initial style span before
 // the JavaScript `strokeColor` arrives. That span otherwise retains the SDK's
@@ -506,7 +508,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           rotation={Number(driver.heading) || 0}
           opacity={0.82}
           tracksViewChanges={false}
-          zIndex={4}
+          zIndex={9}
         >
           <CompactVehicleMarker serviceType={driver.serviceType} size={NEARBY_DRIVER_MARKER_SIZE} />
         </Marker>)}
@@ -521,8 +523,8 @@ const styles = StyleSheet.create({
   bookingCallout: { borderRadius: 12, paddingHorizontal: 11, paddingVertical: 8, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
   bookingCalloutTitle: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   bookingCalloutDetail: { color: '#FFFFFF', fontSize: 21, lineHeight: 24, fontWeight: '900', marginTop: 1 },
-  bookingMapPin: { width: 28, height: 28, borderRadius: 14, borderWidth: 5, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginTop: -2 },
-  bookingMapPinInner: { width: 10, height: 10, borderRadius: 5 },
+  bookingMapPin: { width: 20, height: 20, borderRadius: 10, borderWidth: 4, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginTop: -2 },
+  bookingMapPinInner: { width: 8, height: 8, borderRadius: 4 },
 });
 
 export default NativeGoogleMap;
