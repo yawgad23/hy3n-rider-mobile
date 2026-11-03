@@ -12,6 +12,20 @@ export interface RideStateRecord {
   status: RideLifecycleStatus | string;
 }
 
+/**
+ * A recovered ride may carry the Firestore document ID separately from the
+ * in-memory ride ID used by an older session. Treat either identifier as the
+ * same ride when merging an authoritative server snapshot.
+ */
+export function rideKeysMatch(
+  left: { id?: string | null; firestoreId?: string | null },
+  right: { id?: string | null; firestoreId?: string | null },
+): boolean {
+  const leftKeys = [left.id, left.firestoreId].map((value) => String(value || '').trim()).filter(Boolean);
+  const rightKeys = [right.id, right.firestoreId].map((value) => String(value || '').trim()).filter(Boolean);
+  return leftKeys.some((key) => rightKeys.includes(key));
+}
+
 /** Insert or replace one ride without affecting any other active ride. */
 export function upsertRide<T extends RideStateRecord>(rides: T[], ride: T): T[] {
   const withoutRide = rides.filter((item) => item.id !== ride.id);

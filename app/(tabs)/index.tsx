@@ -41,7 +41,7 @@ import { RideChatModal, useUnreadChatCount } from "@/components/ride-chat-modal"
 import { PostRideModal } from "@/components/post-ride-modal";
 import { calculateDynamicFare, calculateDistance, RideMetrics } from "@/lib/dynamic-pricing";
 import { getDistanceToPickup, getDistanceToDestination, estimateETA, formatDistance, isDriverNearPickup, calculateBearing } from "@/lib/driver-tracking";
-import { upsertRide, updateRide, removeRide, countActiveRides } from "@/lib/rider-ride-state";
+import { upsertRide, updateRide, removeRide, countActiveRides, rideKeysMatch } from "@/lib/rider-ride-state";
 import { recoverActiveRide, recoverActiveRides } from "@/lib/rider-active-ride-recovery";
 import { buildRiderTerminalSummary, type RiderTerminalSummary } from "@/lib/rider-terminal-summary";
 import { isExpiredRiderSearch } from "@/lib/rider-search-expiry";
@@ -1078,7 +1078,7 @@ export default function RiderHomeScreen() {
 
       if (!recovered.length) return;
       setActiveRides((current) => current.map((ride) => {
-        const serverRide = recovered.find((candidate) => candidate.id === ride.id);
+        const serverRide = recovered.find((candidate) => rideKeysMatch(ride, candidate));
         // This endpoint is a recovery fallback, not a second live-GPS source.
         // Keep newer Firestore presence/route data when its status response was
         // read from an older document revision, so the car cannot jump back or

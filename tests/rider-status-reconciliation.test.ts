@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { mergeRiderStatusSnapshot, RIDER_STATUS_RECONCILIATION_INTERVAL_MS } from '@/lib/rider-status-reconciliation';
+import { rideKeysMatch } from '@/lib/rider-ride-state';
 
 describe('Rider status reconciliation cadence', () => {
+  it('merges a server snapshot when an older session kept a separate local ride ID', () => {
+    expect(rideKeysMatch(
+      { id: 'local-session-id', firestoreId: 'ride-firestore-1' },
+      { id: 'ride-firestore-1', firestoreId: 'ride-firestore-1' },
+    )).toBe(true);
+    expect(rideKeysMatch(
+      { id: 'ride-a', firestoreId: 'ride-a' },
+      { id: 'ride-b', firestoreId: 'ride-b' },
+    )).toBe(false);
+  });
+
   it('keeps the server fallback bounded instead of polling continuously', () => {
     expect(RIDER_STATUS_RECONCILIATION_INTERVAL_MS).toBe(4_000);
   });
