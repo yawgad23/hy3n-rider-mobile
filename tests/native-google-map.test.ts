@@ -19,6 +19,15 @@ describe('Rider native Google Maps migration', () => {
     expect(component).not.toContain('react-native-webview');
   });
 
+  it('keeps live route matching from snapping backward at crossings or parallel roads', () => {
+    expect(component).toContain('routeProgressRef');
+    expect(component).toContain('routeProgressRef.current.segmentIndex - 2');
+    expect(component).toContain('routeProgressKey');
+    expect(component).toContain('riderRemainingLiveRoute(driverLocation, trustedDriverRoute, routeOverview, Math.max(0, routeProgressRef.current.segmentIndex - 2))');
+    expect(component).toContain('routeProgressRef.current.segmentIndex = Math.max(routeProgressRef.current.segmentIndex, displayDriverMatch.segmentIndex)');
+    expect(component).toContain('Math.floor(minimumSegmentIndex)');
+  });
+
   it('moves the active vehicle through fresh server road turns and cancels stale native queues', () => {
     expect(component).toContain('planRiderRouteAnimation');
     expect(component).toContain('driverRouteUpdatedAt');
