@@ -159,6 +159,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const userMovedMapRef = useRef(false);
   const previousDriverPointRef = useRef<NativeMapPoint | null>(null);
   const previousDriverUpdatedAtRef = useRef<number | null>(null);
+  const routeProgressRef = useRef<{ key: string; segmentIndex: number }>({ key: '', segmentIndex: 0 });
   const animationGenerationRef = useRef(0);
   const lastAnimatedDriverKeyRef = useRef<string | null>(null);
   const routeOverviewFitRef = useRef(false);
@@ -169,10 +170,17 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       ? [] : (driverRoutePoints || []).filter(isNativeMapPoint),
     [driverRoutePoints, driverRouteUpdatedAt, driverTracking, driverLocationUpdatedAt],
   );
+  const routeProgressKey = String(tripStatus || '') + ':' + String(driverRouteUpdatedAt || '') + ':' + (trustedDriverRoute.length ? trustedDriverRoute[trustedDriverRoute.length - 1][0].toFixed(5) + ',' + trustedDriverRoute[trustedDriverRoute.length - 1][1].toFixed(5) : 'empty');
+  if (routeProgressRef.current.key !== routeProgressKey) {
+    routeProgressRef.current = { key: routeProgressKey, segmentIndex: 0 };
+  }
   const displayDriverMatch = useMemo(
-    () => matchPointToServerRoute(driverLocation, trustedDriverRoute),
-    [driverLocation, trustedDriverRoute],
+    () => matchPointToServerRoute(driverLocation, trustedDriverRoute, undefined, Math.max(0, routeProgressRef.current.segmentIndex - 2)),
+    [driverLocation, trustedDriverRoute, routeProgressKey],
   );
+  if (displayDriverMatch) {
+    routeProgressRef.current.segmentIndex = Math.max(routeProgressRef.current.segmentIndex, displayDriverMatch.segmentIndex);
+  }
   const displayDriverPoint = useMemo(() => {
     return displayDriverMatch?.point
       ?? (isNativeMapPoint(driverLocation) ? driverLocation : null);
@@ -187,7 +195,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const trackedTarget = driverTracking && isNativeMapPoint(driverTrackingTarget) ? driverTrackingTarget : null;
   const routeCoordinates = useMemo(() => {
     const serverRoute = driverTracking
-      ? riderRemainingLiveRoute(driverLocation, trustedDriverRoute, routeOverview)
+      ? riderRemainingLiveRoute(driverLocation, trustedDriverRoute, routeOverview, Math.max(0, routeProgressRef.current.segmentIndex - 2))
       : trustedDriverRoute;
     if (serverRoute.length > 1) return serverRoute.map(coordinate);
     // A direct line is not a road route. The booking API and active-trip route
