@@ -39,8 +39,13 @@ export function riderLiveRouteIsCurrent(live: Record<string, any>, status: strin
 }
 
 /** Preserve full route geometry only in the explicitly requested overview. */
-export function riderRemainingLiveRoute(driverPoint: RoutePoint | null | undefined, serverRoute: RoutePoint[], overview = false): RoutePoint[] {
-  const match = matchPointToServerRoute(driverPoint, serverRoute);
+export function riderRemainingLiveRoute(
+  driverPoint: RoutePoint | null | undefined,
+  serverRoute: RoutePoint[],
+  overview = false,
+  minimumSegmentIndex = 0,
+): RoutePoint[] {
+  const match = matchPointToServerRoute(driverPoint, serverRoute, undefined, minimumSegmentIndex);
   if (!match) return EMPTY_POINTS;
   if (overview) return serverRoute;
   const points = [match.point, ...serverRoute.slice(match.segmentIndex + 1)];
