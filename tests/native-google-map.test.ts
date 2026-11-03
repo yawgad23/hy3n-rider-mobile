@@ -18,8 +18,8 @@ describe('Rider native Google Maps migration', () => {
       [5.0, 0.001],
       [5.0, 0.00002],
     ];
-    const unconstrained = matchPointToServerRoute([5.0, 0.00002], loopRoute);
-    const forwardOnly = matchPointToServerRoute([5.0, 0.00002], loopRoute, undefined, 3);
+    const unconstrained = matchPointToServerRoute([5.0, 0.0], loopRoute);
+    const forwardOnly = matchPointToServerRoute([5.0, 0.0], loopRoute, undefined, 3);
     expect(unconstrained?.segmentIndex).toBe(0);
     expect(forwardOnly?.segmentIndex).toBe(3);
   });
