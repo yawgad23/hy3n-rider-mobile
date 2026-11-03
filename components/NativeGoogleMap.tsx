@@ -350,7 +350,13 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     // The Rider explicitly requested the full server route. Do not overwrite
     // that overview with the normal close-range live camera.
     if (routeOverview) return;
-    if (userMovedMapRef.current) return;
+    if (userMovedMapRef.current) {
+      // Manual panning suspends auto-follow. Start with a short camera settle
+      // when follow resumes instead of comparing against an old GPS timestamp.
+      previousCameraUpdatedAtRef.current = null;
+      return;
+    }
+    if (!driverTracking) previousCameraUpdatedAtRef.current = null;
     if (bookingPreview) {
       const region = bookingPreviewRegion(
         userLocation,
