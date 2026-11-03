@@ -454,10 +454,11 @@ export default function RiderHomeScreen() {
     .sort((a, b) => (a.etaMinutes || 99) - (b.etaMinutes || 99));
   const closestVehicleEta = nearbyVehiclesForSelectedCategory[0]?.etaMinutes ?? null;
 
-  // Keep all fresh, approved online vehicles on the map. A Standard Driver
-  // must remain visible when a Rider is comparing Comfort or Kantanka, while
-  // the category-specific list still controls who can receive the request.
+  // Only show vehicles eligible for the Rider's selected category. A map
+  // marker is a promise of category availability, so unrelated vehicle types
+  // (for example, bikes while Cars are selected) must never appear.
   const nearbyVehiclesForMap = nearbyDrivers
+    .filter((vehicle) => vehicleServesRideCategory(vehicle, selectedCategory.id))
     .map((vehicle) => ({
       ...vehicle,
       etaMinutes: calculateETA({ lat: vehicle.lat, lng: vehicle.lng }, { lat: userLocation[0], lng: userLocation[1] }),
