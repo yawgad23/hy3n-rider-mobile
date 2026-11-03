@@ -55,7 +55,7 @@ const FALLBACK_CENTER: NativeMapPoint = [5.6037, -0.187];
 const ACTIVE_DRIVER_MARKER_SIZE = 38;
 // Nearby cars can sit close to the pickup pin; keep the vehicle icon above
 // the pickup endpoint and use a smaller endpoint dot so neither hides the car.
-const NEARBY_DRIVER_MARKER_SIZE = 32;
+const NEARBY_DRIVER_MARKER_SIZE = 22;
 // On iOS Google Maps, the native bridge creates an initial style span before
 // the JavaScript `strokeColor` arrives. That span otherwise retains the SDK's
 // default blue. Supplying an explicit span for every route point makes the
@@ -506,7 +506,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           anchor={{ x: 0.5, y: 0.5 }}
           flat
           rotation={Number(driver.heading) || 0}
-          opacity={0.82}
+          opacity={1}
           tracksViewChanges={false}
           zIndex={9}
         >
