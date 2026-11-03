@@ -66,6 +66,7 @@ export function matchPointToServerRoute(
   gpsPoint: RoutePoint | null | undefined,
   routePoints: RoutePoint[] | null | undefined,
   maxDistanceMeters = MAX_ROAD_MATCH_DISTANCE_METERS,
+  minimumSegmentIndex = 0,
 ): RouteMatch | null {
   if (!isPoint(gpsPoint) || !Array.isArray(routePoints)) return null;
   const route = routePoints.filter(isPoint);
@@ -74,7 +75,11 @@ export function matchPointToServerRoute(
   const [gpsX, gpsY] = localMeters(gpsPoint, gpsPoint);
   let best: RouteMatch | null = null;
 
-  for (let index = 0; index < route.length - 1; index += 1) {
+  // Once tracking has progressed along a route, ignore segments substantially
+  // behind the last accepted segment. This prevents GPS noise at crossings and
+  // parallel roads from snapping the displayed car back to an earlier segment.
+  const firstSegment = Math.max(0, Math.min(route.length - 2, Math.floor(minimumSegmentIndex)));
+  for (let index = firstSegment; index < route.length - 1; index += 1) {
     const start = route[index];
     const end = route[index + 1];
     const [startX, startY] = localMeters(start, gpsPoint);

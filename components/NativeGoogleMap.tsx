@@ -52,8 +52,8 @@ export type NativeGoogleMapRef = {
 const FALLBACK_CENTER: NativeMapPoint = [5.6037, -0.187];
 // The supplied 256px artwork is intentionally high-resolution. Render it at
 // map-appropriate point sizes so a nearby vehicle does not cover roads or pins.
-const ACTIVE_DRIVER_MARKER_SIZE = 38;
-const NEARBY_DRIVER_MARKER_SIZE = 32;
+const ACTIVE_DRIVER_MARKER_SIZE = 28;
+const NEARBY_DRIVER_MARKER_SIZE = 22;
 // On iOS Google Maps, the native bridge creates an initial style span before
 // the JavaScript `strokeColor` arrives. That span otherwise retains the SDK's
 // default blue. Supplying an explicit span for every route point makes the
@@ -79,11 +79,16 @@ function safeColour(value: string | null | undefined, fallback: string) {
 }
 
 function markerAsset(serviceType?: string | null) {
-  const type = String(serviceType || '').toLowerCase();
+  const type = String(serviceType || '').toLowerCase().replace(/[_-]+/g, ' ').trim();
+  // Car Delivery is a distinct HY3N service: it uses the car marker, not the
+  // motorcycle/delivery-bike marker. Check it before the generic Delivery rule.
+  if (type.includes('car delivery') || type.includes('car_delivery')) {
+    return require('../assets/images/map-car-marker.png');
+  }
   if (type.includes('okada') || type.includes('motor') || type.includes('bike')) {
     return require('../assets/images/map-okada-marker.png');
   }
-  if (type.includes('delivery') || type.includes('parcel') || type.includes('express')) {
+  if (type === 'delivery' || type.includes('parcel') || type.includes('express') || type.includes('delivery bike')) {
     return require('../assets/images/map-delivery-marker.png');
   }
   return require('../assets/images/map-car-marker.png');
@@ -154,6 +159,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const userMovedMapRef = useRef(false);
   const previousDriverPointRef = useRef<NativeMapPoint | null>(null);
   const previousDriverUpdatedAtRef = useRef<number | null>(null);
+  const routeProgressRef = useRef<{ key: string; segmentIndex: number }>({ key: '', segmentIndex: 0 });
   const animationGenerationRef = useRef(0);
   const lastAnimatedDriverKeyRef = useRef<string | null>(null);
   const routeOverviewFitRef = useRef(false);
@@ -164,10 +170,17 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       ? [] : (driverRoutePoints || []).filter(isNativeMapPoint),
     [driverRoutePoints, driverRouteUpdatedAt, driverTracking, driverLocationUpdatedAt],
   );
+  const routeProgressKey = String(tripStatus || '') + ':' + String(driverRouteUpdatedAt || '') + ':' + (trustedDriverRoute.length ? trustedDriverRoute[trustedDriverRoute.length - 1][0].toFixed(5) + ',' + trustedDriverRoute[trustedDriverRoute.length - 1][1].toFixed(5) : 'empty');
+  if (routeProgressRef.current.key !== routeProgressKey) {
+    routeProgressRef.current = { key: routeProgressKey, segmentIndex: 0 };
+  }
   const displayDriverMatch = useMemo(
-    () => matchPointToServerRoute(driverLocation, trustedDriverRoute),
-    [driverLocation, trustedDriverRoute],
+    () => matchPointToServerRoute(driverLocation, trustedDriverRoute, undefined, Math.max(0, routeProgressRef.current.segmentIndex - 2)),
+    [driverLocation, trustedDriverRoute, routeProgressKey],
   );
+  if (displayDriverMatch) {
+    routeProgressRef.current.segmentIndex = Math.max(routeProgressRef.current.segmentIndex, displayDriverMatch.segmentIndex);
+  }
   const displayDriverPoint = useMemo(() => {
     return displayDriverMatch?.point
       ?? (isNativeMapPoint(driverLocation) ? driverLocation : null);
@@ -182,7 +195,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const trackedTarget = driverTracking && isNativeMapPoint(driverTrackingTarget) ? driverTrackingTarget : null;
   const routeCoordinates = useMemo(() => {
     const serverRoute = driverTracking
-      ? riderRemainingLiveRoute(driverLocation, trustedDriverRoute, routeOverview)
+      ? riderRemainingLiveRoute(driverLocation, trustedDriverRoute, routeOverview, Math.max(0, routeProgressRef.current.segmentIndex - 2))
       : trustedDriverRoute;
     if (serverRoute.length > 1) return serverRoute.map(coordinate);
     // A direct line is not a road route. The booking API and active-trip route

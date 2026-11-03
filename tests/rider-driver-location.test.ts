@@ -16,6 +16,28 @@ describe('Rider Driver presence ordering', () => {
     });
   });
 
+  it('normalizes Firestore Timestamp JSON and preserves ordering across updates', () => {
+    const previous = '2026-10-02T16:00:03.000Z';
+    expect(nextRiderDriverLocation({
+      latitude: 5.604,
+      longitude: -0.186,
+      recorded_at: { seconds: 1790956804, nanoseconds: 250000000 },
+    }, previous)).toMatchObject({
+      lat: 5.604,
+      lng: -0.186,
+      updatedAt: new Date(1790956804250).toISOString(),
+    });
+  });
+
+  it('normalizes Firestore Timestamp instances that expose toDate()', () => {
+    const date = new Date('2026-10-02T16:00:04.000Z');
+    expect(nextRiderDriverLocation({
+      latitude: 5.604,
+      longitude: -0.186,
+      updated_at: { toDate: () => date },
+    }, '2026-10-02T16:00:03.000Z')?.updatedAt).toBe(date.toISOString());
+  });
+
   it('rejects an older or undated presence replay after a timestamped update', () => {
     expect(nextRiderDriverLocation({ latitude: 5.6, longitude: -0.18, recorded_at: '2026-10-02T16:00:00.000Z' }, '2026-10-02T16:00:03.000Z')).toBeNull();
     expect(nextRiderDriverLocation({ latitude: 5.6, longitude: -0.18 }, '2026-10-02T16:00:03.000Z')).toBeNull();
@@ -46,5 +68,10 @@ describe('Rider Driver presence ordering', () => {
       longitude: -0.187,
       recorded_at: '2026-10-02T16:00:03.000Z',
     }, '2026-10-02T16:00:03.000Z', previous)).toBeNull();
+  });
+
+  it('rejects coordinates outside valid latitude and longitude bounds', () => {
+    expect(nextRiderDriverLocation({ latitude: 91, longitude: -0.18, recorded_at: '2026-10-02T16:00:03.000Z' })).toBeNull();
+    expect(nextRiderDriverLocation({ latitude: 5.6, longitude: 181, recorded_at: '2026-10-02T16:00:03.000Z' })).toBeNull();
   });
 });

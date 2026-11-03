@@ -1,22 +1,47 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { matchPointToServerRoute } from '../lib/rider-route-matching';
 
 const component = readFileSync(path.join(process.cwd(), 'components/NativeGoogleMap.tsx'), 'utf8');
+const routeMatching = readFileSync(path.join(process.cwd(), 'lib/rider-route-matching.ts'), 'utf8');
 const screen = readFileSync(path.join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
 const metroConfig = readFileSync(path.join(process.cwd(), 'metro.config.js'), 'utf8');
 const appConfig = readFileSync(path.join(process.cwd(), 'app.config.ts'), 'utf8');
 
 describe('Rider native Google Maps migration', () => {
+  it('can constrain GPS matching to the forward portion of a route near a crossing', () => {
+    const loopRoute: [number, number][] = [
+      [5.0, 0.0],
+      [5.001, 0.0],
+      [5.001, 0.001],
+      [5.0, 0.001],
+      [5.0, 0.00002],
+    ];
+    const unconstrained = matchPointToServerRoute([5.0, 0.0], loopRoute);
+    const forwardOnly = matchPointToServerRoute([5.0, 0.0], loopRoute, undefined, 3);
+    expect(unconstrained?.segmentIndex).toBe(0);
+    expect(forwardOnly?.segmentIndex).toBe(3);
+  });
   it('uses Google Maps with an animated branded driver marker, not a WebView', () => {
     expect(component).toContain('provider={PROVIDER_GOOGLE}');
     expect(component).toContain('googleRenderer="LEGACY"');
     expect(component).toContain('Marker.Animated');
     expect(component).toContain('animatedDriverCoordinate.timing');
-    expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 38');
-    expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 32');
+    expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 28');
+    expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 22');
     expect(component).toContain('CompactVehicleMarker');
     expect(component).not.toContain('react-native-webview');
+  });
+
+  it('keeps live route matching from snapping backward at crossings or parallel roads', () => {
+    expect(component).toContain('routeProgressRef');
+    expect(component).toContain('routeProgressRef.current.segmentIndex - 2');
+    expect(component).toContain('routeProgressKey');
+    expect(component).toContain('riderRemainingLiveRoute(driverLocation, trustedDriverRoute, routeOverview, Math.max(0, routeProgressRef.current.segmentIndex - 2))');
+    expect(component).toContain('routeProgressRef.current.segmentIndex = Math.max(routeProgressRef.current.segmentIndex, displayDriverMatch.segmentIndex)');
+    expect(routeMatching).toContain('Math.floor(minimumSegmentIndex)');
+    expect(routeMatching).toContain('ignore segments substantially');
   });
 
   it('moves the active vehicle through fresh server road turns and cancels stale native queues', () => {
@@ -84,6 +109,12 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain("require('../assets/images/map-delivery-marker.png')");
     expect(component).not.toContain("require('../assets/images/hy3n-car-delivery-open-trunk-card.png')");
     expect(screen).toContain('isDeliveryCategory(activeRide?.categoryId) ? activeRide?.categoryId');
+  });
+
+  it('maps Car Delivery to a car marker instead of the delivery-bike marker', () => {
+    expect(component).toContain("type.includes('car delivery') || type.includes('car_delivery')");
+    expect(component).toContain("if (type === 'delivery' || type.includes('parcel') || type.includes('express') || type.includes('delivery bike'))");
+    expect(component.indexOf("type.includes('car delivery')")).toBeLessThan(component.indexOf("type === 'delivery'"));
   });
 
   it('keeps a fresh online Driver visible on the map while the Rider compares another category', () => {
