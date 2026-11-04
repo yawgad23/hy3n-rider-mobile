@@ -29,8 +29,8 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('googleRenderer="LEGACY"');
     expect(component).toContain('Marker.Animated');
     expect(component).toContain('animatedDriverCoordinate.timing');
-    expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 38');
-    expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 22');
+    expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 42');
+    expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 26');
     expect(component).toContain('opacity={1}');
     expect(component).toContain('zIndex={9}');
     expect(component).toContain('width: 20, height: 20');
