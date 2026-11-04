@@ -383,6 +383,7 @@ export default function RiderHomeScreen() {
   }, [refreshCurrentPickupLocation]);
   // ─── Nearby Drivers ─────────────────────────────────────────────────────────
   const [nearbyDrivers, setNearbyDrivers] = useState<NearbyVehicle[]>([]);
+  const nearbyDriversRequestRef = useRef(false);
   const [selectedCategory, setSelectedCategory] = useState(RIDE_CATEGORIES[0]);
 
   // Driver presence is server-owned. The production Firestore rules correctly
@@ -398,6 +399,8 @@ export default function RiderHomeScreen() {
         if (!disposed) setNearbyDrivers([]);
         return;
       }
+      if (nearbyDriversRequestRef.current) return;
+      nearbyDriversRequestRef.current = true;
       try {
         const token = await firebaseUser.getIdToken();
         const params = new URLSearchParams({
@@ -424,10 +427,12 @@ export default function RiderHomeScreen() {
         // Keep the last successful marker set during a transient API failure;
         // do not turn a network blip into a false "no Drivers" state.
         if (!disposed) return;
+      } finally {
+        nearbyDriversRequestRef.current = false;
       }
     };
     void loadNearbyDrivers();
-    timer = setInterval(() => { void loadNearbyDrivers(); }, 15_000);
+    timer = setInterval(() => { void loadNearbyDrivers(); }, 5_000);
     return () => { disposed = true; if (timer) clearInterval(timer); };
   }, [selectedCategory.id, user?.uid, userLocation[0], userLocation[1]]);
 
