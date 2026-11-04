@@ -6,6 +6,7 @@ import {
 import { router } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { auth, app } from '@/lib/firebase';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
@@ -337,7 +338,7 @@ export default function LoginScreen() {
             }}
             activeOpacity={0.85}
           >
-            <MaterialIcons name="apple" size={22} color="#FFFFFF" />
+            <Ionicons name="logo-apple" size={22} color="#FFFFFF" />
             <Text style={styles.appleText}>Continue with Apple</Text>
           </TouchableOpacity>
         )}
