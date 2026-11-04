@@ -7,6 +7,8 @@ import { router } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { auth, app } from '@/lib/firebase';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import { PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
 import { FirebaseRecaptchaVerifierModal, type FirebaseRecaptchaVerifierHandle } from '@/components/firebase-recaptcha-verifier';
 
@@ -21,7 +23,7 @@ const MUTED = '#9CA3AF';
 type LoginTab = 'phone' | 'email';
 
 export default function LoginScreen() {
-  const { signIn, signInWithGoogle } = useAuth();
+  const { signIn, signInWithGoogle, signInWithApple } = useAuth();
   const [tab, setTab] = useState<LoginTab>('phone');
 
   // Recaptcha ref for phone auth (native only — see below)
@@ -305,6 +307,41 @@ export default function LoginScreen() {
           <View style={styles.dividerLine} />
         </View>
 
+        {Platform.OS === 'ios' && (
+          <TouchableOpacity
+            style={styles.appleBtn}
+            onPress={async () => {
+              try {
+                const rawNonce = Crypto.randomUUID();
+                const hashedNonce = await Crypto.digestStringAsync(
+                  Crypto.CryptoDigestAlgorithm.SHA256,
+                  rawNonce,
+                );
+                const result = await AppleAuthentication.signInAsync({
+                  requestedScopes: [
+                    AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+                    AppleAuthentication.AppleAuthenticationScope.EMAIL,
+                  ],
+                  nonce: hashedNonce,
+                });
+                if (!result.identityToken) {
+                  throw new Error('Apple Sign-In did not return an identity token. Please try again.');
+                }
+                await signInWithApple(result.identityToken, rawNonce, result.fullName);
+                router.replace('/(tabs)' as any);
+              } catch (err: any) {
+                if (err?.code !== 'ERR_REQUEST_CANCELED') {
+                  Alert.alert('Sign in with Apple', err?.message || 'Apple Sign-In failed. Please try again.');
+                }
+              }
+            }}
+            activeOpacity={0.85}
+          >
+            <MaterialIcons name="apple" size={22} color="#FFFFFF" />
+            <Text style={styles.appleText}>Continue with Apple</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Google Sign-In — proper multicolour G logo */}
         <TouchableOpacity
           style={styles.googleBtn}
@@ -390,6 +427,11 @@ const styles = StyleSheet.create({
   dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 20, gap: 12 },
   dividerLine: { flex: 1, height: 0.5, backgroundColor: BORDER },
   dividerText: { color: MUTED, fontSize: 14 },
+  appleBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    height: 52, borderRadius: 12, backgroundColor: '#000000', marginBottom: 12, gap: 10,
+  },
+  appleText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   googleBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     height: 52, borderRadius: 12, borderWidth: 1, borderColor: BORDER,
