@@ -152,6 +152,7 @@ const config: ExpoConfig = {
     "@react-native-google-signin/google-signin",
     "expo-video",
     "expo-web-browser",
+    "expo-apple-authentication",
     [
       "expo-splash-screen",
       {
