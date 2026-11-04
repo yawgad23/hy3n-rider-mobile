@@ -73,7 +73,7 @@ const config: ExpoConfig = {
     bundleIdentifier: env.iosBundleId,
     // Package 116 contains the verified live-map, driver-location,
     // Firestore-ID reconciliation, and category-filtering fixes.
-    buildNumber: "116",
+    buildNumber: "117",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
