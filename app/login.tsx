@@ -21,7 +21,7 @@ const MUTED = '#9CA3AF';
 type LoginTab = 'phone' | 'email';
 
 export default function LoginScreen() {
-  const { signIn, signInWithGoogle } = useAuth();
+  const { signIn, signInWithGoogle, signInWithApple } = useAuth();
   const [tab, setTab] = useState<LoginTab>('phone');
 
   // Recaptcha ref for phone auth (native only — see below)
@@ -41,6 +41,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState('');
+  const [appleLoading, setAppleLoading] = useState(false);
 
   // ── Phone OTP ──────────────────────────────────────────────────────────────
   const handleSendOTP = async () => {
@@ -336,6 +337,36 @@ export default function LoginScreen() {
           <Text style={styles.googleText}>Continue with Google</Text>
         </TouchableOpacity>
 
+        {Platform.OS === 'ios' && (
+          <TouchableOpacity
+            style={[styles.appleBtn, appleLoading && styles.btnDisabled]}
+            onPress={async () => {
+              setAppleLoading(true);
+              try {
+                await signInWithApple();
+                router.replace('/(tabs)' as any);
+              } catch (err: any) {
+                if (err?.code !== 'ERR_REQUEST_CANCELED' && err?.code !== 'auth/popup-closed-by-user') {
+                  Alert.alert('Apple Sign-In', err?.message || 'Apple Sign-In failed. Please try again.');
+                }
+              } finally {
+                setAppleLoading(false);
+              }
+            }}
+            disabled={appleLoading}
+            activeOpacity={0.85}
+          >
+            {appleLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Text style={styles.appleLogo}></Text>
+                <Text style={styles.appleText}>Continue with Apple</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
+
         {/* Register link */}
         <View style={styles.registerRow}>
           <Text style={styles.registerText}>Don&apos;t have an account? </Text>
@@ -414,6 +445,13 @@ const styles = StyleSheet.create({
   },
   googleIconText: { fontSize: 16, fontWeight: '900' },
   googleText: { color: TEXT, fontSize: 16, fontWeight: '600' },
+  appleBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    height: 52, borderRadius: 12, backgroundColor: '#000', marginBottom: 20, gap: 10,
+    borderWidth: 1, borderColor: '#444',
+  },
+  appleLogo: { color: '#fff', fontSize: 26, lineHeight: 28 },
+  appleText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   registerRow: { flexDirection: 'row', justifyContent: 'center', marginBottom: 16 },
   registerText: { color: MUTED, fontSize: 15 },
   registerLink: { color: GOLD, fontSize: 15, fontWeight: '700' },

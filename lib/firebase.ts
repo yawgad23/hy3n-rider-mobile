@@ -16,6 +16,7 @@ import {
   PhoneAuthProvider,
   signInWithCredential,
   GoogleAuthProvider,
+  OAuthProvider,
   signInWithPopup,
   updateProfile,
   type User,
@@ -147,6 +148,44 @@ export const firebaseAuth = {
     const provider = new GoogleAuthProvider();
     provider.addScope('email');
     provider.addScope('profile');
+    const cred = await signInWithPopup(auth, provider);
+    return cred.user;
+  },
+
+  async loginWithApple() {
+    if (Platform.OS !== 'web') {
+      const AppleAuthentication = require('expo-apple-authentication') as typeof import('expo-apple-authentication');
+      const Crypto = require('expo-crypto') as typeof import('expo-crypto');
+      const rawNonce = Crypto.randomUUID();
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        rawNonce,
+      );
+      const result = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        nonce: hashedNonce,
+      });
+      if (!result.identityToken) {
+        throw new Error('Apple Sign-In did not return an identity token. Please try again.');
+      }
+      const provider = new OAuthProvider('apple.com');
+      const credential = provider.credential({ idToken: result.identityToken, rawNonce });
+      const cred = await signInWithCredential(auth, credential);
+      if (result.fullName && !cred.user.displayName) {
+        const displayName = [result.fullName.givenName, result.fullName.familyName]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+        if (displayName) await updateProfile(cred.user, { displayName });
+      }
+      return cred.user;
+    }
+    const provider = new OAuthProvider('apple.com');
+    provider.addScope('email');
+    provider.addScope('name');
     const cred = await signInWithPopup(auth, provider);
     return cred.user;
   },
