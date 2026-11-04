@@ -32,6 +32,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string, phone: string, inviteCode?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  signInWithApple: (identityToken: string, rawNonce: string, fullName?: { givenName?: string | null; familyName?: string | null } | null) => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -237,6 +238,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setRiderProfile((previous) => previous ? { ...previous, ...updated } : previous);
   };
 
+  const signInWithApple = async (identityToken: string, rawNonce: string, fullName?: { givenName: string | null; familyName: string | null } | null) => {
+    await firebaseAuth.loginWithApple(identityToken, rawNonce);
+    // Apple only supplies the user's name on the first authorization. Save it
+    // to the Firebase profile when provided; the existing profile-completion
+    // flow handles riders whose account still needs contact details.
+    const name = [fullName?.givenName, fullName?.familyName].filter(Boolean).join(' ').trim();
+    if (name && firebaseAuth.getCurrentUser()) {
+      await firebaseAuth.updateDisplayName(name).catch(() => {});
+    }
+    setGuestMode(false);
+  };
+
   const signInWithGoogle = async () => {
     console.log("Inside signInWithGoogle helper in AuthProvider");
     try {
@@ -260,6 +273,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signIn,
       signUp,
       signInWithGoogle,
+      signInWithApple,
       signOut: signOutUser,
       deleteAccount,
       refreshProfile,

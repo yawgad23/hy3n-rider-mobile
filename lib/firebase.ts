@@ -16,6 +16,7 @@ import {
   PhoneAuthProvider,
   signInWithCredential,
   GoogleAuthProvider,
+  OAuthProvider,
   signInWithPopup,
   updateProfile,
   type User,
@@ -149,6 +150,20 @@ export const firebaseAuth = {
     provider.addScope('profile');
     const cred = await signInWithPopup(auth, provider);
     return cred.user;
+  },
+
+  async loginWithApple(identityToken: string, rawNonce: string) {
+    if (Platform.OS !== 'ios') throw new Error('Sign in with Apple is available in the iOS app.');
+    const provider = new OAuthProvider('apple.com');
+    const credential = provider.credential({ idToken: identityToken, rawNonce });
+    const result = await signInWithCredential(auth, credential);
+    return result.user;
+  },
+
+  async updateDisplayName(fullName: string) {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error('Please sign in again.');
+    await updateProfile(currentUser, { displayName: fullName });
   },
 
   async register(email: string, password: string, fullName: string) {
