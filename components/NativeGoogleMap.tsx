@@ -52,10 +52,10 @@ export type NativeGoogleMapRef = {
 const FALLBACK_CENTER: NativeMapPoint = [5.6037, -0.187];
 // The supplied 256px artwork is intentionally high-resolution. Render it at
 // map-appropriate point sizes so a nearby vehicle does not cover roads or pins.
-const ACTIVE_DRIVER_MARKER_SIZE = 38;
+const ACTIVE_DRIVER_MARKER_SIZE = 42;
 // Nearby cars can sit close to the pickup pin; keep the vehicle icon above
 // the pickup endpoint and use a smaller endpoint dot so neither hides the car.
-const NEARBY_DRIVER_MARKER_SIZE = 22;
+const NEARBY_DRIVER_MARKER_SIZE = 26;
 // On iOS Google Maps, the native bridge creates an initial style span before
 // the JavaScript `strokeColor` arrives. That span otherwise retains the SDK's
 // default blue. Supplying an explicit span for every route point makes the
