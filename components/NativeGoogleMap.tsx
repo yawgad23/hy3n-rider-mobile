@@ -1,6 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
+import AnimatedNearbyMarker from '@/components/AnimatedNearbyMarker';
 import { matchPointToServerRoute } from '@/lib/rider-route-matching';
 import { planRiderRouteAnimation } from '@/lib/rider-route-animation';
 import { riderDriverMarkerMotionDuration } from '@/lib/rider-driver-marker-motion';
@@ -524,18 +525,15 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         >
           <CompactVehicleMarker serviceType={driverServiceType} size={ACTIVE_DRIVER_MARKER_SIZE} />
         </Marker.Animated>}
-        {!driverTracking && nearby.map((driver) => <Marker
+        {!driverTracking && nearby.map((driver) => <AnimatedNearbyMarker
           key={`nearby-${driver.id}`}
-          coordinate={{ latitude: driver.lat, longitude: driver.lng }}
-          anchor={{ x: 0.5, y: 0.5 }}
-          flat
-          rotation={Number(driver.heading) || 0}
-          opacity={1}
-          tracksViewChanges={false}
+          latitude={driver.lat}
+          longitude={driver.lng}
+          heading={driver.heading}
           zIndex={9}
         >
           <CompactVehicleMarker serviceType={driver.serviceType} size={NEARBY_DRIVER_MARKER_SIZE} />
-        </Marker>)}
+        </AnimatedNearbyMarker>)}
       </MapView>
     </View>
   );
