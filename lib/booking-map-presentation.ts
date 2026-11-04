@@ -1,4 +1,7 @@
 function finiteWholeMinutes(value: unknown): number | null {
+  // Number(null) and Number('') both become zero. Treat absent ETA data as
+  // unknown so the map never invents a 1-minute pickup when no Driver exists.
+  if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.max(0, Math.ceil(parsed)) : null;
 }
