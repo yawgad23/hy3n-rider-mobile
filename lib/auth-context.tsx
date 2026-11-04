@@ -32,7 +32,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string, phone: string, inviteCode?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
-  signInWithApple: (identityToken: string, rawNonce: string, fullName?: { givenName: string | null; familyName: string | null } | null) => Promise<void>;
+  signInWithApple: (identityToken: string, rawNonce: string, fullName?: { givenName?: string | null; familyName?: string | null } | null) => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   refreshProfile: () => Promise<void>;
