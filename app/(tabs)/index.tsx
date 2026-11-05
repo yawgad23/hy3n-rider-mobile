@@ -8,7 +8,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
   Platform,
   FlatList,
   Share,
@@ -105,8 +105,6 @@ import {
   riderLiveActivityEligible,
   type RiderLiveActivityRide,
 } from "@/lib/rider-live-activity-presentation";
-
-const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // Brand colors
 const GOLD = "#D4AF37";
@@ -264,6 +262,7 @@ function driverPhotoUri(value: unknown): string | undefined {
 }
 
 export default function RiderHomeScreen() {
+  const { height: SCREEN_HEIGHT } = useWindowDimensions();
   const { colorScheme } = useThemeContext();
   const colors = useColors();
   const BG = colors.background;
