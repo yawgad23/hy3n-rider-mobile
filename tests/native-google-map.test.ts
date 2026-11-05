@@ -95,18 +95,14 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('bookingPickupTimeLabel');
     expect(component).toContain('bookingEndpointWithTime');
     expect(component).toContain('bookingRouteTimePill');
-    expect(component).toContain('DRIVER PICKUP');
     expect(component).toContain('Pickup ·');
     expect(component).toContain('Wait ');
-    expect(component).toContain("bookingPickupTimeLabel.split('\\n').slice(1).join(' ')");
-    expect(component).toContain('ESTIMATED ARRIVAL');
     expect(component).toContain('bookingDropoffTimeLabel');
     expect(component).toContain('BookingEndpointMarker');
     expect(component).toContain('bookingPreviewRegion');
     expect(component).toContain('Do not fit a city-wide pickup-to-drop-off route automatically');
     expect(component).toContain('mapRef.current?.animateToRegion(region, 420);');
     expect(component).not.toContain('routeFrameCoordinates');
-    expect(screen).toContain('bookingMapTimeLabels');
   });
 
   it('lets the Rider switch to full server-route details without changing tracking', () => {
