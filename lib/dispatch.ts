@@ -129,107 +129,8 @@ export const VEHICLE_COLOURS: Record<string, { name: string; hex: string }> = {
   yellow:  { name: 'Yellow',  hex: '#FBBF24' },
 };
 
-// ─── Mock Driver Pool (used when no real drivers in Firestore) ────────────────
-// In production, drivers register via the Driver App and appear in Firestore.
-
-const MOCK_DRIVERS: DriverProfile[] = [
-  {
-    id: 'driver_001',
-    name: 'Kwame Asante',
-    phone: '+233244000001',
-    rating: 4.9,
-    total_trips: 1243,
-    vehicle_make: 'Toyota',
-    vehicle_model: 'Camry',
-    vehicle_colour: 'Black',
-    vehicle_colour_hex: '#1A1A1A',
-    plate: 'GR 1234-24',
-    category: 'Standard',
-    is_available: true,
-    location: { lat: 5.6037, lng: -0.187 },
-    last_seen: new Date().toISOString(),
-  },
-  {
-    id: 'driver_002',
-    name: 'Ama Owusu',
-    phone: '+233244000002',
-    rating: 4.8,
-    total_trips: 876,
-    vehicle_make: 'Hyundai',
-    vehicle_model: 'Sonata',
-    vehicle_colour: 'Silver',
-    vehicle_colour_hex: '#C0C0C0',
-    plate: 'GR 5678-23',
-    category: 'Comfort',
-    is_available: true,
-    location: { lat: 5.6045, lng: -0.188 },
-    last_seen: new Date().toISOString(),
-  },
-  {
-    id: 'driver_003',
-    name: 'Kofi Mensah',
-    phone: '+233244000003',
-    rating: 4.7,
-    total_trips: 2104,
-    vehicle_make: 'Mercedes',
-    vehicle_model: 'C-Class',
-    vehicle_colour: 'Black',
-    vehicle_colour_hex: '#1A1A1A',
-    plate: 'GR 9012-24',
-    category: 'Executive',
-    is_available: true,
-    location: { lat: 5.6020, lng: -0.185 },
-    last_seen: new Date().toISOString(),
-  },
-  {
-    id: 'driver_004',
-    name: 'Yaa Mensah',
-    phone: '+233244000004',
-    rating: 4.6,
-    total_trips: 654,
-    vehicle_make: 'Kantanka',
-    vehicle_model: 'Onantefo',
-    vehicle_colour: 'White',
-    vehicle_colour_hex: '#F5F5F5',
-    plate: 'GR 3456-24',
-    category: 'Kantanka',
-    is_available: true,
-    location: { lat: 5.6055, lng: -0.190 },
-    last_seen: new Date().toISOString(),
-  },
-  {
-    id: 'driver_005',
-    name: 'Abena Boateng',
-    phone: '+233244000005',
-    rating: 4.5,
-    total_trips: 432,
-    vehicle_make: 'Honda',
-    vehicle_model: 'Accord',
-    vehicle_colour: 'Red',
-    vehicle_colour_hex: '#CE1126',
-    plate: 'GR 7890-23',
-    category: 'Standard',
-    is_available: true,
-    location: { lat: 5.6030, lng: -0.186 },
-    last_seen: new Date().toISOString(),
-  },
-  {
-    id: 'driver_006',
-    name: 'Kojo Asare',
-    phone: '+233244000006',
-    rating: 4.8,
-    total_trips: 1567,
-    vehicle_make: 'Toyota',
-    vehicle_model: 'Prado',
-    vehicle_colour: 'Gold',
-    vehicle_colour_hex: '#D4AF37',
-    plate: 'GR 2345-24',
-    category: 'Executive',
-    is_available: true,
-    location: { lat: 5.6010, lng: -0.184 },
-    last_seen: new Date().toISOString(),
-  },
-];
+// Driver assignment and trip progression must come from approved live Driver records
+// and Driver-side status updates. The Rider client never fabricates drivers or trips.
 
 // ─── Surge Pricing ────────────────────────────────────────────────────────────
 
@@ -367,9 +268,9 @@ export const dispatchService = {
         const d = snap.docs[0];
         driver = { id: d.id, ...d.data() } as DriverProfile;
       } else {
-        // Fallback to mock driver pool
-        const mockDrivers = MOCK_DRIVERS.filter(d => d.category === category || category === 'Standard');
-        driver = mockDrivers[Math.floor(Math.random() * mockDrivers.length)];
+        // No approved, available Driver matched this category. Leave the ride
+        // searching so the real dispatch service can continue matching it.
+        return;
       }
 
       // Update ride with matched driver
@@ -382,11 +283,7 @@ export const dispatchService = {
         updated_date: new Date().toISOString(),
       });
 
-      // Simulate driver progression: arriving → arrived → in_progress → completed
-      setTimeout(() => dispatchService.updateRideStatus(rideId, 'driver_arriving'), 8000);
-      setTimeout(() => dispatchService.updateRideStatus(rideId, 'driver_arrived'), 20000);
-      setTimeout(() => dispatchService.updateRideStatus(rideId, 'in_progress'), 30000);
-      setTimeout(() => dispatchService.updateRideStatus(rideId, 'completed'), 90000);
+      // Driver app / trusted dispatch backend owns every subsequent trip status.
 
     } catch (err) {
       console.warn('[Dispatch] matchDriver error:', err);
