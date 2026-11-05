@@ -7,6 +7,7 @@ import { planRiderRouteAnimation } from '@/lib/rider-route-animation';
 import { riderDriverMarkerMotionDuration } from '@/lib/rider-driver-marker-motion';
 import { riderRemainingLiveRoute, riderLiveRouteIsFresh } from '@/lib/rider-live-route-display';
 import { authoritativeRouteOverviewPoints, bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
+import { riderMapMarkerKind } from '@/lib/rider-map-marker-kind';
 
 export type NearbyDriver = {
   id: string;
@@ -82,11 +83,11 @@ function safeColour(value: string | null | undefined, fallback: string) {
 }
 
 function markerAsset(serviceType?: string | null) {
-  const type = String(serviceType || '').toLowerCase();
-  if (type.includes('okada') || type.includes('motor') || type.includes('bike')) {
+  const kind = riderMapMarkerKind(serviceType);
+  if (kind === 'okada') {
     return require('../assets/images/map-okada-marker.png');
   }
-  if (type.includes('delivery') || type.includes('parcel') || type.includes('express')) {
+  if (kind === 'delivery') {
     return require('../assets/images/map-delivery-marker.png');
   }
   return require('../assets/images/map-car-marker.png');
