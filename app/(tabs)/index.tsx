@@ -606,6 +606,8 @@ export default function RiderHomeScreen() {
     user,
     activeRide?.id,
     activeRide?.status,
+    activeRide?.category,
+    activeRide?.categoryId,
     activeRide?.driverName,
     activeRide?.eta,
     activeRide?.routeDurationMinutes,
