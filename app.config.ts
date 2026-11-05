@@ -101,8 +101,8 @@ const config: ExpoConfig = {
     package: env.androidPackage,
     // Play Console requires each uploaded Android App Bundle to have a higher
     // version code than every previous artifact for com.hy3n.rider.
-    // 58013 delivers the verified Rider source after the Android 16 target-SDK update.
-    versionCode: 58013,
+    // 58017 delivers the current Rider source after the Android 16 target-SDK update.
+    versionCode: 58017,
     googleServicesFile: "./firebase/google-services.json",
     ...(nativeGoogleMaps.androidApiKey
       ? { config: { googleMaps: { apiKey: nativeGoogleMaps.androidApiKey } } }
