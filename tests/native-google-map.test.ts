@@ -35,7 +35,9 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('googleRenderer="LEGACY"');
     expect(component).toContain('Marker.Animated');
     expect(component).toContain('animatedDriverCoordinate.timing');
-    expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 42');
+    expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 58');
+    expect(component).toContain('anchor={{ x: 0.5, y: 0.78 }}');
+    expect(component).toContain('Keep the last server-published road geometry visible');
     expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 40');
     expect(component).toContain('bookingMapPin: { width: 14, height: 14');
     expect(component).toContain('zIndex={9}');
