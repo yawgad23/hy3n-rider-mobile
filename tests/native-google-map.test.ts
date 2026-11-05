@@ -9,6 +9,12 @@ const metroConfig = readFileSync(path.join(process.cwd(), 'metro.config.js'), 'u
 const appConfig = readFileSync(path.join(process.cwd(), 'app.config.ts'), 'utf8');
 
 describe('Rider native Google Maps migration', () => {
+  it('uses live window dimensions so booking sheets adapt to orientation and device size', () => {
+    expect(screen).toContain('useWindowDimensions');
+    expect(screen).toContain('const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = useWindowDimensions();');
+    expect(screen).not.toContain('Dimensions.get(\"window\")');
+  });
+
   it('keeps route matching on the forward portion of a crossing or looping route', () => {
     const loopRoute: [number, number][] = [
       [5.0, 0.0],
