@@ -5,7 +5,7 @@ import AnimatedNearbyMarker from '@/components/AnimatedNearbyMarker';
 import { matchPointToServerRoute } from '@/lib/rider-route-matching';
 import { planRiderRouteAnimation } from '@/lib/rider-route-animation';
 import { riderDriverMarkerMotionDuration } from '@/lib/rider-driver-marker-motion';
-import { riderRemainingLiveRoute, riderLiveRouteIsFresh } from '@/lib/rider-live-route-display';
+import { riderRemainingLiveRoute } from '@/lib/rider-live-route-display';
 import { authoritativeRouteOverviewPoints, bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
 import { riderMapMarkerKind } from '@/lib/rider-map-marker-kind';
 
