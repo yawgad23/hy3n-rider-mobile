@@ -94,9 +94,10 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('strokeColors={routeCoordinates.map(() => HY3N_ROUTE_GREEN)}');
     expect(component).toContain('bookingPickupTimeLabel');
     expect(component).toContain('bookingEndpointWithTime');
-    expect(component).toContain('bookingRouteTimeCard');
+    expect(component).toContain('bookingRouteTimePill');
     expect(component).toContain('DRIVER PICKUP');
-    expect(component).toContain('Estimated wait ·');
+    expect(component).toContain('Pickup ·');
+    expect(component).toContain('Wait ');
     expect(component).toContain("bookingPickupTimeLabel.split('\\n').slice(1).join(' ')");
     expect(component).toContain('ESTIMATED ARRIVAL');
     expect(component).toContain('bookingDropoffTimeLabel');
