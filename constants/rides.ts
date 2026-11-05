@@ -87,7 +87,7 @@ export const RIDE_CATEGORIES: RideCategory[] = [
   },
   {
     id: "express_delivery",
-    name: "Express Delivery",
+    name: "Delivery",
     description: "Fast package delivery across the city",
     basePrice: 16.50,
     pricePerKm: 2.20,
