@@ -54,7 +54,7 @@ export type NativeGoogleMapRef = {
 const FALLBACK_CENTER: NativeMapPoint = [5.6037, -0.187];
 // The supplied 256px artwork is intentionally high-resolution. Render it at
 // map-appropriate point sizes so a nearby vehicle does not cover roads or pins.
-const ACTIVE_DRIVER_MARKER_SIZE = 42;
+const ACTIVE_DRIVER_MARKER_SIZE = 58;
 // Nearby cars can sit close to the pickup pin; keep the vehicle icon above
 // the pickup endpoint and use a smaller endpoint dot so neither hides the car.
 const NEARBY_DRIVER_MARKER_SIZE = 40;
@@ -159,10 +159,14 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const routeOverviewFitRef = useRef(false);
   const previousRouteOverviewRef = useRef(false);
   const previousFreshRouteRef = useRef<{ points: NativeMapPoint[]; updatedAt: string | null; tripStatus: string | null }>({ points: [], updatedAt: null, tripStatus: null });
+  // Keep the last server-published road geometry visible while a fresh route
+  // update is in flight. Expiring the line after 45 seconds made the Rider map
+  // go blank during ordinary GPS/network delays even though the trip was active.
+  // Route identity/phase is validated by the trip state before these points are
+  // passed into this map; freshness is used for animation planning, not visibility.
   const trustedDriverRoute = useMemo(
-    () => driverTracking && !riderLiveRouteIsFresh(driverRouteUpdatedAt)
-      ? [] : (driverRoutePoints || []).filter(isNativeMapPoint),
-    [driverRoutePoints, driverRouteUpdatedAt, driverTracking, driverLocationUpdatedAt],
+    () => (driverRoutePoints || []).filter(isNativeMapPoint),
+    [driverRoutePoints],
   );
   const routeProgressKey = String(tripStatus || '') + ':' + String(driverRouteUpdatedAt || '') + ':' + (trustedDriverRoute.length ? trustedDriverRoute[trustedDriverRoute.length - 1][0].toFixed(5) + ',' + trustedDriverRoute[trustedDriverRoute.length - 1][1].toFixed(5) : 'empty');
   if (routeProgressRef.current.key !== routeProgressKey) {
@@ -511,7 +515,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         />}
         {displayDriverPoint && <Marker.Animated
           coordinate={animatedDriverCoordinate as any}
-          anchor={{ x: 0.5, y: 0.5 }}
+          anchor={{ x: 0.5, y: 0.78 }}
           flat
           rotation={visualDriverBearing}
           tracksViewChanges={false}
