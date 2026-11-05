@@ -100,18 +100,12 @@ function CompactVehicleMarker({ serviceType, size }: { serviceType?: string | nu
   );
 }
 
-function BookingEndpointMarker({ label, tone }: { label: string; tone: 'pickup' | 'dropoff' }) {
-  const [title, detail] = label.split('\n');
-  const backgroundColor = tone === 'pickup' ? '#007E4F' : '#063D2B';
-  const accentColor = tone === 'pickup' ? '#8FF0BD' : '#D4AF37';
+function BookingEndpointMarker({ tone }: { tone: 'pickup' | 'dropoff' }) {
+  const backgroundColor = tone === 'pickup' ? '#007E4F' : '#D4AF37';
   return (
     <View pointerEvents="none" style={styles.bookingEndpoint}>
-      <View style={[styles.bookingCallout, { backgroundColor }]}>
-        <Text style={styles.bookingCalloutTitle}>{title}</Text>
-        <Text style={styles.bookingCalloutDetail}>{detail}</Text>
-      </View>
-      <View style={[styles.bookingMapPin, { borderColor: accentColor }]}>
-        <View style={[styles.bookingMapPinInner, { backgroundColor }]} />
+      <View style={[styles.bookingMapPin, { backgroundColor, borderColor: '#FFFFFF' }]}>
+        <View style={styles.bookingMapPinInner} />
       </View>
     </View>
   );
@@ -481,7 +475,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           tracksViewChanges
           zIndex={7}
         >
-          <BookingEndpointMarker label={bookingPickupTimeLabel || 'Pickup\nCurrent location'} tone="pickup" />
+          <BookingEndpointMarker tone="pickup" />
         </Marker>}
         {bookingPreview && isNativeMapPoint(destination) && <Marker
           coordinate={coordinate(destination)}
@@ -489,7 +483,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           tracksViewChanges
           zIndex={7}
         >
-          <BookingEndpointMarker label={bookingDropoffTimeLabel || 'Drop-off\nCalculating'} tone="dropoff" />
+          <BookingEndpointMarker tone="dropoff" />
         </Marker>}
         {/* Once a Driver is matched, `pickupPoint` below is the one server-owned
             pickup marker. Rendering the changing phone location too creates two
@@ -541,12 +535,9 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#e8edf2' },
-  bookingEndpoint: { alignItems: 'center', minWidth: 102 },
-  bookingCallout: { borderRadius: 12, paddingHorizontal: 11, paddingVertical: 8, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
-  bookingCalloutTitle: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
-  bookingCalloutDetail: { color: '#FFFFFF', fontSize: 21, lineHeight: 24, fontWeight: '900', marginTop: 1 },
-  bookingMapPin: { width: 14, height: 14, borderRadius: 7, borderWidth: 3, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginTop: -2 },
-  bookingMapPinInner: { width: 6, height: 6, borderRadius: 3 },
+  bookingEndpoint: { alignItems: 'center', justifyContent: 'center', width: 18, height: 18 },
+  bookingMapPin: { width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
+  bookingMapPinInner: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#FFFFFF' },
 });
 
 export default NativeGoogleMap;
