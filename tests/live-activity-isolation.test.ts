@@ -30,7 +30,7 @@ describe('Rider HY3N Dynamic Island integration', () => {
     expect(brandingPlugin).toContain('HY3N trip-progress presentation v3');
     expect(brandingPlugin).toContain('HY3N trip-progress Lock Screen presentation v3');
     expect(brandingPlugin).toContain('routePosition - carWidth / 2');
-    expect(brandingPlugin).toContain('line visibly running through the\n        // middle of the owned top-down HY3N car');
+    expect(brandingPlugin).toContain('hy3nVehicleIcon(imageName: contentState.imageName');
     expect(brandingPlugin).toContain('NSSupportsLiveActivitiesFrequentUpdates');
     expect(brandingPlugin).toContain('aps-environment');
     expect(brandingPlugin).toContain('no fare, wallet, or ride-state authority');
