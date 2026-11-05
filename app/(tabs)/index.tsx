@@ -262,7 +262,7 @@ function driverPhotoUri(value: unknown): string | undefined {
 }
 
 export default function RiderHomeScreen() {
-  const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = useWindowDimensions();
+  const { height: SCREEN_HEIGHT } = useWindowDimensions();
   const { colorScheme } = useThemeContext();
   const colors = useColors();
   const BG = colors.background;
