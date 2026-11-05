@@ -3,6 +3,9 @@ export type RiderLiveActivityStatus = 'matched' | 'driver_arriving' | 'driver_ar
 export type RiderLiveActivityRide = {
   id: string;
   status: RiderLiveActivityStatus;
+  /** Selected HY3N ride category from the booking record. */
+  category?: string;
+  categoryId?: string;
   driverName?: string;
   destination: { name?: string; address?: string };
   pickupLocation: { name?: string; address?: string };
@@ -15,12 +18,24 @@ export type RiderLiveActivityRide = {
   routePhase?: 'pickup' | 'destination';
 };
 
+export type RiderLiveActivityImageName = 'hy3n_trip_car' | 'hy3n_trip_okada' | 'hy3n_trip_delivery';
+
+/** Resolve the vehicle shown on the Lock Screen and Dynamic Island from the booked category. */
+export function riderLiveActivityImageName(ride: Pick<RiderLiveActivityRide, 'category' | 'categoryId'>): RiderLiveActivityImageName {
+  const category = `${ride.categoryId ?? ''} ${ride.category ?? ''}`.toLowerCase().replace(/[\\s-]+/g, '_');
+  if (/(^|_)(okada|motorcycle|motorbike|bike|two_wheeler)(_|$)/.test(category)) return 'hy3n_trip_okada';
+  if (/(^|_)(delivery|express_delivery|expressdelivery)(_|$)/.test(category)) return 'hy3n_trip_delivery';
+  return 'hy3n_trip_car';
+}
+
 export type RiderLiveActivityPresentation = {
   title: string;
   subtitle: string;
   etaMinutes: number;
   arrivalAt: number;
-  /** Numeric, display-only journey progress used by the native HY3N car line. */
+  /** Native vehicle artwork selected from the booked ride category. */
+  imageName: RiderLiveActivityImageName;
+  /** Numeric, display-only journey progress used by the native HY3N vehicle line. */
   progress: number;
 };
 
@@ -103,6 +118,7 @@ export function riderLiveActivityPresentation(
       arrivalAt: currentTime + 60_000,
       // The destination line must not appear complete while the vehicle is
       // still at pickup.
+      imageName: riderLiveActivityImageName(ride),
       progress: 0,
     };
   }
@@ -115,6 +131,7 @@ export function riderLiveActivityPresentation(
     subtitle: onTrip ? `Heading to ${destination}` : `${driver} is heading to your pickup`,
     etaMinutes,
     arrivalAt,
+    imageName: riderLiveActivityImageName(ride),
     progress: riderLiveTripProgress(ride, previousProgress),
   };
 }
