@@ -28,7 +28,7 @@ describe('Rider waiting time', () => {
     expect(calculateRiderWaitingTime({ arrivedAt: new Date(start + 60_000).toISOString(), now: start, ratePerMinute: 0.55 }).waitedSeconds).toBe(0);
   });
 
-  it('uses the ride rate snapshot supplied by the caller', () => {
-    expect(calculateRiderWaitingTime({ arrivedAt, now: start + 300_000, ratePerMinute: 0.88 }).waitingFee).toBe(2.64);
+  it('uses the ride rate snapshot supplied by the caller for two chargeable minutes', () => {
+    expect(calculateRiderWaitingTime({ arrivedAt, now: start + 300_000, ratePerMinute: 0.88 }).waitingFee).toBe(1.76);
   });
 });
