@@ -7,6 +7,7 @@ import { planRiderRouteAnimation } from '@/lib/rider-route-animation';
 import { riderDriverMarkerMotionDuration } from '@/lib/rider-driver-marker-motion';
 import { riderRemainingLiveRoute, riderLiveRouteIsFresh } from '@/lib/rider-live-route-display';
 import { authoritativeRouteOverviewPoints, bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
+import { riderMapMarkerKind } from '@/lib/rider-map-marker-kind';
 
 export type NearbyDriver = {
   id: string;
@@ -82,11 +83,11 @@ function safeColour(value: string | null | undefined, fallback: string) {
 }
 
 function markerAsset(serviceType?: string | null) {
-  const type = String(serviceType || '').toLowerCase();
-  if (type.includes('okada') || type.includes('motor') || type.includes('bike')) {
+  const kind = riderMapMarkerKind(serviceType);
+  if (kind === 'okada') {
     return require('../assets/images/map-okada-marker.png');
   }
-  if (type.includes('delivery') || type.includes('parcel') || type.includes('express')) {
+  if (kind === 'delivery') {
     return require('../assets/images/map-delivery-marker.png');
   }
   return require('../assets/images/map-car-marker.png');
@@ -529,12 +530,38 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           <CompactVehicleMarker serviceType={driver.serviceType} size={NEARBY_DRIVER_MARKER_SIZE} />
         </AnimatedNearbyMarker>)}
       </MapView>
+      {bookingPreview && (bookingPickupTimeLabel || bookingDropoffTimeLabel) && (
+        <View pointerEvents="none" accessibilityLabel="Journey time estimates" style={styles.bookingTimeCallouts}>
+          {bookingPickupTimeLabel ? <View style={[styles.bookingTimeCard, styles.bookingPickupTimeCard]}>
+            <View style={[styles.bookingTimeDot, { backgroundColor: '#007E4F' }]} />
+            <View style={styles.bookingTimeTextWrap}>
+              <Text style={styles.bookingTimeEyebrow}>DRIVER PICKUP</Text>
+              <Text style={styles.bookingTimeValue} numberOfLines={1}>{bookingPickupTimeLabel.replace(/^Pickup\\n/, '')}</Text>
+            </View>
+          </View> : null}
+          {bookingDropoffTimeLabel ? <View style={[styles.bookingTimeCard, styles.bookingDropoffTimeCard]}>
+            <View style={[styles.bookingTimeDot, { backgroundColor: '#D4AF37' }]} />
+            <View style={styles.bookingTimeTextWrap}>
+              <Text style={styles.bookingTimeEyebrow}>ESTIMATED ARRIVAL</Text>
+              <Text style={styles.bookingTimeValue} numberOfLines={1}>{bookingDropoffTimeLabel.replace(/^Drop-off\\n/, '')}</Text>
+            </View>
+          </View> : null}
+        </View>
+      )}
     </View>
   );
 });
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#e8edf2' },
+  bookingTimeCallouts: { position: 'absolute', top: 82, left: 14, right: 14, flexDirection: 'row', gap: 8, zIndex: 12 },
+  bookingTimeCard: { flex: 1, minWidth: 0, minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, paddingVertical: 9, borderRadius: 14, backgroundColor: 'rgba(12,16,20,0.94)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+  bookingPickupTimeCard: { borderColor: 'rgba(0,126,79,0.65)' },
+  bookingDropoffTimeCard: { borderColor: 'rgba(212,175,55,0.55)' },
+  bookingTimeDot: { width: 9, height: 9, borderRadius: 5 },
+  bookingTimeTextWrap: { flex: 1, minWidth: 0 },
+  bookingTimeEyebrow: { color: '#AEB8C2', fontSize: 9, fontWeight: '800', letterSpacing: 0.55 },
+  bookingTimeValue: { color: '#FFFFFF', fontSize: 15, fontWeight: '900', marginTop: 3 },
   bookingEndpoint: { alignItems: 'center', justifyContent: 'center', width: 18, height: 18 },
   bookingMapPin: { width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
   bookingMapPinInner: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#FFFFFF' },
