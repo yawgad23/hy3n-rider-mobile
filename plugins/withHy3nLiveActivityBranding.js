@@ -150,19 +150,6 @@ function brandedLockScreenSource(source) {
         } else if imageName == "hy3n_trip_delivery" {
           Text("🚚").font(.system(size: carHeight))
         } else {
-          hy3nVehicleIcon(imageName: contentState.imageName, carWidth: carWidth, carHeight: carHeight)
-        }
-      }
-      .frame(width: carWidth, height: carHeight)
-    }
-
-    private func hy3nVehicleIcon(imageName: String?, carWidth: CGFloat, carHeight: CGFloat) -> some View {
-      Group {
-        if imageName == "hy3n_trip_okada" {
-          Text("🏍️").font(.system(size: carHeight))
-        } else if imageName == "hy3n_trip_delivery" {
-          Text("🚚").font(.system(size: carHeight))
-        } else {
           resizableImage(imageName: "hy3n_trip_car")
             .frame(width: carWidth, height: carHeight)
         }
@@ -191,8 +178,7 @@ function brandedLockScreenSource(source) {
             .frame(width: max(0, min(proxy.size.width, routePosition)), height: 7)
           // This is an owned HY3N vehicle asset, not a third-party ride-hailing
           // mark. It advances only when the server sends lower remaining distance.
-          resizableImage(imageName: "hy3n_trip_car")
-            .frame(width: carWidth, height: carHeight)
+          hy3nVehicleIcon(imageName: contentState.imageName, carWidth: carWidth, carHeight: carHeight)
             .offset(x: carOffset)
             .animation(.easeInOut(duration: 0.65), value: progress)
         }
