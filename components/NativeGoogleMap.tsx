@@ -56,7 +56,7 @@ const FALLBACK_CENTER: NativeMapPoint = [5.6037, -0.187];
 const ACTIVE_DRIVER_MARKER_SIZE = 42;
 // Nearby cars can sit close to the pickup pin; keep the vehicle icon above
 // the pickup endpoint and use a smaller endpoint dot so neither hides the car.
-const NEARBY_DRIVER_MARKER_SIZE = 26;
+const NEARBY_DRIVER_MARKER_SIZE = 34;
 // On iOS Google Maps, the native bridge creates an initial style span before
 // the JavaScript `strokeColor` arrives. That span otherwise retains the SDK's
 // default blue. Supplying an explicit span for every route point makes the
@@ -545,8 +545,8 @@ const styles = StyleSheet.create({
   bookingCallout: { borderRadius: 12, paddingHorizontal: 11, paddingVertical: 8, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
   bookingCalloutTitle: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   bookingCalloutDetail: { color: '#FFFFFF', fontSize: 21, lineHeight: 24, fontWeight: '900', marginTop: 1 },
-  bookingMapPin: { width: 20, height: 20, borderRadius: 10, borderWidth: 4, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginTop: -2 },
-  bookingMapPinInner: { width: 8, height: 8, borderRadius: 4 },
+  bookingMapPin: { width: 14, height: 14, borderRadius: 7, borderWidth: 3, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginTop: -2 },
+  bookingMapPinInner: { width: 6, height: 6, borderRadius: 3 },
 });
 
 export default NativeGoogleMap;
