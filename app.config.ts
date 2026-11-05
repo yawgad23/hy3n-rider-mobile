@@ -71,9 +71,9 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    // Package 116 contains the verified live-map, driver-location,
-    // Firestore-ID reconciliation, and category-filtering fixes.
-    buildNumber: "117",
+    // Build 121 contains the Car Delivery marker correction on top of the
+    // verified live-map, driver-location, and category-filtering fixes.
+    buildNumber: "121",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
