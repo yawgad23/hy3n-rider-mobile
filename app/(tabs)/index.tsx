@@ -18,6 +18,7 @@ import {
   AppState,
 } from "react-native";
 import NativeGoogleMap from "@/components/NativeGoogleMap";
+import { calculateRiderWaitingTime } from "@/lib/rider-waiting-time";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -1260,7 +1261,7 @@ export default function RiderHomeScreen() {
       }
       const updateWait = () => {
         const arrivedAt = riderArrivedAtRef.current;
-        setRiderWaitSeconds(arrivedAt ? Math.max(0, Math.floor((Date.now() - arrivedAt) / 1000)) : 0);
+        setRiderWaitSeconds(calculateRiderWaitingTime({ arrivedAt: arrivedAt ? new Date(arrivedAt).toISOString() : undefined }).waitedSeconds);
       };
       updateWait();
       riderWaitTimerRef.current = setInterval(updateWait, 1000);
@@ -1279,7 +1280,12 @@ export default function RiderHomeScreen() {
   const riderWaitingFeePerMin = activeRide?.waitingFeePerMinute
     ?? RIDE_CATEGORIES.find(c => c.id === activeRide?.categoryId)?.waitingFeePerMin
     ?? 0.55;
-  const riderCurrentWaitingFee = parseFloat((riderBillableWaitMins * riderWaitingFeePerMin).toFixed(2));
+  const riderCurrentWaitingFee = calculateRiderWaitingTime({
+    arrivedAt: riderArrivedAtRef.current ? new Date(riderArrivedAtRef.current).toISOString() : undefined,
+    now: Date.now(),
+    freeMinutes: FREE_WAITING_MINUTES,
+    ratePerMinute: riderWaitingFeePerMin,
+  }).waitingFee;
 
   useEffect(() => {
     const rideKey = activeRide?.firestoreId || activeRide?.id || null;
