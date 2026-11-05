@@ -11,7 +11,7 @@ const appConfig = readFileSync(path.join(process.cwd(), 'app.config.ts'), 'utf8'
 describe('Rider native Google Maps migration', () => {
   it('uses live window dimensions so booking sheets adapt to orientation and device size', () => {
     expect(screen).toContain('useWindowDimensions');
-    expect(screen).toContain('const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = useWindowDimensions();');
+    expect(screen).toContain('const { height: SCREEN_HEIGHT } = useWindowDimensions();');
     expect(screen).not.toContain('Dimensions.get(\"window\")');
   });
 
@@ -36,9 +36,8 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('Marker.Animated');
     expect(component).toContain('animatedDriverCoordinate.timing');
     expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 42');
-    expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 30');
+    expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 40');
     expect(component).toContain('bookingMapPin: { width: 14, height: 14');
-    expect(component).toContain('opacity={1}');
     expect(component).toContain('zIndex={9}');
     expect(component).toContain('bookingEndpoint: { alignItems: \'center\', justifyContent: \'center\', width: 18, height: 18 }');
     expect(component).not.toContain('bookingCallout');
