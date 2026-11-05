@@ -34,7 +34,11 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('bookingMapPin: { width: 14, height: 14');
     expect(component).toContain('opacity={1}');
     expect(component).toContain('zIndex={9}');
-    expect(component).toContain('width: 20, height: 20');
+    expect(component).toContain('bookingEndpoint: { alignItems: \'center\', justifyContent: \'center\', width: 18, height: 18 }');
+    expect(component).not.toContain('bookingCallout');
+    expect(component).not.toContain('bookingCalloutDetail');
+    expect(component).toContain('<BookingEndpointMarker tone="pickup" />');
+    expect(component).toContain('<BookingEndpointMarker tone="dropoff" />');
     expect(component).toContain('CompactVehicleMarker');
     expect(component).not.toContain('react-native-webview');
   });
