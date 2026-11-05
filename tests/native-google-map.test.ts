@@ -41,8 +41,11 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('opacity={1}');
     expect(component).toContain('zIndex={9}');
     expect(component).toContain('bookingEndpoint: { alignItems: \'center\', justifyContent: \'center\', width: 18, height: 18 }');
-    expect(component).not.toContain('bookingCallout');
-    expect(component).not.toContain('bookingCalloutDetail');
+    expect(component).toContain('bookingTimeCallouts');
+    expect(component).toContain('DRIVER PICKUP');
+    expect(component).toContain('ESTIMATED ARRIVAL');
+    expect(component).toContain('bookingPickupTimeLabel.replace');
+    expect(component).toContain('bookingDropoffTimeLabel.replace');
     expect(component).toContain('<BookingEndpointMarker tone="pickup" />');
     expect(component).toContain('<BookingEndpointMarker tone="dropoff" />');
     expect(component).toContain('CompactVehicleMarker');
