@@ -33,16 +33,14 @@ function brandedWidgetSource(source) {
         DynamicIslandExpandedRegion(.bottom) {
           hy3nTripProgress(
             progress: context.state.progress ?? 0,
-            progressViewTint: context.attributes.progressViewTint
+            progressViewTint: context.attributes.progressViewTint,
+            imageName: context.state.imageName
           )
           .padding(.horizontal, 5)
           .applyWidgetURL(from: context.attributes.deepLinkUrl)
         }
       } compactLeading: {
-        // The compact Island remains intentionally simple: the original HY3N
-        // vehicle identifies the trip while the live ETA stays on the right.
-        resizableImage(imageName: "hy3n_trip_car")
-          .frame(width: 25, height: 15)
+        hy3nVehicleIcon(imageName: context.state.imageName, carWidth: 25, carHeight: 15)
           .applyWidgetURL(from: context.attributes.deepLinkUrl)
       } compactTrailing: {
         if let date = context.state.timerEndDateInMilliseconds {
@@ -50,11 +48,24 @@ function brandedWidgetSource(source) {
             .applyWidgetURL(from: context.attributes.deepLinkUrl)
         }
       } minimal: {
-        resizableImage(imageName: "hy3n_trip_car")
-          .frame(width: 18, height: 12)
+        hy3nVehicleIcon(imageName: context.state.imageName, carWidth: 18, carHeight: 12)
           .applyWidgetURL(from: context.attributes.deepLinkUrl)
       }
     }
+    }
+
+    private func hy3nVehicleIcon(imageName: String?, carWidth: CGFloat, carHeight: CGFloat) -> some View {
+      Group {
+        if imageName == "hy3n_trip_okada" {
+          Text("🏍️").font(.system(size: carHeight))
+        } else if imageName == "hy3n_trip_delivery" {
+          Text("🚚").font(.system(size: carHeight))
+        } else {
+          resizableImage(imageName: "hy3n_trip_car")
+            .frame(width: carWidth, height: carHeight)
+        }
+      }
+      .frame(width: carWidth, height: carHeight)
     }
 
     private func hy3nArrivalTime(endDate: Double) -> some View {
@@ -88,14 +99,11 @@ function brandedWidgetSource(source) {
       }
     }
 
-    private func hy3nTripProgress(progress: Double, progressViewTint: String?) -> some View {
+    private func hy3nTripProgress(progress: Double, progressViewTint: String?, imageName: String?) -> some View {
       GeometryReader { proxy in
         let clampedProgress = min(max(progress, 0), 1)
         let carWidth: CGFloat = 36
         let carHeight: CGFloat = 18
-        // The vehicle's centre, rather than its leading edge, is the actual
-        // route position. That keeps the line visibly running through the
-        // middle of the owned top-down HY3N car, like a route progress marker.
         let routePosition = proxy.size.width * clampedProgress
         let carOffset = min(
           max(0, routePosition - carWidth / 2),
@@ -108,8 +116,7 @@ function brandedWidgetSource(source) {
           Capsule()
             .fill(progressViewTint.map { Color(hex: $0) } ?? Color(hex: "D4AF37"))
             .frame(width: max(0, min(proxy.size.width, routePosition)), height: 6)
-          resizableImage(imageName: "hy3n_trip_car")
-            .frame(width: carWidth, height: carHeight)
+          hy3nVehicleIcon(imageName: imageName, carWidth: carWidth, carHeight: carHeight)
             .offset(x: carOffset)
             .animation(.easeInOut(duration: 0.65), value: clampedProgress)
         }
@@ -136,6 +143,20 @@ function brandedLockScreenSource(source) {
       min(max(contentState.progress ?? 0, 0), 1)
     }
 
+    private func hy3nVehicleIcon(imageName: String?, carWidth: CGFloat, carHeight: CGFloat) -> some View {
+      Group {
+        if imageName == "hy3n_trip_okada" {
+          Text("🏍️").font(.system(size: carHeight))
+        } else if imageName == "hy3n_trip_delivery" {
+          Text("🚚").font(.system(size: carHeight))
+        } else {
+          resizableImage(imageName: "hy3n_trip_car")
+            .frame(width: carWidth, height: carHeight)
+        }
+      }
+      .frame(width: carWidth, height: carHeight)
+    }
+
     private func hy3nTripProgressLine(progress: Double) -> some View {
       GeometryReader { proxy in
         let carWidth: CGFloat = 42
@@ -157,8 +178,7 @@ function brandedLockScreenSource(source) {
             .frame(width: max(0, min(proxy.size.width, routePosition)), height: 7)
           // This is an owned HY3N vehicle asset, not a third-party ride-hailing
           // mark. It advances only when the server sends lower remaining distance.
-          resizableImage(imageName: "hy3n_trip_car")
-            .frame(width: carWidth, height: carHeight)
+          hy3nVehicleIcon(imageName: contentState.imageName, carWidth: carWidth, carHeight: carHeight)
             .offset(x: carOffset)
             .animation(.easeInOut(duration: 0.65), value: progress)
         }

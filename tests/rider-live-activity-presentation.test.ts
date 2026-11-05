@@ -1,11 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
   riderLiveActivityEligible,
+  riderLiveActivityImageName,
   riderLiveActivityPresentation,
   riderLiveTripProgress,
 } from '@/lib/rider-live-activity-presentation';
 
 describe('Rider Live Activity presentation', () => {
+  it('selects the right vehicle icon for every HY3N ride category', () => {
+    expect(riderLiveActivityImageName({ categoryId: 'okada', category: 'Okada' })).toBe('hy3n_trip_okada');
+    expect(riderLiveActivityImageName({ categoryId: 'express_delivery', category: 'Delivery' })).toBe('hy3n_trip_delivery');
+    expect(riderLiveActivityImageName({ categoryId: 'standard', category: 'Standard' })).toBe('hy3n_trip_car');
+    expect(riderLiveActivityImageName({ categoryId: 'comfort', category: 'Comfort' })).toBe('hy3n_trip_car');
+    expect(riderLiveActivityImageName({ categoryId: 'kantanka', category: 'Kantanka' })).toBe('hy3n_trip_car');
+    expect(riderLiveActivityImageName({ categoryId: 'car_delivery', category: 'Car Delivery' })).toBe('hy3n_trip_car');
+    expect(riderLiveActivityImageName({ category: 'Motorcycle' })).toBe('hy3n_trip_okada');
+  });
   const ride = {
     id: 'ride-1',
     status: 'driver_arriving' as const,
@@ -22,6 +32,7 @@ describe('Rider Live Activity presentation', () => {
       subtitle: 'Kofi is heading to your pickup',
       etaMinutes: 7,
       arrivalAt: 421_000,
+      imageName: 'hy3n_trip_car',
       progress: 0,
     });
   });
@@ -59,6 +70,7 @@ describe('Rider Live Activity presentation', () => {
     }, 1_000)).toMatchObject({
       title: 'Drop-off at 00:07',
       subtitle: 'Heading to Accra Mall',
+      imageName: 'hy3n_trip_car',
       progress: 0.5,
     });
   });
