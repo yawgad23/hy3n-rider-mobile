@@ -58,6 +58,7 @@ const ACTIVE_DRIVER_MARKER_SIZE = 42;
 // Nearby cars can sit close to the pickup pin; keep the vehicle icon above
 // the pickup endpoint and use a smaller endpoint dot so neither hides the car.
 const NEARBY_DRIVER_MARKER_SIZE = 40;
+const OKADA_DRIVER_MARKER_SIZE = 48;
 // On iOS Google Maps, the native bridge creates an initial style span before
 // the JavaScript `strokeColor` arrives. That span otherwise retains the SDK's
 // default blue. Supplying an explicit span for every route point makes the
@@ -527,7 +528,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           heading={driver.heading}
           zIndex={9}
         >
-          <CompactVehicleMarker serviceType={driver.serviceType} size={NEARBY_DRIVER_MARKER_SIZE} />
+          <CompactVehicleMarker serviceType={driver.serviceType} size={riderMapMarkerKind(driver.serviceType) === 'okada' ? OKADA_DRIVER_MARKER_SIZE : NEARBY_DRIVER_MARKER_SIZE} />
         </AnimatedNearbyMarker>)}
       </MapView>
       {bookingPreview && (bookingPickupTimeLabel || bookingDropoffTimeLabel) && (
@@ -536,14 +537,15 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
             <View style={[styles.bookingTimeDot, { backgroundColor: '#007E4F' }]} />
             <View style={styles.bookingTimeTextWrap}>
               <Text style={styles.bookingTimeEyebrow}>DRIVER PICKUP</Text>
-              <Text style={styles.bookingTimeValue} numberOfLines={1}>{bookingPickupTimeLabel.replace(/^Pickup\\n/, '')}</Text>
+              <Text style={styles.bookingTimeValue} numberOfLines={1}>{bookingPickupTimeLabel.split('\n').slice(1).join(' ') || 'Finding Driver'}</Text>
+              <Text style={styles.bookingTimeWait} numberOfLines={1}>Estimated wait · {bookingPickupTimeLabel.split('\n').slice(1).join(' ') || 'Waiting for a Driver'}</Text>
             </View>
           </View> : null}
           {bookingDropoffTimeLabel ? <View style={[styles.bookingTimeCard, styles.bookingDropoffTimeCard]}>
             <View style={[styles.bookingTimeDot, { backgroundColor: '#D4AF37' }]} />
             <View style={styles.bookingTimeTextWrap}>
               <Text style={styles.bookingTimeEyebrow}>ESTIMATED ARRIVAL</Text>
-              <Text style={styles.bookingTimeValue} numberOfLines={1}>{bookingDropoffTimeLabel.replace(/^Drop-off\\n/, '')}</Text>
+              <Text style={styles.bookingTimeValue} numberOfLines={1}>{bookingDropoffTimeLabel.split('\n').slice(1).join(' ') || 'Calculating'}</Text>
             </View>
           </View> : null}
         </View>
@@ -562,6 +564,7 @@ const styles = StyleSheet.create({
   bookingTimeTextWrap: { flex: 1, minWidth: 0 },
   bookingTimeEyebrow: { color: '#AEB8C2', fontSize: 9, fontWeight: '800', letterSpacing: 0.55 },
   bookingTimeValue: { color: '#FFFFFF', fontSize: 15, fontWeight: '900', marginTop: 3 },
+  bookingTimeWait: { color: '#AEB8C2', fontSize: 10, fontWeight: '600', marginTop: 2 },
   bookingEndpoint: { alignItems: 'center', justifyContent: 'center', width: 18, height: 18 },
   bookingMapPin: { width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
   bookingMapPinInner: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#FFFFFF' },
