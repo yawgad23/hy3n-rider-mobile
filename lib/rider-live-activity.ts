@@ -10,6 +10,7 @@ import type { User } from 'firebase/auth';
 import { getApiBaseUrl } from '@/constants/oauth';
 import {
   riderLiveActivityEligible,
+  riderLiveActivityImageName,
   riderLiveActivityPresentation,
   type RiderLiveActivityRide,
 } from '@/lib/rider-live-activity-presentation';
@@ -20,6 +21,7 @@ type ActiveActivity = {
   user: User;
   /** Last numeric display position of the native HY3N trip car. */
   progress: number;
+  imageName: string;
   ending?: boolean;
 };
 
@@ -127,6 +129,7 @@ function ensureTokenListener() {
 
 function stateForRide(ride: RiderLiveActivityRide, previousProgress: number) {
   const presentation = riderLiveActivityPresentation(ride, Date.now(), previousProgress);
+  const imageName = riderLiveActivityImageName(ride);
   // expo-live-activity 0.4.2 declares its ETA date and numeric progress as
   // mutually exclusive, but its native ActivityKit content state accepts and
   // needs both: the date renders the ETA while numeric progress positions the
@@ -135,10 +138,10 @@ function stateForRide(ride: RiderLiveActivityRide, previousProgress: number) {
     title: presentation.title,
     subtitle: presentation.subtitle,
     progressBar: { date: presentation.arrivalAt, progress: presentation.progress },
-    imageName: 'hy3n_trip_car',
-    dynamicIslandImageName: 'hy3n_trip_car',
+    imageName,
+    dynamicIslandImageName: imageName,
   } as unknown as NativeActivityState;
-  return { state, progress: presentation.progress };
+  return { state, progress: presentation.progress, imageName };
 }
 
 const activityConfig = {
@@ -175,7 +178,7 @@ export async function syncRiderLiveActivity(user: User | null | undefined, ride:
   try {
     const activityId = await startActivity(rendered.state, activityConfig);
     if (!activityId) return;
-    const activity = { activityId, rideId: ride.id, user, progress: rendered.progress };
+    const activity = { activityId, rideId: ride.id, user, progress: rendered.progress, imageName: rendered.imageName };
     activitiesByRideId.set(ride.id, activity);
     activitiesById.set(activityId, activity);
     const earlyPushToken = pendingActivityPushTokens.get(activityId);
@@ -210,8 +213,8 @@ async function stopRiderLiveActivity(activity: ActiveActivity, completed: boolea
       title: completed ? 'Trip complete' : 'Ride cancelled',
       subtitle: completed ? 'Medaase for riding with HY3N' : 'Open HY3N to book another ride',
       progressBar: { progress: 1 },
-      imageName: 'hy3n_trip_car',
-      dynamicIslandImageName: 'hy3n_trip_car',
+      imageName: activity.imageName,
+      dynamicIslandImageName: activity.imageName,
     });
     const registrationTimer = tokenRegistrationRetryTimers.get(activity.activityId);
     if (registrationTimer) clearTimeout(registrationTimer);
