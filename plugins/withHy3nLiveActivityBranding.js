@@ -150,6 +150,19 @@ function brandedLockScreenSource(source) {
         } else if imageName == "hy3n_trip_delivery" {
           Text("🚚").font(.system(size: carHeight))
         } else {
+          hy3nVehicleIcon(imageName: contentState.imageName, carWidth: carWidth, carHeight: carHeight)
+        }
+      }
+      .frame(width: carWidth, height: carHeight)
+    }
+
+    private func hy3nVehicleIcon(imageName: String?, carWidth: CGFloat, carHeight: CGFloat) -> some View {
+      Group {
+        if imageName == "hy3n_trip_okada" {
+          Text("🏍️").font(.system(size: carHeight))
+        } else if imageName == "hy3n_trip_delivery" {
+          Text("🚚").font(.system(size: carHeight))
+        } else {
           resizableImage(imageName: "hy3n_trip_car")
             .frame(width: carWidth, height: carHeight)
         }
