@@ -23,6 +23,10 @@ describe('Rider HY3N Dynamic Island integration', () => {
     expect(appConfig).toContain('withHy3nLiveActivityBranding');
     expect(appConfig).toContain('"aps-environment"');
     expect(brandingPlugin).toContain('hy3n_trip_car');
+    expect(brandingPlugin).toContain('hy3n_trip_okada');
+    expect(brandingPlugin).toContain('hy3n_trip_delivery');
+    expect(brandingPlugin).toContain('context.state.imageName');
+    expect(brandingPlugin).toContain('contentState.imageName');
     expect(brandingPlugin).toContain('HY3N trip-progress presentation v3');
     expect(brandingPlugin).toContain('HY3N trip-progress Lock Screen presentation v3');
     expect(brandingPlugin).toContain('routePosition - carWidth / 2');
@@ -34,7 +38,8 @@ describe('Rider HY3N Dynamic Island integration', () => {
     expect(riderHome).toContain('endRiderLiveActivity');
     expect(riderHome).toContain('activeRide?.routeDistanceKm');
     expect(liveActivity).toContain('progressBar: { date: presentation.arrivalAt, progress: presentation.progress }');
-    expect(liveActivity).toContain("imageName: 'hy3n_trip_car'");
+    expect(liveActivity).toContain('imageName,');
+    expect(liveActivity).toContain('riderLiveActivityImageName(ride)');
     expect(liveActivity).toContain('/api/live-activities/token');
     expect(liveActivity).toContain('pendingActivityPushTokens');
     expect(liveActivity).toContain('retry twice while this activity lives');
