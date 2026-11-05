@@ -556,7 +556,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#e8edf2' },
-  bookingTimeCallouts: { position: 'absolute', top: 82, left: 14, right: 14, flexDirection: 'row', gap: 8, zIndex: 12 },
+  bookingTimeCallouts: { position: 'absolute', top: 220, left: 14, right: 14, flexDirection: 'row', gap: 8, zIndex: 12 },
   bookingTimeCard: { flex: 1, minWidth: 0, minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, paddingVertical: 9, borderRadius: 14, backgroundColor: 'rgba(12,16,20,0.94)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
   bookingPickupTimeCard: { borderColor: 'rgba(0,126,79,0.65)' },
   bookingDropoffTimeCard: { borderColor: 'rgba(212,175,55,0.55)' },
