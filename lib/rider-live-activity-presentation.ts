@@ -22,7 +22,7 @@ export type RiderLiveActivityImageName = 'hy3n_trip_car' | 'hy3n_trip_okada' | '
 
 /** Resolve the vehicle shown on the Lock Screen and Dynamic Island from the booked category. */
 export function riderLiveActivityImageName(ride: Pick<RiderLiveActivityRide, 'category' | 'categoryId'>): RiderLiveActivityImageName {
-  const category = `${ride.categoryId ?? ''} ${ride.category ?? ''}`.toLowerCase().replace(/[\\s-]+/g, '_');
+  const category = `${ride.categoryId ?? ''} ${ride.category ?? ''}`.toLowerCase().replace(/[\s-]+/g, '_');
   if (/(^|_)(okada|motorcycle|motorbike|bike|two_wheeler)(_|$)/.test(category)) return 'hy3n_trip_okada';
   if (/(^|_)(delivery|express_delivery|expressdelivery)(_|$)/.test(category)) return 'hy3n_trip_delivery';
   return 'hy3n_trip_car';
