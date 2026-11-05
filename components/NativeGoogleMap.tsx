@@ -104,13 +104,13 @@ function CompactVehicleMarker({ serviceType, size }: { serviceType?: string | nu
 
 function BookingEndpointMarker({ tone, timeLabel }: { tone: 'pickup' | 'dropoff'; timeLabel?: string | null }) {
   const backgroundColor = tone === 'pickup' ? '#007E4F' : '#D4AF37';
-  const value = String(timeLabel || '').split('\\n').slice(1).join(' ') || (tone === 'pickup' ? 'Finding Driver' : 'Calculating');
+  const value = String(timeLabel || '').split('\n').slice(1).join(' ') || (tone === 'pickup' ? 'Finding driver' : 'Calculating');
   return (
     <View pointerEvents="none" style={styles.bookingEndpointWithTime}>
-      <View style={[styles.bookingRouteTimeCard, tone === 'pickup' ? styles.bookingPickupTimeCard : styles.bookingDropoffTimeCard]}>
-        <Text style={styles.bookingTimeEyebrow}>{tone === 'pickup' ? 'DRIVER PICKUP' : 'ESTIMATED ARRIVAL'}</Text>
-        <Text style={styles.bookingTimeValue} numberOfLines={1}>{value}</Text>
-        {tone === 'pickup' ? <Text style={styles.bookingTimeWait} numberOfLines={1}>Estimated wait: {value}</Text> : null}
+      <View style={[styles.bookingRouteTimePill, tone === 'pickup' ? styles.bookingPickupTimeCard : styles.bookingDropoffTimeCard]}>
+        <Text style={styles.bookingRouteTimeText} numberOfLines={1}>
+          {tone === 'pickup' ? `Pickup · ${value} · Wait ${value}` : `Drop-off · ${value}`}
+        </Text>
       </View>
       <View style={[styles.bookingMapPin, { backgroundColor, borderColor: '#FFFFFF' }]}>
         <View style={styles.bookingMapPinInner} />
@@ -544,16 +544,11 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#e8edf2' },
-  bookingTimeCard: { flex: 1, minWidth: 0, minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, paddingVertical: 9, borderRadius: 14, backgroundColor: 'rgba(12,16,20,0.94)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
   bookingPickupTimeCard: { borderColor: 'rgba(0,126,79,0.65)' },
   bookingDropoffTimeCard: { borderColor: 'rgba(212,175,55,0.55)' },
-  bookingTimeDot: { width: 9, height: 9, borderRadius: 5 },
-  bookingTimeTextWrap: { flex: 1, minWidth: 0 },
-  bookingTimeEyebrow: { color: '#AEB8C2', fontSize: 9, fontWeight: '800', letterSpacing: 0.55 },
-  bookingTimeValue: { color: '#FFFFFF', fontSize: 15, fontWeight: '900', marginTop: 3 },
-  bookingTimeWait: { color: '#AEB8C2', fontSize: 10, fontWeight: '600', marginTop: 2 },
-  bookingEndpointWithTime: { alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 128 },
-  bookingRouteTimeCard: { maxWidth: 170, minWidth: 128, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 10, backgroundColor: 'rgba(12,16,20,0.96)', borderWidth: 1 },
+  bookingEndpointWithTime: { alignItems: 'center', justifyContent: 'center', gap: 3, maxWidth: 150 },
+  bookingRouteTimePill: { maxWidth: 150, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12, backgroundColor: 'rgba(12,16,20,0.92)', borderWidth: 1 },
+  bookingRouteTimeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
   bookingMapPin: { width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
   bookingMapPinInner: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#FFFFFF' },
 });
