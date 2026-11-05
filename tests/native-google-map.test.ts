@@ -37,6 +37,8 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('animatedDriverCoordinate.timing');
     expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 42');
     expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 40');
+    expect(component).toContain('OKADA_DRIVER_MARKER_SIZE = 48');
+    expect(component).toContain("riderMapMarkerKind(driver.serviceType) === 'okada' ? OKADA_DRIVER_MARKER_SIZE");
     expect(component).toContain('bookingMapPin: { width: 14, height: 14');
     expect(component).toContain('zIndex={9}');
     expect(component).toContain('bookingEndpoint: { alignItems: \'center\', justifyContent: \'center\', width: 18, height: 18 }');
@@ -93,6 +95,8 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('bookingPickupTimeLabel');
     expect(component).toContain('bookingTimeCallouts');
     expect(component).toContain('DRIVER PICKUP');
+    expect(component).toContain('Estimated wait ·');
+    expect(component).toContain("bookingPickupTimeLabel.split('\\n').slice(1).join(' ')");
     expect(component).toContain('ESTIMATED ARRIVAL');
     expect(component).toContain('bookingDropoffTimeLabel');
     expect(component).toContain('BookingEndpointMarker');
