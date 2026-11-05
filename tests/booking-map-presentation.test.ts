@@ -22,6 +22,6 @@ describe('Rider booking map presentation', () => {
 
   it.each([null, undefined, ''])('does not turn absent pickup ETA %s into a false 1-minute estimate', (pickupEtaMinutes) => {
     expect(bookingMapTimeLabels({ pickupEtaMinutes, routeDurationMinutes: 10 }).pickup)
-      .toBe('Pickup\\nFinding Driver');
+      .toBe('Pickup\nFinding Driver');
   });
 });
