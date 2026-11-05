@@ -18,6 +18,7 @@ import {
   AppState,
 } from "react-native";
 import NativeGoogleMap from "@/components/NativeGoogleMap";
+import { calculateRiderWaitingTime } from "@/lib/rider-waiting-time";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -195,6 +196,8 @@ interface ActiveRide {
   driverRoutePoints?: [number, number][];
   bookingRoutePoints?: [number, number][];
   waitingFee?: number;
+  waitingFeePerMinute?: number;
+  driverArrivedAt?: string;
   tipAmount?: number;
   quotedFare?: number;
   finalFare?: number;
@@ -1047,6 +1050,8 @@ export default function RiderHomeScreen() {
             etaSeconds: reassignedAfterDriverCancellation ? undefined : ((ride as any).eta_seconds ?? ((etaMin ?? 0) * 60)),
             quotedFare: getQuotedRideFare(ride),
             waitingFee: (ride as any).waiting_fee ?? prev.waitingFee,
+            waitingFeePerMinute: toFiniteNumber((ride as any).waiting_fee_per_minute ?? (ride as any).fare_rate_snapshot?.waitingFeePerMinute ?? (ride as any).fare_rate_snapshot?.waiting_fee_per_minute) ?? prev.waitingFeePerMinute,
+            driverArrivedAt: String((ride as any).driver_arrived_at ?? (ride as any).driverArrivedAt ?? prev.driverArrivedAt ?? '') || undefined,
             matchedAt: reassignedAfterDriverCancellation ? undefined : (prev.matchedAt ?? ((ride.status === 'driver_arriving' || ride.status === 'matched') ? new Date().toISOString() : prev.matchedAt)),
             ridePin: reassignedAfterDriverCancellation
               ? String((ride as any).pickup_code || (ride as any).ride_pin || '') || undefined
@@ -1240,25 +1245,47 @@ export default function RiderHomeScreen() {
     return () => clearInterval(interval);
   }, [activeRide?.status]);
 
-  // Rider-side waiting timer: starts when driver status is driver_arrived
+  // The Driver app/backend records driver_arrived_at. Anchor the Rider timer
+  // to that server timestamp so app restarts, delayed polling and phone clock
+  // differences cannot restart or shorten the complimentary waiting period.
   useEffect(() => {
     if (activeRide?.status === 'driver_arrived') {
-      if (!riderArrivedAtRef.current) riderArrivedAtRef.current = Date.now();
-      riderWaitTimerRef.current = setInterval(() => {
-        setRiderWaitSeconds(Math.floor((Date.now() - (riderArrivedAtRef.current || Date.now())) / 1000));
-      }, 1000);
+      const serverArrivalMs = activeRide.driverArrivedAt
+        ? new Date(activeRide.driverArrivedAt).getTime()
+        : Number.NaN;
+      if (Number.isFinite(serverArrivalMs) && serverArrivalMs > 0) {
+        riderArrivedAtRef.current = serverArrivalMs;
+      } else if (!riderArrivedAtRef.current) {
+        // Compatibility fallback for older backend records without the field.
+        riderArrivedAtRef.current = Date.now();
+      }
+      const updateWait = () => {
+        const arrivedAt = riderArrivedAtRef.current;
+        setRiderWaitSeconds(calculateRiderWaitingTime({ arrivedAt: arrivedAt ? new Date(arrivedAt).toISOString() : undefined }).waitedSeconds);
+      };
+      updateWait();
+      riderWaitTimerRef.current = setInterval(updateWait, 1000);
     } else {
       if (riderWaitTimerRef.current) { clearInterval(riderWaitTimerRef.current); riderWaitTimerRef.current = null; }
       riderArrivedAtRef.current = null;
       setRiderWaitSeconds(0);
     }
     return () => { if (riderWaitTimerRef.current) { clearInterval(riderWaitTimerRef.current); riderWaitTimerRef.current = null; } };
-  }, [activeRide?.status]);
+  }, [activeRide?.status, activeRide?.driverArrivedAt]);
 
   const riderFreeWaitSecs = FREE_WAITING_MINUTES * 60;
   const riderBillableWaitMins = Math.max(0, (riderWaitSeconds - riderFreeWaitSecs) / 60);
-  const riderWaitingFeePerMin = RIDE_CATEGORIES.find(c => c.id === activeRide?.category)?.waitingFeePerMin ?? 0.55;
-  const riderCurrentWaitingFee = parseFloat((riderBillableWaitMins * riderWaitingFeePerMin).toFixed(2));
+  // Prefer the ride's server-snapshotted rate; use category defaults only for
+  // older bookings. Use categoryId (not the display name) for lookup.
+  const riderWaitingFeePerMin = activeRide?.waitingFeePerMinute
+    ?? RIDE_CATEGORIES.find(c => c.id === activeRide?.categoryId)?.waitingFeePerMin
+    ?? 0.55;
+  const riderCurrentWaitingFee = calculateRiderWaitingTime({
+    arrivedAt: riderArrivedAtRef.current ? new Date(riderArrivedAtRef.current).toISOString() : undefined,
+    now: Date.now(),
+    freeMinutes: FREE_WAITING_MINUTES,
+    ratePerMinute: riderWaitingFeePerMin,
+  }).waitingFee;
 
   useEffect(() => {
     const rideKey = activeRide?.firestoreId || activeRide?.id || null;
