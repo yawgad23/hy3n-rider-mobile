@@ -24,6 +24,8 @@ export type RiderLiveActivityImageName = 'hy3n_trip_car' | 'hy3n_trip_okada' | '
 export function riderLiveActivityImageName(ride: Pick<RiderLiveActivityRide, 'category' | 'categoryId'>): RiderLiveActivityImageName {
   const category = `${ride.categoryId ?? ''} ${ride.category ?? ''}`.toLowerCase().replace(/[\s-]+/g, '_');
   if (/(^|_)(okada|motorcycle|motorbike|bike|two_wheeler)(_|$)/.test(category)) return 'hy3n_trip_okada';
+  // Car Delivery is a car service; check it before the generic Delivery match.
+  if (/(^|_)car_delivery(_|$)/.test(category)) return 'hy3n_trip_car';
   if (/(^|_)(delivery|express_delivery|expressdelivery)(_|$)/.test(category)) return 'hy3n_trip_delivery';
   return 'hy3n_trip_car';
 }

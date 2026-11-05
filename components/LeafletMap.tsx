@@ -4,6 +4,7 @@ import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { MAP_MARKER_ASSETS } from "./map-marker-assets";
 import { riderDriverMarkerLabel } from "@/lib/rider-live-tracking-presentation";
 import { matchPointToServerRoute } from "@/lib/rider-route-matching";
+import { riderMapMarkerKind } from "@/lib/rider-map-marker-kind";
 
 interface NearbyDriver {
   id: string;
@@ -62,10 +63,7 @@ function normaliseColour(value?: string | null, fallback = "#D4AF37") {
 }
 
 function markerKind(value?: string | null): "car" | "okada" | "delivery" {
-  const normalized = String(value || "").toLowerCase();
-  if (normalized.includes("deliver")) return "delivery";
-  if (normalized.includes("okada") || normalized.includes("moto")) return "okada";
-  return "car";
+  return riderMapMarkerKind(value);
 }
 
 function safeJson(value: unknown) {
