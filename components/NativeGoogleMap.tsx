@@ -57,7 +57,7 @@ const FALLBACK_CENTER: NativeMapPoint = [5.6037, -0.187];
 const ACTIVE_DRIVER_MARKER_SIZE = 42;
 // Nearby cars can sit close to the pickup pin; keep the vehicle icon above
 // the pickup endpoint and use a smaller endpoint dot so neither hides the car.
-const NEARBY_DRIVER_MARKER_SIZE = 30;
+const NEARBY_DRIVER_MARKER_SIZE = 40;
 // On iOS Google Maps, the native bridge creates an initial style span before
 // the JavaScript `strokeColor` arrives. That span otherwise retains the SDK's
 // default blue. Supplying an explicit span for every route point makes the
