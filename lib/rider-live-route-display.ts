@@ -25,8 +25,6 @@ export function riderLiveRouteIsCurrent(live: Record<string, any>, status: strin
   if (live.phase !== phase || !isLocation(target)) return false;
   const key = `${target.lat.toFixed(5)}:${target.lng.toFixed(5)}`;
   if (typeof live.target_key === 'string') return live.target_key === key;
-  // Transitional compatibility: old server rows have no target key. Require
-  // their final Google/OSRM road point to terminate near the actual target.
   const end = Array.isArray(live.points) ? live.points.at(-1) : null;
   const endpoint: Location = {
     lat: Number(Array.isArray(end) ? end[0] : end?.lat ?? end?.latitude),
@@ -38,16 +36,22 @@ export function riderLiveRouteIsCurrent(live: Record<string, any>, status: strin
   return Math.hypot(dx, dy) <= 150;
 }
 
-/** Preserve full route geometry only in the explicitly requested overview. */
+/**
+ * Returns the remaining server-owned road geometry. If GPS jitter briefly
+ * places the marker more than the route matcher tolerance from the road, keep
+ * the verified route visible instead of making the Rider's destination line
+ * disappear. The next matching GPS fix trims already-travelled geometry again.
+ */
 export function riderRemainingLiveRoute(
   driverPoint: RoutePoint | null | undefined,
   serverRoute: RoutePoint[],
   overview = false,
   minimumSegmentIndex = 0,
 ): RoutePoint[] {
-  const match = matchPointToServerRoute(driverPoint, serverRoute, undefined, minimumSegmentIndex);
-  if (!match) return EMPTY_POINTS;
+  if (!Array.isArray(serverRoute) || serverRoute.length < 2) return EMPTY_POINTS;
   if (overview) return serverRoute;
+  const match = matchPointToServerRoute(driverPoint, serverRoute, undefined, minimumSegmentIndex);
+  if (!match) return serverRoute;
   const points = [match.point, ...serverRoute.slice(match.segmentIndex + 1)];
   return points.filter((point, index) => index === 0 || point[0] !== points[index - 1][0] || point[1] !== points[index - 1][1]);
 }
