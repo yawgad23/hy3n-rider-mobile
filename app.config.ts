@@ -99,15 +99,20 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    // Play Console requires each uploaded Android App Bundle to have a higher
-    // version code than every previous artifact for com.hy3n.rider.
-    // 58017 delivers the current Rider source after the Android 16 target-SDK update.
-    versionCode: 58017,
+    // Incremented for the Android foreground-location permission correction.
+    versionCode: 58018,
     googleServicesFile: "./firebase/google-services.json",
     ...(nativeGoogleMaps.androidApiKey
       ? { config: { googleMaps: { apiKey: nativeGoogleMaps.androidApiKey } } }
       : {}),
-    permissions: ["POST_NOTIFICATIONS", "READ_CONTACTS"],
+    // This explicit allow-list replaces Expo's default permissions. Keep both
+    // foreground location permissions here so expo-location can obtain GPS.
+    permissions: [
+      "ACCESS_COARSE_LOCATION",
+      "ACCESS_FINE_LOCATION",
+      "POST_NOTIFICATIONS",
+      "READ_CONTACTS",
+    ],
     blockedPermissions: ["android.permission.WRITE_CONTACTS"],
     intentFilters: [
       {
@@ -140,6 +145,12 @@ const config: ExpoConfig = {
     "expo-audio",
     "expo-font",
     "expo-notifications",
+    [
+      "expo-location",
+      {
+        locationWhenInUsePermission: "HY3N uses your location to set your pickup point and connect you with nearby drivers.",
+      },
+    ],
     "@react-native-firebase/app",
     "@react-native-firebase/messaging",
     [
