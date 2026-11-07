@@ -101,10 +101,16 @@ function CompactVehicleMarker({ serviceType, size }: { serviceType?: string | nu
   );
 }
 
-function BookingEndpointMarker({ tone }: { tone: 'pickup' | 'dropoff' }) {
+function BookingEndpointMarker({ tone, timeLabel }: { tone: 'pickup' | 'dropoff'; timeLabel?: string | null }) {
   const backgroundColor = tone === 'pickup' ? '#007E4F' : '#D4AF37';
+  const time = String(timeLabel || '').replace(/^(Pickup|Drop-off)\\s*/i, '').trim();
   return (
-    <View pointerEvents="none" style={styles.bookingEndpoint}>
+    <View pointerEvents="none" style={styles.bookingEndpointWithTime}>
+      {time ? (
+        <View style={[styles.bookingRouteTimePill, tone === 'pickup' ? styles.bookingPickupTimeCard : styles.bookingDropoffTimeCard]}>
+          <Text style={styles.bookingRouteTimeText} numberOfLines={1}>{tone === 'pickup' ? 'Pickup' : 'Drop-off'} · {time}</Text>
+        </View>
+      ) : null}
       <View style={[styles.bookingMapPin, { backgroundColor, borderColor: '#FFFFFF' }]}>
         <View style={styles.bookingMapPinInner} />
       </View>
@@ -480,7 +486,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           tracksViewChanges
           zIndex={7}
         >
-          <BookingEndpointMarker tone="pickup" />
+          <BookingEndpointMarker tone="pickup" timeLabel={bookingPickupTimeLabel} />
         </Marker>}
         {bookingPreview && isNativeMapPoint(destination) && <Marker
           coordinate={coordinate(destination)}
@@ -488,7 +494,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           tracksViewChanges
           zIndex={7}
         >
-          <BookingEndpointMarker tone="dropoff" />
+          <BookingEndpointMarker tone="dropoff" timeLabel={bookingDropoffTimeLabel} />
         </Marker>}
         {/* Once a Driver is matched, `pickupPoint` below is the one server-owned
             pickup marker. Rendering the changing phone location too creates two
@@ -534,39 +540,18 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           <CompactVehicleMarker serviceType={driver.serviceType} size={NEARBY_DRIVER_MARKER_SIZE} />
         </AnimatedNearbyMarker>)}
       </MapView>
-      {bookingPreview && (bookingPickupTimeLabel || bookingDropoffTimeLabel) && (
-        <View pointerEvents="none" accessibilityLabel="Journey time estimates" style={styles.bookingTimeCallouts}>
-          {bookingPickupTimeLabel ? <View style={[styles.bookingTimeCard, styles.bookingPickupTimeCard]}>
-            <View style={[styles.bookingTimeDot, { backgroundColor: '#007E4F' }]} />
-            <View style={styles.bookingTimeTextWrap}>
-              <Text style={styles.bookingTimeEyebrow}>DRIVER PICKUP</Text>
-              <Text style={styles.bookingTimeValue} numberOfLines={1}>{bookingPickupTimeLabel.replace(/^Pickup\\n/, '')}</Text>
-            </View>
-          </View> : null}
-          {bookingDropoffTimeLabel ? <View style={[styles.bookingTimeCard, styles.bookingDropoffTimeCard]}>
-            <View style={[styles.bookingTimeDot, { backgroundColor: '#D4AF37' }]} />
-            <View style={styles.bookingTimeTextWrap}>
-              <Text style={styles.bookingTimeEyebrow}>ESTIMATED ARRIVAL</Text>
-              <Text style={styles.bookingTimeValue} numberOfLines={1}>{bookingDropoffTimeLabel.replace(/^Drop-off\\n/, '')}</Text>
-            </View>
-          </View> : null}
-        </View>
-      )}
+
     </View>
   );
 });
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#e8edf2' },
-  bookingTimeCallouts: { position: 'absolute', top: 82, left: 14, right: 14, flexDirection: 'row', gap: 8, zIndex: 12 },
-  bookingTimeCard: { flex: 1, minWidth: 0, minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, paddingVertical: 9, borderRadius: 14, backgroundColor: 'rgba(12,16,20,0.94)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
-  bookingPickupTimeCard: { borderColor: 'rgba(0,126,79,0.65)' },
-  bookingDropoffTimeCard: { borderColor: 'rgba(212,175,55,0.55)' },
-  bookingTimeDot: { width: 9, height: 9, borderRadius: 5 },
-  bookingTimeTextWrap: { flex: 1, minWidth: 0 },
-  bookingTimeEyebrow: { color: '#AEB8C2', fontSize: 9, fontWeight: '800', letterSpacing: 0.55 },
-  bookingTimeValue: { color: '#FFFFFF', fontSize: 15, fontWeight: '900', marginTop: 3 },
-  bookingEndpoint: { alignItems: 'center', justifyContent: 'center', width: 18, height: 18 },
+  bookingPickupTimeCard: { borderColor: 'rgba(0,126,79,0.8)' },
+  bookingDropoffTimeCard: { borderColor: 'rgba(212,175,55,0.8)' },
+  bookingEndpointWithTime: { alignItems: 'center', justifyContent: 'center' },
+  bookingRouteTimePill: { maxWidth: 150, backgroundColor: 'rgba(12,16,20,0.94)', borderWidth: 1, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5, marginBottom: 5 },
+  bookingRouteTimeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
   bookingMapPin: { width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
   bookingMapPinInner: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#FFFFFF' },
 });

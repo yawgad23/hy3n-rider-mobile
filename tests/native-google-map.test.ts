@@ -41,11 +41,11 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 40');
     expect(component).toContain('bookingMapPin: { width: 14, height: 14');
     expect(component).toContain('zIndex={9}');
-    expect(component).toContain('bookingEndpoint: { alignItems: \'center\', justifyContent: \'center\', width: 18, height: 18 }');
+    expect(component).toContain('bookingEndpointWithTime');
     expect(component).not.toContain('bookingCallout');
     expect(component).not.toContain('bookingCalloutDetail');
-    expect(component).toContain('<BookingEndpointMarker tone="pickup" />');
-    expect(component).toContain('<BookingEndpointMarker tone="dropoff" />');
+    expect(component).toContain('<BookingEndpointMarker tone="pickup" timeLabel={bookingPickupTimeLabel} />');
+    expect(component).toContain('<BookingEndpointMarker tone="dropoff" timeLabel={bookingDropoffTimeLabel} />');
     expect(component).toContain('CompactVehicleMarker');
     expect(component).not.toContain('react-native-webview');
   });
@@ -93,16 +93,16 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('strokeColor={HY3N_ROUTE_GREEN}');
     expect(component).toContain('strokeColors={routeCoordinates.map(() => HY3N_ROUTE_GREEN)}');
     expect(component).toContain('bookingPickupTimeLabel');
-    expect(component).toContain('bookingTimeCallouts');
-    expect(component).toContain('DRIVER PICKUP');
-    expect(component).toContain('ESTIMATED ARRIVAL');
+    expect(component).toContain('bookingRouteTimePill');
+    expect(component).toContain('Pickup');
+    expect(component).toContain('Drop-off');
     expect(component).toContain('bookingDropoffTimeLabel');
     expect(component).toContain('BookingEndpointMarker');
     expect(component).toContain('bookingPreviewRegion');
     expect(component).toContain('Do not fit a city-wide pickup-to-drop-off route automatically');
     expect(component).toContain('mapRef.current?.animateToRegion(region, 420);');
     expect(component).not.toContain('routeFrameCoordinates');
-    expect(screen).toContain('bookingMapTimeLabels');
+    expect(component).not.toContain('bookingTimeCallouts');
   });
 
   it('lets the Rider switch to full server-route details without changing tracking', () => {
