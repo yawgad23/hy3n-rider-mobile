@@ -11,8 +11,8 @@ const bundleId =
   rawBundleId
     .replace(/[-_]/g, ".") // Replace hyphens/underscores with dots
     .replace(/[^a-zA-Z0-9.]/g, "") // Remove invalid chars
-    .replace(/\\.+/g, ".") // Collapse consecutive dots
-    .replace(/^\\.+|\\.+$/g, "") // Trim leading/trailing dots
+    .replace(/\.+/g, ".") // Collapse consecutive dots
+    .replace(/^\.+|\.+$/g, "") // Trim leading/trailing dots
     .toLowerCase()
     .split(".")
     .map((segment) => {
