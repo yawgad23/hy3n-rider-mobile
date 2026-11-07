@@ -52,7 +52,10 @@ describe('real Rider map route rendering', () => {
       ]);
       props = { ...props, driverLocation: [5.702, -0.103], driverLocationUpdatedAt: new Date(Date.now() + 2).toISOString() };
       await renderer.act(async () => { tree.update(React.createElement(Component, props)); });
-      expect(tree.root.findAllByType('polyline')).toHaveLength(0);
+      expect(tree.root.findAllByType('polyline')).toHaveLength(1);
+      expect(tree.root.findByType('polyline').props.coordinates).toEqual([
+        { latitude: 5.7, longitude: -0.1 }, { latitude: 5.704, longitude: -0.1 }, { latitude: 5.704, longitude: -0.096 },
+      ]);
       props = { ...props, driverRoutePoints: [[5.702, -0.103], [5.704, -0.103], route[2]], driverRouteUpdatedAt: new Date(Date.now() + 3).toISOString() };
       await renderer.act(async () => { tree.update(React.createElement(Component, props)); });
       expect(tree.root.findByType('polyline').props.coordinates[0]).toEqual({ latitude: 5.702, longitude: -0.103 });
