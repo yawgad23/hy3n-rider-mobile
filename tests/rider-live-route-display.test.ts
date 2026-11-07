@@ -30,7 +30,8 @@ describe('Rider live route display authority', () => {
     const point: [number, number] = [5.702, -0.1];
     expect(riderRemainingLiveRoute(point, route)).toEqual([point, route[1], route[2]]);
     expect(riderRemainingLiveRoute(point, route, true)).toBe(route);
-    expect(riderRemainingLiveRoute([5.702, -0.103], route)).toEqual([]);
+    expect(riderRemainingLiveRoute([5.702, -0.103], route)).toBe(route);
+    expect(riderRemainingLiveRoute(null, route)).toBe(route);
   });
   it('does not label an expired, missing, malformed, or future route as fresh', () => {
     const now = Date.parse('2026-10-17T00:00:00Z');
