@@ -396,7 +396,15 @@ export default function RiderHomeScreen() {
   // while road routing runs on a separate 20s cadence to avoid excess API calls.
   useEffect(() => {
     latestRoadEtaDriversRef.current = nearbyDrivers;
-  }, [nearbyDrivers]);
+    const eligibleIds = new Set(
+      nearbyDrivers
+        .filter((vehicle) => vehicleServesRideCategory(vehicle, selectedCategory.id))
+        .map((vehicle) => vehicle.id),
+    );
+    setRoadEtaByDriverId((current) => Object.fromEntries(
+      Object.entries(current).filter(([driverId]) => eligibleIds.has(driverId)),
+    ));
+  }, [nearbyDrivers, selectedCategory.id]);
 
   useEffect(() => {
     latestRoadEtaPickupRef.current = userLocation;
