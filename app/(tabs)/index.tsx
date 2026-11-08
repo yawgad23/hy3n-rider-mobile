@@ -385,6 +385,8 @@ export default function RiderHomeScreen() {
   }, [refreshCurrentPickupLocation]);
   // ─── Nearby Drivers ─────────────────────────────────────────────────────────
   const [nearbyDrivers, setNearbyDrivers] = useState<NearbyVehicle[]>([]);
+  const [roadEtaByDriverId, setRoadEtaByDriverId] = useState<Record<string, number>>({});
+  const roadEtaRequestRef = useRef(false);
   const nearbyDriversRequestRef = useRef(false);
   const [selectedCategory, setSelectedCategory] = useState(RIDE_CATEGORIES[0]);
 
@@ -438,6 +440,61 @@ export default function RiderHomeScreen() {
     return () => { disposed = true; if (timer) clearInterval(timer); };
   }, [selectedCategory.id, user?.uid, userLocation[0], userLocation[1]]);
 
+  // Road-based pickup ETA is calculated server-side with Google Routes API.
+  // Refresh independently from the 5-second driver marker feed to limit API use.
+  useEffect(() => {
+    let disposed = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const loadRoadEtas = async () => {
+      const firebaseUser = auth.currentUser ?? user;
+      if (!firebaseUser || roadEtaRequestRef.current) return;
+      const eligibleDrivers = nearbyDrivers
+        .filter((vehicle) => vehicleServesRideCategory(vehicle, selectedCategory.id))
+        .slice(0, 10);
+      if (!eligibleDrivers.length || !Number.isFinite(userLocation[0]) || !Number.isFinite(userLocation[1])) {
+        if (!disposed) setRoadEtaByDriverId({});
+        return;
+      }
+      roadEtaRequestRef.current = true;
+      try {
+        const token = await firebaseUser.getIdToken();
+        const response = await fetch("https://us-central1-hy3n26.cloudfunctions.net/getDriverRoadEtas", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            pickup: { lat: userLocation[0], lng: userLocation[1] },
+            drivers: eligibleDrivers.map((vehicle) => ({
+              id: vehicle.id,
+              lat: vehicle.lat,
+              lng: vehicle.lng,
+            })),
+          }),
+        });
+        const payload = await response.json().catch(() => null) as { etas?: Record<string, number> } | null;
+        if (!response.ok || !payload?.etas) throw new Error("Road ETA service unavailable");
+        const nextEtas: Record<string, number> = {};
+        for (const [driverId, eta] of Object.entries(payload.etas)) {
+          if (Number.isFinite(eta) && eta > 0) nextEtas[driverId] = Math.max(1, Math.ceil(eta));
+        }
+        if (!disposed) setRoadEtaByDriverId(nextEtas);
+      } catch {
+        // Do not keep displaying a stale or guessed ETA when live road routing fails.
+        if (!disposed) setRoadEtaByDriverId({});
+      } finally {
+        roadEtaRequestRef.current = false;
+      }
+    };
+    void loadRoadEtas();
+    timer = setInterval(() => { void loadRoadEtas(); }, 20_000);
+    return () => {
+      disposed = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [nearbyDrivers, selectedCategory.id, user?.uid, userLocation[0], userLocation[1]]);
+
   const [destination, setDestination] = useState<Location | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -476,21 +533,14 @@ export default function RiderHomeScreen() {
     .filter((vehicle) => vehicleServesRideCategory(vehicle, selectedCategory.id))
     .map((vehicle) => ({
       ...vehicle,
-      etaMinutes: calculateETA({ lat: vehicle.lat, lng: vehicle.lng }, { lat: userLocation[0], lng: userLocation[1] }),
+      etaMinutes: roadEtaByDriverId[vehicle.id] ?? null,
     }))
-    .sort((a, b) => (a.etaMinutes || 99) - (b.etaMinutes || 99));
-  const closestVehicleEta = nearbyVehiclesForSelectedCategory[0]?.etaMinutes ?? null;
+    .sort((a, b) => (a.etaMinutes ?? Number.POSITIVE_INFINITY) - (b.etaMinutes ?? Number.POSITIVE_INFINITY));
+  const closestVehicleEta = nearbyVehiclesForSelectedCategory.find((vehicle) => vehicle.etaMinutes !== null)?.etaMinutes ?? null;
 
-  // Only show vehicles eligible for the Rider's selected category. A map
-  // marker is a promise of category availability, so unrelated vehicle types
-  // (for example, bikes while Cars are selected) must never appear.
-  const nearbyVehiclesForMap = nearbyDrivers
-    .filter((vehicle) => vehicleServesRideCategory(vehicle, selectedCategory.id))
-    .map((vehicle) => ({
-      ...vehicle,
-      etaMinutes: calculateETA({ lat: vehicle.lat, lng: vehicle.lng }, { lat: userLocation[0], lng: userLocation[1] }),
-    }))
-    .sort((a, b) => (a.etaMinutes || 99) - (b.etaMinutes || 99));
+  // Only eligible drivers with a current road-route estimate receive an ETA.
+  // The map never substitutes straight-line distance or a fixed average speed.
+  const nearbyVehiclesForMap = nearbyVehiclesForSelectedCategory;
 
   // Keep the map open while a request is searching. The expanded trip card is
   // is one tap away, but it should never cover the map when the rider needs
@@ -3301,7 +3351,8 @@ export default function RiderHomeScreen() {
           const isSelected = selectedCategory.id === cat.id;
           const matchingVehicles = nearbyDrivers
             .filter((vehicle) => vehicleServesRideCategory(vehicle, cat.id))
-            .map((vehicle) => calculateETA({ lat: vehicle.lat, lng: vehicle.lng }, { lat: userLocation[0], lng: userLocation[1] }));
+            .map((vehicle) => roadEtaByDriverId[vehicle.id])
+            .filter((eta): eta is number => Number.isFinite(eta) && eta > 0);
           const pickupEta = matchingVehicles.length ? Math.min(...matchingVehicles) : null;
           const driverLabel = `${matchingVehicles.length} ${cat.name} Driver${matchingVehicles.length === 1 ? '' : 's'}`;
           const vehicleArtwork = cat.id === "okada"
