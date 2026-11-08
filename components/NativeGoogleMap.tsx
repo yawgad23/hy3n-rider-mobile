@@ -163,6 +163,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const animationGenerationRef = useRef(0);
   const lastAnimatedDriverKeyRef = useRef<string | null>(null);
   const routeOverviewFitRef = useRef(false);
+  const bookingRouteFrameKeyRef = useRef<string | null>(null);
   const previousRouteOverviewRef = useRef(false);
   const previousFreshRouteRef = useRef<{ points: NativeMapPoint[]; updatedAt: string | null; tripStatus: string | null }>({ points: [], updatedAt: null, tripStatus: null });
   // Keep the last server-published road geometry visible while a fresh route
@@ -363,20 +364,25 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       return;
     }
     if (!driverTracking) previousCameraUpdatedAtRef.current = null;
+    if (!bookingPreview) bookingRouteFrameKeyRef.current = null;
     if (bookingPreview) {
-      if (routeCoordinates.length > 1 && isNativeMapPoint(destination)) {
+      if (routeCoordinates.length > 1 && isNativeMapPoint(destination) && isNativeMapPoint(userLocation)) {
         // Frame the complete authoritative road route and both endpoints.
-        // Reserve bottom space for the booking sheet so the pickup/drop-off
-        // pins remain visible above it on compact and tall devices.
+        // Avoid repeatedly refitting the same route on each 5-second nearby
+        // driver refresh; refit only when the route or either endpoint changes.
         const bookingRouteFrame = [
           userLocation,
           ...routeCoordinates,
           destination,
         ].filter(isNativeMapPoint);
-        mapRef.current?.fitToCoordinates(bookingRouteFrame.map(coordinate), {
-          edgePadding: { top: 132, right: 36, bottom: 460, left: 36 },
-          animated: true,
-        });
+        const frameKey = JSON.stringify(bookingRouteFrame);
+        if (bookingRouteFrameKeyRef.current !== frameKey) {
+          mapRef.current?.fitToCoordinates(bookingRouteFrame.map(coordinate), {
+            edgePadding: { top: 132, right: 36, bottom: 460, left: 36 },
+            animated: true,
+          });
+          bookingRouteFrameKeyRef.current = frameKey;
+        }
         return;
       }
       // Until the server supplies road geometry, keep the local pickup-area
