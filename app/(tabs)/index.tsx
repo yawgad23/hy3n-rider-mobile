@@ -387,6 +387,7 @@ export default function RiderHomeScreen() {
   const [nearbyDrivers, setNearbyDrivers] = useState<NearbyVehicle[]>([]);
   const [roadEtaByDriverId, setRoadEtaByDriverId] = useState<Record<string, number>>({});
   const roadEtaRequestRef = useRef(false);
+  const roadEtaLastRequestAtRef = useRef(0);
   const nearbyDriversRequestRef = useRef(false);
   const [selectedCategory, setSelectedCategory] = useState(RIDE_CATEGORIES[0]);
 
@@ -447,7 +448,7 @@ export default function RiderHomeScreen() {
     let timer: ReturnType<typeof setInterval> | null = null;
     const loadRoadEtas = async () => {
       const firebaseUser = auth.currentUser ?? user;
-      if (!firebaseUser || roadEtaRequestRef.current) return;
+      if (!firebaseUser || roadEtaRequestRef.current || Date.now() - roadEtaLastRequestAtRef.current < 20_000) return;
       const eligibleDrivers = nearbyDrivers
         .filter((vehicle) => vehicleServesRideCategory(vehicle, selectedCategory.id))
         .slice(0, 10);
@@ -456,6 +457,7 @@ export default function RiderHomeScreen() {
         return;
       }
       roadEtaRequestRef.current = true;
+      roadEtaLastRequestAtRef.current = Date.now();
       try {
         const token = await firebaseUser.getIdToken();
         const response = await fetch("https://us-central1-hy3n26.cloudfunctions.net/getDriverRoadEtas", {
@@ -488,11 +490,7 @@ export default function RiderHomeScreen() {
       }
     };
     void loadRoadEtas();
-    timer = setInterval(() => { void loadRoadEtas(); }, 20_000);
-    return () => {
-      disposed = true;
-      if (timer) clearInterval(timer);
-    };
+    return () => { disposed = true; };
   }, [nearbyDrivers, selectedCategory.id, user?.uid, userLocation[0], userLocation[1]]);
 
   const [destination, setDestination] = useState<Location | null>(null);
