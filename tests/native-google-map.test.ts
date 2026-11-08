@@ -124,7 +124,8 @@ describe('Rider native Google Maps migration', () => {
   });
 
   it('keeps a fresh online Driver visible on the map while the Rider compares another category', () => {
-    expect(screen).toContain('const nearbyVehiclesForMap = nearbyDrivers');
+    expect(screen).toContain('const nearbyVehiclesForMap = nearbyVehiclesForSelectedCategory;');
+    expect(screen).toContain('etaMinutes: roadEtaByDriverId[vehicle.id] ?? null');
     expect(screen).toContain('nearbyDrivers={(!activeRide || activeRide.status === "searching")');
     expect(screen).toContain('? nearbyVehiclesForMap.slice(0, 4)');
     expect(screen).toContain('Drivers nearby for another ride type');
