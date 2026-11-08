@@ -387,82 +387,40 @@ export default function RiderHomeScreen() {
   const [nearbyDrivers, setNearbyDrivers] = useState<NearbyVehicle[]>([]);
   const [roadEtaByDriverId, setRoadEtaByDriverId] = useState<Record<string, number>>({});
   const roadEtaRequestRef = useRef(false);
-  const roadEtaLastRequestAtRef = useRef(0);
+  const latestRoadEtaDriversRef = useRef<NearbyVehicle[]>([]);
+  const latestRoadEtaPickupRef = useRef<[number, number]>(userLocation);
   const nearbyDriversRequestRef = useRef(false);
   const [selectedCategory, setSelectedCategory] = useState(RIDE_CATEGORIES[0]);
 
-  // A changed pickup or service category invalidates the previous road ETA set.
+  // Keep the latest GPS/driver feed in refs. GPS markers update every 5s,
+  // while road routing runs on a separate 20s cadence to avoid excess API calls.
   useEffect(() => {
-    roadEtaLastRequestAtRef.current = 0;
+    latestRoadEtaDriversRef.current = nearbyDrivers;
+  }, [nearbyDrivers]);
+
+  useEffect(() => {
+    latestRoadEtaPickupRef.current = userLocation;
+  }, [userLocation[0], userLocation[1]]);
+
+  useEffect(() => {
     setRoadEtaByDriverId({});
-  }, [selectedCategory.id, userLocation[0], userLocation[1]]);
+  }, [selectedCategory.id]);
 
-  // Driver presence is server-owned. The production Firestore rules correctly
-  // deny a Rider a collection-wide read, so use the authenticated endpoint that
-  // applies approval, freshness, category, radius, and fee gates before sending
-  // anonymous marker coordinates back to this app.
-  useEffect(() => {
-    let disposed = false;
-    let timer: ReturnType<typeof setInterval> | null = null;
-    const loadNearbyDrivers = async () => {
-      const firebaseUser = auth.currentUser ?? user;
-      if (!firebaseUser || !Number.isFinite(userLocation[0]) || !Number.isFinite(userLocation[1])) {
-        if (!disposed) setNearbyDrivers([]);
-        return;
-      }
-      if (nearbyDriversRequestRef.current) return;
-      nearbyDriversRequestRef.current = true;
-      try {
-        const token = await firebaseUser.getIdToken();
-        const params = new URLSearchParams({
-          lat: String(userLocation[0]),
-          lng: String(userLocation[1]),
-          category: selectedCategory.id,
-        });
-        const response = await fetch(`${getApiBaseUrl()}/api/rider/nearby-vehicles?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const payload = await response.json().catch(() => null) as { success?: boolean; nearbyVehicles?: Array<Record<string, any>> } | null;
-        if (!response.ok || !payload?.success) throw new Error('Nearby vehicle feed unavailable');
-        const vehicles: NearbyVehicle[] = (payload.nearbyVehicles || []).map((vehicle) => ({
-          id: String(vehicle.id),
-          lat: Number(vehicle.lat),
-          lng: Number(vehicle.lng),
-          heading: Number.isFinite(Number(vehicle.heading)) ? Number(vehicle.heading) : undefined,
-          vehicleColourHex: vehicle.vehicleColourHex,
-          serviceType: vehicle.serviceType === 'okada' || vehicle.serviceType === 'delivery' ? vehicle.serviceType : 'car',
-          rideCategories: [selectedCategory.id],
-        })).filter((vehicle) => Number.isFinite(vehicle.lat) && Number.isFinite(vehicle.lng));
-        if (!disposed) setNearbyDrivers(vehicles);
-      } catch (error) {
-        // Keep the last successful marker set during a transient API failure;
-        // do not turn a network blip into a false "no Drivers" state.
-        if (!disposed) return;
-      } finally {
-        nearbyDriversRequestRef.current = false;
-      }
-    };
-    void loadNearbyDrivers();
-    timer = setInterval(() => { void loadNearbyDrivers(); }, 5_000);
-    return () => { disposed = true; if (timer) clearInterval(timer); };
-  }, [selectedCategory.id, user?.uid, userLocation[0], userLocation[1]]);
-
-  // Road-based pickup ETA is calculated server-side with Google Routes API.
-  // Refresh independently from the 5-second driver marker feed to limit API use.
   useEffect(() => {
     let disposed = false;
     const loadRoadEtas = async () => {
       const firebaseUser = auth.currentUser ?? user;
-      if (!firebaseUser || roadEtaRequestRef.current || Date.now() - roadEtaLastRequestAtRef.current < 20_000) return;
-      const eligibleDrivers = nearbyDrivers
+      if (!firebaseUser || roadEtaRequestRef.current) return;
+      const pickup = latestRoadEtaPickupRef.current;
+      const eligibleDrivers = latestRoadEtaDriversRef.current
         .filter((vehicle) => vehicleServesRideCategory(vehicle, selectedCategory.id))
         .slice(0, 10);
-      if (!eligibleDrivers.length || !Number.isFinite(userLocation[0]) || !Number.isFinite(userLocation[1])) {
+      if (!eligibleDrivers.length || !Number.isFinite(pickup[0]) || !Number.isFinite(pickup[1])) {
         if (!disposed) setRoadEtaByDriverId({});
         return;
       }
+
       roadEtaRequestRef.current = true;
-      roadEtaLastRequestAtRef.current = Date.now();
       try {
         const token = await firebaseUser.getIdToken();
         const response = await fetch("https://us-central1-hy3n26.cloudfunctions.net/getDriverRoadEtas", {
@@ -472,7 +430,7 @@ export default function RiderHomeScreen() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            pickup: { lat: userLocation[0], lng: userLocation[1] },
+            pickup: { lat: pickup[0], lng: pickup[1] },
             drivers: eligibleDrivers.map((vehicle) => ({
               id: vehicle.id,
               lat: vehicle.lat,
@@ -488,15 +446,20 @@ export default function RiderHomeScreen() {
         }
         if (!disposed) setRoadEtaByDriverId(nextEtas);
       } catch {
-        // Do not keep displaying a stale or guessed ETA when live road routing fails.
+        // Never keep displaying an old or guessed ETA when road routing fails.
         if (!disposed) setRoadEtaByDriverId({});
       } finally {
         roadEtaRequestRef.current = false;
       }
     };
+
     void loadRoadEtas();
-    return () => { disposed = true; };
-  }, [nearbyDrivers, selectedCategory.id, user?.uid, userLocation[0], userLocation[1]]);
+    const timer = setInterval(() => { void loadRoadEtas(); }, 20_000);
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+    };
+  }, [selectedCategory.id, user?.uid]);
 
   const [destination, setDestination] = useState<Location | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
