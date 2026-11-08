@@ -414,6 +414,54 @@ export default function RiderHomeScreen() {
     setRoadEtaByDriverId({});
   }, [selectedCategory.id]);
 
+  // Driver presence remains a separate, server-authoritative feed. Keep this
+  // 5-second refresh independent from the slower traffic-aware ETA requests.
+  useEffect(() => {
+    let disposed = false;
+    const loadNearbyDrivers = async () => {
+      const firebaseUser = auth.currentUser ?? user;
+      if (!firebaseUser || !Number.isFinite(userLocation[0]) || !Number.isFinite(userLocation[1])) {
+        if (!disposed) setNearbyDrivers([]);
+        return;
+      }
+      if (nearbyDriversRequestRef.current) return;
+      nearbyDriversRequestRef.current = true;
+      try {
+        const token = await firebaseUser.getIdToken();
+        const params = new URLSearchParams({
+          lat: String(userLocation[0]),
+          lng: String(userLocation[1]),
+          category: selectedCategory.id,
+        });
+        const response = await fetch(`${getApiBaseUrl()}/api/rider/nearby-vehicles?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = await response.json().catch(() => null) as { success?: boolean; nearbyVehicles?: Array<Record<string, any>> } | null;
+        if (!response.ok || !payload?.success) throw new Error("Nearby vehicle feed unavailable");
+        const vehicles: NearbyVehicle[] = (payload.nearbyVehicles || []).map((vehicle) => ({
+          id: String(vehicle.id),
+          lat: Number(vehicle.lat),
+          lng: Number(vehicle.lng),
+          heading: Number.isFinite(Number(vehicle.heading)) ? Number(vehicle.heading) : undefined,
+          vehicleColourHex: vehicle.vehicleColourHex,
+          serviceType: vehicle.serviceType === "okada" || vehicle.serviceType === "delivery" ? vehicle.serviceType : "car",
+          rideCategories: [selectedCategory.id],
+        })).filter((vehicle) => Number.isFinite(vehicle.lat) && Number.isFinite(vehicle.lng));
+        if (!disposed) setNearbyDrivers(vehicles);
+      } catch {
+        // Preserve the last successful marker set during transient feed errors.
+      } finally {
+        nearbyDriversRequestRef.current = false;
+      }
+    };
+    void loadNearbyDrivers();
+    const timer = setInterval(() => { void loadNearbyDrivers(); }, 5_000);
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+    };
+  }, [selectedCategory.id, user?.uid, userLocation[0], userLocation[1]]);
+
   useEffect(() => {
     let disposed = false;
     const loadRoadEtas = async () => {
