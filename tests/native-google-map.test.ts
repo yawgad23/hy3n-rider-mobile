@@ -99,9 +99,12 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('bookingDropoffTimeLabel');
     expect(component).toContain('BookingEndpointMarker');
     expect(component).toContain('bookingPreviewRegion');
-    expect(component).toContain('Do not fit a city-wide pickup-to-drop-off route automatically');
+    expect(component).toContain('const bookingRouteFrame = [');
+    expect(component).toContain('...routeCoordinates,');
+    expect(component).toContain('destination,');
+    expect(component).toContain('mapRef.current?.fitToCoordinates(bookingRouteFrame.map(coordinate)');
+    expect(component).toContain('edgePadding: { top: 132, right: 36, bottom: 460, left: 36 }');
     expect(component).toContain('mapRef.current?.animateToRegion(region, 420);');
-    expect(component).not.toContain('routeFrameCoordinates');
     expect(component).not.toContain('bookingTimeCallouts');
   });
 
