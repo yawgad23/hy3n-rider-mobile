@@ -364,15 +364,31 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     }
     if (!driverTracking) previousCameraUpdatedAtRef.current = null;
     if (bookingPreview) {
+      const validBookingRoute = routeCoordinates.length > 1;
+      if (validBookingRoute) {
+        // A booking preview must frame the complete journey, not just the
+        // first 1.2 km near pickup. Include both authoritative route geometry
+        // and the explicit endpoints so the destination can never be clipped
+        // when the route bends or the server geometry omits an endpoint.
+        const bookingPoints = [
+          userLocation,
+          ...routeCoordinates.map((point) => [point.latitude, point.longitude] as NativeMapPoint),
+          destination,
+        ].filter(isNativeMapPoint);
+        mapRef.current?.fitToCoordinates(bookingPoints.map(coordinate), {
+          edgePadding: { top: 132, right: 36, bottom: 460, left: 36 },
+          animated: true,
+        });
+        return;
+      }
+      // Until authoritative road geometry arrives, keep the safe local
+      // pickup/nearby-driver preview. Never draw a synthetic straight route.
       const region = bookingPreviewRegion(
         userLocation,
         (driverRoutePoints || []).filter(isNativeMapPoint),
         nearby.map((driver) => [driver.lat, driver.lng] as NativeMapPoint),
       );
       if (region) {
-        // Do not fit a city-wide pickup-to-drop-off route automatically: it
-        // makes the pickup car and road detail too small to use. The full
-        // route remains on the map and a Rider gesture keeps full control.
         mapRef.current?.animateToRegion(region, 420);
         return;
       }
