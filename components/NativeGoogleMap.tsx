@@ -103,7 +103,7 @@ function CompactVehicleMarker({ serviceType, size }: { serviceType?: string | nu
 
 function BookingEndpointMarker({ tone, timeLabel }: { tone: 'pickup' | 'dropoff'; timeLabel?: string | null }) {
   const backgroundColor = tone === 'pickup' ? '#007E4F' : '#D4AF37';
-  const time = String(timeLabel || '').replace(/^(Pickup|Drop-off)\\s*/i, '').trim();
+  const time = String(timeLabel || '').replace(/^(Pickup|Drop-off)\s*/i, '').trim();
   return (
     <View pointerEvents="none" style={styles.bookingEndpointWithTime}>
       {time ? (
