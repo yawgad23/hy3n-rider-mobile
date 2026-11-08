@@ -136,6 +136,14 @@ describe('Rider native Google Maps migration', () => {
     expect(screen).toContain('choose a matching type');
   });
 
+  it('uses fresh road-based pickup ETAs on a controlled refresh cadence', () => {
+    expect(screen).toContain('latestRoadEtaDriversRef.current = nearbyDrivers');
+    expect(screen).toContain('latestRoadEtaPickupRef.current = userLocation');
+    expect(screen).toContain('setInterval(() => { void loadRoadEtas(); }, 20_000)');
+    expect(screen).toContain('etaMinutes: roadEtaByDriverId[vehicle.id] ?? null');
+    expect(screen).not.toContain('etaMinutes: calculateETA({ lat: vehicle.lat');
+  });
+
   it('keeps the Maps stub web-only and resolves native SDK keys for both stores', () => {
     expect(metroConfig).toContain('moduleName === "react-native-maps" && platform === "web"');
     expect(metroConfig).not.toContain('if (moduleName === "react-native-maps") {');
