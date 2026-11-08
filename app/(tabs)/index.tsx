@@ -445,7 +445,6 @@ export default function RiderHomeScreen() {
   // Refresh independently from the 5-second driver marker feed to limit API use.
   useEffect(() => {
     let disposed = false;
-    let timer: ReturnType<typeof setInterval> | null = null;
     const loadRoadEtas = async () => {
       const firebaseUser = auth.currentUser ?? user;
       if (!firebaseUser || roadEtaRequestRef.current || Date.now() - roadEtaLastRequestAtRef.current < 20_000) return;
