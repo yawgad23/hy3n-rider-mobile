@@ -3551,7 +3551,7 @@ export default function RiderHomeScreen() {
   const renderAddressFirstHome = () => (
     <View style={{ flex: 1, backgroundColor: BG }}>
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: safeTop + 12, paddingBottom: 32 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: safeTop + 6, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
       >
         <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
@@ -3578,7 +3578,7 @@ export default function RiderHomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={{ color: TEXT, fontSize: 24, fontWeight: "900", marginTop: 34, letterSpacing: -0.35 }}>Let’s get you moving.</Text>
+        <Text style={{ color: TEXT, fontSize: 24, fontWeight: "900", marginTop: 20, letterSpacing: -0.35 }}>Let’s get you moving.</Text>
         <Text style={{ color: MUTED, fontSize: 14, lineHeight: 20, marginTop: 5 }}>Enter your destination first, then compare live HY3N ride prices.</Text>
 
         <TouchableOpacity
@@ -3586,7 +3586,7 @@ export default function RiderHomeScreen() {
           accessibilityRole="button"
           accessibilityLabel="Where to"
           accessibilityHint="Choose a destination before selecting a live ride price"
-          style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: CARD, borderRadius: 18, padding: 15, marginTop: 24, borderWidth: 1.5, borderColor: GOLD }}
+          style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: CARD, borderRadius: 18, padding: 14, marginTop: 18, borderWidth: 1.5, borderColor: GOLD }}
         >
           <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
             <MaterialIcons name="search" size={25} color="#151515" />
@@ -3598,7 +3598,7 @@ export default function RiderHomeScreen() {
           <MaterialIcons name="arrow-forward-ios" size={18} color={MUTED} />
         </TouchableOpacity>
 
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 16, paddingBottom: 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 12, paddingBottom: 8 }}>
           <TouchableOpacity
             onPress={handleUseCurrentPickupLocation}
             disabled={refreshingPickupLocation}
@@ -3636,7 +3636,7 @@ export default function RiderHomeScreen() {
                 onPress={() => handleQuickPlace(place)}
                 accessibilityRole="button"
                 accessibilityLabel={`Choose saved place ${place.name}`}
-                style={{ flexDirection: "row", alignItems: "center", gap: 7, minWidth: 112, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}
+                style={{ flexDirection: "row", alignItems: "center", gap: 7, minWidth: 112, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER }}
               >
                 <MaterialIcons name={iconName} size={16} color={GOLD} />
                 <View style={{ flex: 1 }}>
@@ -3650,18 +3650,18 @@ export default function RiderHomeScreen() {
             onPress={() => openLocationSearch("destination")}
             accessibilityRole="button"
             accessibilityLabel="Add a saved destination"
-            style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: BORDER }}
+            style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: BORDER }}
           >
             <MaterialIcons name="add" size={16} color={MUTED} />
             <Text style={{ color: MUTED, fontSize: 12, fontWeight: "800" }}>Add</Text>
           </TouchableOpacity>
         </ScrollView>
 
-        <View style={{ height: 1, backgroundColor: BORDER, marginTop: 3, marginBottom: 20 }} />
+        <View style={{ height: 1, backgroundColor: BORDER, marginTop: 3, marginBottom: 14 }} />
         <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }}>Choose a HY3N service</Text>
         <Text style={{ color: MUTED, fontSize: 13, marginTop: 4 }}>Pick one now or choose after entering your destination.</Text>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 14 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
           {homeServiceCategories.map((category) => {
             const selected = selectedCategory.id === category.id;
             return (
@@ -3673,7 +3673,7 @@ export default function RiderHomeScreen() {
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Choose ${category.name} and enter destination`}
-                style={{ width: "31%", minHeight: 108, justifyContent: "space-between", backgroundColor: selected ? `${GOLD}1A` : CARD, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
+                style={{ width: "31%", minHeight: 96, justifyContent: "space-between", backgroundColor: selected ? `${GOLD}1A` : CARD, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
               >
                 {category.id === 'car_delivery' ? (
                   <View style={{ width: 54, height: 42, alignItems: 'center', justifyContent: 'center', marginLeft: -4, marginTop: -3 }}>
@@ -3697,7 +3697,7 @@ export default function RiderHomeScreen() {
           })}
         </View>
 
-        <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", lineHeight: 18, marginTop: 8, paddingHorizontal: 12 }}>Choose your destination to see live prices and available Drivers.</Text>
+        <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", lineHeight: 18, marginTop: 6, paddingHorizontal: 12 }}>Choose your destination to see live prices and available Drivers.</Text>
       </ScrollView>
     </View>
   );
