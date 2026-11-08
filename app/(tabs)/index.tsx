@@ -3697,7 +3697,7 @@ export default function RiderHomeScreen() {
           })}
         </View>
 
-        <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", lineHeight: 18, marginTop: 22, paddingHorizontal: 12 }}>Choose your destination to see live prices and available Drivers.</Text>
+        <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", lineHeight: 18, marginTop: 8, paddingHorizontal: 12 }}>Choose your destination to see live prices and available Drivers.</Text>
       </ScrollView>
     </View>
   );
