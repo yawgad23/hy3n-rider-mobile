@@ -364,15 +364,29 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     }
     if (!driverTracking) previousCameraUpdatedAtRef.current = null;
     if (bookingPreview) {
+      if (routeCoordinates.length > 1 && isNativeMapPoint(destination)) {
+        // Frame the complete authoritative road route and both endpoints.
+        // Reserve bottom space for the booking sheet so the pickup/drop-off
+        // pins remain visible above it on compact and tall devices.
+        const bookingRouteFrame = [
+          userLocation,
+          ...routeCoordinates,
+          destination,
+        ].filter(isNativeMapPoint);
+        mapRef.current?.fitToCoordinates(bookingRouteFrame.map(coordinate), {
+          edgePadding: { top: 132, right: 36, bottom: 460, left: 36 },
+          animated: true,
+        });
+        return;
+      }
+      // Until the server supplies road geometry, keep the local pickup-area
+      // preview rather than inventing a straight-line route.
       const region = bookingPreviewRegion(
         userLocation,
         (driverRoutePoints || []).filter(isNativeMapPoint),
         nearby.map((driver) => [driver.lat, driver.lng] as NativeMapPoint),
       );
       if (region) {
-        // Do not fit a city-wide pickup-to-drop-off route automatically: it
-        // makes the pickup car and road detail too small to use. The full
-        // route remains on the map and a Rider gesture keeps full control.
         mapRef.current?.animateToRegion(region, 420);
         return;
       }
@@ -411,7 +425,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       previousCameraUpdatedAtRef.current = null;
     }
     mapRef.current?.animateToRegion(region, cameraDurationMs);
-  }, [bookingPreview, center, displayDriverPoint, driverLocationUpdatedAt, driverRoutePoints, driverTracking, mapReady, nearby, routeCoordinates, routeOverview, trackedTarget, userLocation]);
+  }, [bookingPreview, center, destination, displayDriverPoint, driverLocationUpdatedAt, driverRoutePoints, driverTracking, mapReady, nearby, routeCoordinates, routeOverview, trackedTarget, userLocation]);
 
   useEffect(() => {
     if (!routeOverview) {
