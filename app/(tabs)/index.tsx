@@ -391,6 +391,12 @@ export default function RiderHomeScreen() {
   const nearbyDriversRequestRef = useRef(false);
   const [selectedCategory, setSelectedCategory] = useState(RIDE_CATEGORIES[0]);
 
+  // A changed pickup or service category invalidates the previous road ETA set.
+  useEffect(() => {
+    roadEtaLastRequestAtRef.current = 0;
+    setRoadEtaByDriverId({});
+  }, [selectedCategory.id, userLocation[0], userLocation[1]]);
+
   // Driver presence is server-owned. The production Firestore rules correctly
   // deny a Rider a collection-wide read, so use the authenticated endpoint that
   // applies approval, freshness, category, radius, and fee gates before sending
