@@ -13,21 +13,25 @@ function clockTime(value: Date): string {
 }
 
 /**
- * Formats the booking-preview callouts shown directly on the native map.
- * Pickup comes from a currently eligible nearby Driver; drop-off is derived
- * only from the server-owned route duration, never a client fare estimate.
+ * Booking-preview time callouts are shown only when a matching, live nearby
+ * Driver has a valid road ETA AND the current server route quote has a valid
+ * destination duration. If either input is missing, hide both callouts rather
+ * than showing "Finding Driver", "Calculating", or a misleading partial ETA.
  */
 export function bookingMapTimeLabels(input: {
   pickupEtaMinutes?: unknown;
   routeDurationMinutes?: unknown;
   now?: Date;
-}): { pickup: string; dropoff: string } {
+}): { pickup: string | null; dropoff: string | null } {
   const pickupMinutes = finiteWholeMinutes(input.pickupEtaMinutes);
   const routeMinutes = finiteWholeMinutes(input.routeDurationMinutes);
-  const now = input.now ?? new Date();
+  if (pickupMinutes === null || routeMinutes === null) {
+    return { pickup: null, dropoff: null };
+  }
 
+  const now = input.now ?? new Date();
   return {
-    pickup: pickupMinutes === null ? 'Pickup\nFinding Driver' : `Pickup\n${Math.max(1, pickupMinutes)} min`,
-    dropoff: routeMinutes === null ? 'Drop-off\nCalculating' : `Drop-off\n${clockTime(new Date(now.getTime() + routeMinutes * 60_000))}`,
+    pickup: `Pickup\n${Math.max(1, pickupMinutes)} min`,
+    dropoff: `Drop-off\n${clockTime(new Date(now.getTime() + routeMinutes * 60_000))}`,
   };
 }
