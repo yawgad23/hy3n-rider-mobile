@@ -3427,11 +3427,11 @@ export default function RiderHomeScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, backgroundColor: `${GREEN}14`, borderRadius: 12, borderWidth: 1, borderColor: `${GREEN}44`, paddingHorizontal: 12, paddingVertical: 9, marginTop: -3, marginBottom: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
             <MaterialIcons name="my-location" size={15} color={GREEN} />
-            <Text style={{ color: TEXT, fontSize: 12, fontWeight: '800' }}>{bookingMapTimes.pickup.replace('\n', ' ')}</Text>
+            <Text style={{ color: TEXT, fontSize: 12, fontWeight: '800' }}>{bookingMapTimes?.pickup.replace('\n', ' ')}</Text>
           </View>
           <MaterialIcons name="arrow-forward" size={16} color={MUTED} />
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'flex-end' }}>
-            <Text style={{ color: TEXT, fontSize: 12, fontWeight: '800' }}>{bookingMapTimes.dropoff.replace('\n', ' ')}</Text>
+            <Text style={{ color: TEXT, fontSize: 12, fontWeight: '800' }}>{bookingMapTimes?.dropoff.replace('\n', ' ')}</Text>
             <MaterialIcons name="place" size={16} color={GOLD} />
           </View>
         </View>
