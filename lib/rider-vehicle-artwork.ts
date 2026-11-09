@@ -9,6 +9,15 @@ export const RIDER_VEHICLE_ARTWORK = {
   delivery: require('../assets/images/hy3n-delivery-vehicle-512.png'),
 } as const;
 
+/** Compact silhouettes for live maps; intentionally separate from card renders. */
+export const RIDER_MAP_MARKER_ARTWORK = {
+  standard: require('../assets/images/map-standard-vehicle-256.png'),
+  comfort: require('../assets/images/map-comfort-vehicle-256.png'),
+  kantanka: require('../assets/images/map-kantanka-vehicle-256.png'),
+  okada: require('../assets/images/map-okada-vehicle-256.png'),
+  delivery: require('../assets/images/map-delivery-vehicle-256.png'),
+} as const;
+
 export function riderVehicleArtworkKey(value: unknown): RiderVehicleArtworkKey {
   const normalized = String(value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
   if (normalized.includes('kantanka')) return 'kantanka';

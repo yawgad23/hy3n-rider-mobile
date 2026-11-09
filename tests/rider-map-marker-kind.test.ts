@@ -19,7 +19,7 @@ describe('Rider vehicle marker kind mapping', () => {
   });
 
   it('uses the shared resolver in both Rider map renderers', () => {
-    expect(nativeMap).toContain('RIDER_VEHICLE_ARTWORK[riderMapMarkerKind(serviceType)]');
+    expect(nativeMap).toContain('RIDER_MAP_MARKER_ARTWORK[riderMapMarkerKind(serviceType)]');
     expect(fallbackMap).toContain('return riderMapMarkerKind(value);');
   });
 });

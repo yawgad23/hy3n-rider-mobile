@@ -8,13 +8,14 @@ import { riderDriverMarkerMotionDuration } from '@/lib/rider-driver-marker-motio
 import { riderRemainingLiveRoute } from '@/lib/rider-live-route-display';
 import { authoritativeRouteOverviewPoints, bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
 import { riderMapMarkerKind } from '@/lib/rider-map-marker-kind';
-import { RIDER_VEHICLE_ARTWORK } from '@/lib/rider-vehicle-artwork';
+import { RIDER_MAP_MARKER_ARTWORK } from '@/lib/rider-vehicle-artwork';
 
 export type NearbyDriver = {
   id: string;
   lat: number;
   lng: number;
   heading?: number | null;
+  vehicleColourHex?: string | null;
   serviceType?: string | null;
 };
 
@@ -84,13 +85,13 @@ function safeColour(value: string | null | undefined, fallback: string) {
 }
 
 function markerAsset(serviceType?: string | null) {
-  return RIDER_VEHICLE_ARTWORK[riderMapMarkerKind(serviceType)];
+  return RIDER_MAP_MARKER_ARTWORK[riderMapMarkerKind(serviceType)];
 }
 
-function CompactVehicleMarker({ serviceType, size }: { serviceType?: string | null; size: number }) {
+function CompactVehicleMarker({ serviceType, size, colour }: { serviceType?: string | null; size: number; colour?: string | null }) {
   return (
-    <View pointerEvents="none" style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Image source={markerAsset(serviceType)} style={{ width: size, height: size }} resizeMode="contain" />
+    <View pointerEvents="none" style={{ width: size, height: size, borderRadius: size / 2, borderWidth: 2, borderColor: safeColour(colour, '#D4AF37'), backgroundColor: 'rgba(10,10,10,0.82)', alignItems: 'center', justifyContent: 'center' }}>
+      <Image source={markerAsset(serviceType)} style={{ width: size - 4, height: size - 4 }} resizeMode="contain" />
     </View>
   );
 }
@@ -542,7 +543,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           title={tripStatus === 'in_progress' ? 'HY3N Driver en route' : 'Your HY3N Driver'}
           zIndex={8}
         >
-          <CompactVehicleMarker serviceType={driverServiceType} size={ACTIVE_DRIVER_MARKER_SIZE} />
+          <CompactVehicleMarker serviceType={driverServiceType} colour={driverColourHex} size={ACTIVE_DRIVER_MARKER_SIZE} />
         </Marker.Animated>}
         {!driverTracking && nearby.map((driver) => <AnimatedNearbyMarker
           key={`nearby-${driver.id}`}
@@ -551,7 +552,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           heading={driver.heading}
           zIndex={9}
         >
-          <CompactVehicleMarker serviceType={driver.serviceType} size={NEARBY_DRIVER_MARKER_SIZE} />
+          <CompactVehicleMarker serviceType={driver.serviceType} colour={driver.vehicleColourHex} size={NEARBY_DRIVER_MARKER_SIZE} />
         </AnimatedNearbyMarker>)}
       </MapView>
 

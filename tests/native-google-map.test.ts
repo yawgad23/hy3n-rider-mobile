@@ -122,8 +122,8 @@ describe('Rider native Google Maps migration', () => {
   });
 
   it('uses the shared five-category artwork registry for map markers', () => {
-    expect(component).toContain("import { RIDER_VEHICLE_ARTWORK } from '@/lib/rider-vehicle-artwork';");
-    expect(component).toContain('RIDER_VEHICLE_ARTWORK[riderMapMarkerKind(serviceType)]');
+    expect(component).toContain("import { RIDER_MAP_MARKER_ARTWORK } from '@/lib/rider-vehicle-artwork';");
+    expect(component).toContain('RIDER_MAP_MARKER_ARTWORK[riderMapMarkerKind(serviceType)]');
     expect(component).not.toContain("require('../assets/images/hy3n-car-delivery-open-trunk-card.png')");
     expect(screen).toContain('isDeliveryCategory(activeRide?.categoryId) ? activeRide?.categoryId');
   });
