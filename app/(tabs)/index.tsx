@@ -3624,7 +3624,7 @@ export default function RiderHomeScreen() {
   const renderAddressFirstHome = () => (
     <View style={{ flex: 1, backgroundColor: BG }}>
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: safeTop + 6, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: safeTop + 2, paddingBottom: 16 }}
         showsVerticalScrollIndicator={false}
       >
         <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
@@ -3634,7 +3634,7 @@ export default function RiderHomeScreen() {
               accessibilityLabel="HY3N car logo"
               style={{ width: 140, height: 52, resizeMode: 'contain', marginLeft: -7 }}
             />
-            <Text style={{ color: greetingColor, fontSize: 28, fontWeight: '900', letterSpacing: -0.5, marginTop: 10 }}>
+            <Text style={{ color: greetingColor, fontSize: 28, fontWeight: '900', letterSpacing: -0.5, marginTop: 6 }}>
               Akwaaba{riderProfile?.full_name ? `, ${riderProfile.full_name.split(' ')[0]}` : ''}! 👋
             </Text>
             <Text style={{ color: greetingSubtitleColor, fontSize: 15, fontWeight: '700', fontStyle: 'italic', marginTop: 2 }}>
@@ -3651,15 +3651,15 @@ export default function RiderHomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={{ color: TEXT, fontSize: 24, fontWeight: "900", marginTop: 20, letterSpacing: -0.35 }}>Let’s get you moving.</Text>
-        <Text style={{ color: MUTED, fontSize: 14, lineHeight: 20, marginTop: 5 }}>Enter your destination first, then compare live HY3N ride prices.</Text>
+        <Text style={{ color: TEXT, fontSize: 24, fontWeight: "900", marginTop: 12, letterSpacing: -0.35 }}>Let’s get you moving.</Text>
+        <Text style={{ color: MUTED, fontSize: 14, lineHeight: 19, marginTop: 3 }}>Enter your destination first, then compare live HY3N ride prices.</Text>
 
         <TouchableOpacity
           onPress={() => openLocationSearch("destination")}
           accessibilityRole="button"
           accessibilityLabel="Where to"
           accessibilityHint="Choose a destination before selecting a live ride price"
-          style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: CARD, borderRadius: 18, padding: 14, marginTop: 18, borderWidth: 1.5, borderColor: GOLD }}
+          style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: CARD, borderRadius: 18, padding: 12, marginTop: 12, borderWidth: 1.5, borderColor: GOLD }}
         >
           <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
             <MaterialIcons name="search" size={25} color="#151515" />
@@ -3671,7 +3671,7 @@ export default function RiderHomeScreen() {
           <MaterialIcons name="arrow-forward-ios" size={18} color={MUTED} />
         </TouchableOpacity>
 
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 12, paddingBottom: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 7, paddingBottom: 4 }}>
           <TouchableOpacity
             onPress={handleUseCurrentPickupLocation}
             disabled={refreshingPickupLocation}
@@ -3730,11 +3730,11 @@ export default function RiderHomeScreen() {
           </TouchableOpacity>
         </ScrollView>
 
-        <View style={{ height: 1, backgroundColor: BORDER, marginTop: 3, marginBottom: 14 }} />
+        <View style={{ height: 1, backgroundColor: BORDER, marginTop: 2, marginBottom: 8 }} />
         <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }}>Choose a HY3N service</Text>
         <Text style={{ color: MUTED, fontSize: 13, marginTop: 4 }}>Pick one now or choose after entering your destination.</Text>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
           {homeServiceCategories.map((category) => {
             const selected = selectedCategory.id === category.id;
             return (
@@ -3746,7 +3746,7 @@ export default function RiderHomeScreen() {
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Choose ${category.name} and enter destination`}
-                style={{ width: "31%", minHeight: 96, justifyContent: "space-between", backgroundColor: selected ? `${GOLD}1A` : CARD, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
+                style={{ width: "31%", minHeight: 88, justifyContent: "space-between", backgroundColor: selected ? `${GOLD}1A` : CARD, borderRadius: 15, padding: 10, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
               >
                 {category.id === 'car_delivery' ? (
                   <View style={{ width: 54, height: 42, alignItems: 'center', justifyContent: 'center', marginLeft: -4, marginTop: -3 }}>
