@@ -103,7 +103,7 @@ function CompactVehicleMarker({ serviceType, size }: { serviceType?: string | nu
 
 function BookingEndpointMarker({ tone, timeLabel }: { tone: 'pickup' | 'dropoff'; timeLabel?: string | null }) {
   const backgroundColor = tone === 'pickup' ? '#007E4F' : '#D4AF37';
-  const time = String(timeLabel || '').replace(/^(Pickup|Drop-off)\\s*/i, '').trim();
+  const time = String(timeLabel || '').replace(/^(Pickup|Drop-off)\s*/i, '').trim();
   return (
     <View pointerEvents="none" style={styles.bookingEndpointWithTime}>
       {time ? (
@@ -163,6 +163,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const animationGenerationRef = useRef(0);
   const lastAnimatedDriverKeyRef = useRef<string | null>(null);
   const routeOverviewFitRef = useRef(false);
+  const bookingRouteFrameKeyRef = useRef<string | null>(null);
   const previousRouteOverviewRef = useRef(false);
   const previousFreshRouteRef = useRef<{ points: NativeMapPoint[]; updatedAt: string | null; tripStatus: string | null }>({ points: [], updatedAt: null, tripStatus: null });
   // Keep the last server-published road geometry visible while a fresh route
@@ -363,16 +364,35 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       return;
     }
     if (!driverTracking) previousCameraUpdatedAtRef.current = null;
+    if (!bookingPreview) bookingRouteFrameKeyRef.current = null;
     if (bookingPreview) {
+      if (routeCoordinates.length > 1 && isNativeMapPoint(destination) && isNativeMapPoint(userLocation)) {
+        // Frame the complete authoritative road route and both endpoints.
+        // Avoid repeatedly refitting the same route on each 5-second nearby
+        // driver refresh; refit only when the route or either endpoint changes.
+        const bookingRouteFrame = [
+          userLocation,
+          ...routeCoordinates,
+          destination,
+        ].filter(isNativeMapPoint);
+        const frameKey = JSON.stringify(bookingRouteFrame);
+        if (bookingRouteFrameKeyRef.current !== frameKey) {
+          mapRef.current?.fitToCoordinates(bookingRouteFrame.map(coordinate), {
+            edgePadding: { top: 132, right: 36, bottom: 460, left: 36 },
+            animated: true,
+          });
+          bookingRouteFrameKeyRef.current = frameKey;
+        }
+        return;
+      }
+      // Until the server supplies road geometry, keep the local pickup-area
+      // preview rather than inventing a straight-line route.
       const region = bookingPreviewRegion(
         userLocation,
         (driverRoutePoints || []).filter(isNativeMapPoint),
         nearby.map((driver) => [driver.lat, driver.lng] as NativeMapPoint),
       );
       if (region) {
-        // Do not fit a city-wide pickup-to-drop-off route automatically: it
-        // makes the pickup car and road detail too small to use. The full
-        // route remains on the map and a Rider gesture keeps full control.
         mapRef.current?.animateToRegion(region, 420);
         return;
       }
@@ -411,7 +431,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       previousCameraUpdatedAtRef.current = null;
     }
     mapRef.current?.animateToRegion(region, cameraDurationMs);
-  }, [bookingPreview, center, displayDriverPoint, driverLocationUpdatedAt, driverRoutePoints, driverTracking, mapReady, nearby, routeCoordinates, routeOverview, trackedTarget, userLocation]);
+  }, [bookingPreview, center, destination, displayDriverPoint, driverLocationUpdatedAt, driverRoutePoints, driverTracking, mapReady, nearby, routeCoordinates, routeOverview, trackedTarget, userLocation]);
 
   useEffect(() => {
     if (!routeOverview) {

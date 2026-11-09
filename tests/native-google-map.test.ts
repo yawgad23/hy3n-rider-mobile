@@ -99,9 +99,13 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('bookingDropoffTimeLabel');
     expect(component).toContain('BookingEndpointMarker');
     expect(component).toContain('bookingPreviewRegion');
-    expect(component).toContain('Do not fit a city-wide pickup-to-drop-off route automatically');
+    expect(component).toContain('const bookingRouteFrame = [');
+    expect(component).toContain('...routeCoordinates,');
+    expect(component).toContain('destination,');
+    expect(component).toContain('mapRef.current?.fitToCoordinates(bookingRouteFrame.map(coordinate)');
+    expect(component).toContain('bookingRouteFrameKeyRef.current !== frameKey');
+    expect(component).toContain('edgePadding: { top: 132, right: 36, bottom: 460, left: 36 }');
     expect(component).toContain('mapRef.current?.animateToRegion(region, 420);');
-    expect(component).not.toContain('routeFrameCoordinates');
     expect(component).not.toContain('bookingTimeCallouts');
   });
 
@@ -124,11 +128,20 @@ describe('Rider native Google Maps migration', () => {
   });
 
   it('keeps a fresh online Driver visible on the map while the Rider compares another category', () => {
-    expect(screen).toContain('const nearbyVehiclesForMap = nearbyDrivers');
+    expect(screen).toContain('const nearbyVehiclesForMap = nearbyVehiclesForSelectedCategory;');
+    expect(screen).toContain('etaMinutes: roadEtaByDriverId[vehicle.id] ?? null');
     expect(screen).toContain('nearbyDrivers={(!activeRide || activeRide.status === "searching")');
     expect(screen).toContain('? nearbyVehiclesForMap.slice(0, 4)');
     expect(screen).toContain('Drivers nearby for another ride type');
     expect(screen).toContain('choose a matching type');
+  });
+
+  it('uses fresh road-based pickup ETAs on a controlled refresh cadence', () => {
+    expect(screen).toContain('latestRoadEtaDriversRef.current = nearbyDrivers');
+    expect(screen).toContain('latestRoadEtaPickupRef.current = userLocation');
+    expect(screen).toContain('setInterval(() => { void loadRoadEtas(); }, 20_000)');
+    expect(screen).toContain('etaMinutes: roadEtaByDriverId[vehicle.id] ?? null');
+    expect(screen).not.toContain('etaMinutes: calculateETA({ lat: vehicle.lat');
   });
 
   it('keeps the Maps stub web-only and resolves native SDK keys for both stores', () => {

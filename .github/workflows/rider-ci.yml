@@ -23,3 +23,5 @@ jobs:
         run: pnpm check
       - name: Unit tests
         run: pnpm test
+      - name: Expo lint
+        run: pnpm lint
