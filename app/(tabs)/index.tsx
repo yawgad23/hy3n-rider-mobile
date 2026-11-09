@@ -63,6 +63,7 @@ import { formatLiveDistance, riderPickupStatusLabel } from "@/lib/rider-live-tra
 import { createLiveTripShareLink, createRecipientTripShare, revokeLiveTripShareLink } from "@/lib/trip-share";
 import { payWithHubtelCard } from "@/lib/card-checkout";
 import { type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
+import { riderVehicleArtworkFor } from "@/lib/rider-vehicle-artwork";
 import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } from "@/lib/rider-completion-presentation";
 import { deliveryRequestDetails, isDeliveryCategory, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
@@ -118,8 +119,6 @@ const BORDER = "#2A2A2A";
 const TEXT = "#FAFAFA";
 const MUTED = "#9CA3AF";
 const HY3N_CAR_WORDMARK = require("@/assets/images/hy3n-car-wordmark-transparent.png");
-const HY3N_CAR_DELIVERY = require("@/assets/images/hy3n-car-delivery-open-trunk-card-clean.png");
-const HY3N_COMFORT_CAR = require("@/assets/images/hy3n-comfort-car-3d.png");
 const EMPTY_ROUTE_POINTS: [number, number][] = [];
 
 interface Location {
@@ -3392,13 +3391,7 @@ export default function RiderHomeScreen() {
             .filter((eta): eta is number => Number.isFinite(eta) && eta > 0);
           const pickupEta = matchingVehicles.length ? Math.min(...matchingVehicles) : null;
           const driverLabel = `${matchingVehicles.length} ${cat.name} Driver${matchingVehicles.length === 1 ? '' : 's'}`;
-          const vehicleArtwork = cat.id === "okada"
-            ? require("@/assets/images/ride-list-map-okada.png")
-            : cat.id === "car_delivery"
-              ? HY3N_CAR_DELIVERY
-              : isDeliveryCategory(cat.id)
-                ? require("@/assets/images/ride-list-map-delivery.png")
-                : require("@/assets/images/ride-list-map-car.png");
+          const vehicleArtwork = riderVehicleArtworkFor(cat.id);
           // Match the existing Car Delivery artwork's exact image frame and
           // placement. Only the image positioning changes; source assets stay
           // untouched.
@@ -3774,19 +3767,9 @@ export default function RiderHomeScreen() {
                 accessibilityLabel={`Choose ${category.name} and enter destination`}
                 style={{ width: "31%", minHeight: 112, justifyContent: "space-between", backgroundColor: selected ? `${GOLD}1A` : CARD, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
               >
-                {category.id === 'car_delivery' ? (
-                  <View style={{ width: 54, height: 42, alignItems: 'center', justifyContent: 'center', marginLeft: -4, marginTop: -3 }}>
-                    <Image source={HY3N_CAR_DELIVERY} accessibilityLabel="HY3N car with delivery box" style={{ width: 54, height: 42 }} resizeMode="contain" />
-                  </View>
-                ) : category.id === 'comfort' ? (
-                  <View style={{ width: 54, height: 42, alignItems: 'center', justifyContent: 'center', marginLeft: -4, marginTop: -3 }}>
-                    <Image source={HY3N_COMFORT_CAR} accessibilityLabel="HY3N Comfort car" style={{ width: 54, height: 42 }} resizeMode="contain" />
-                  </View>
-                ) : (
-                  <View style={{ width: 35, height: 35, borderRadius: 12, backgroundColor: selected ? GOLD : `${GREEN}20`, alignItems: "center", justifyContent: "center" }}>
-                    <MaterialIcons name={category.icon as any} size={20} color={selected ? "#151515" : GREEN} />
-                  </View>
-                )}
+                <View style={{ width: 62, height: 46, alignItems: 'center', justifyContent: 'center', marginLeft: -6, marginTop: -4 }}>
+                  <Image source={riderVehicleArtworkFor(category.id)} accessibilityLabel={`${category.name} vehicle`} style={{ width: 62, height: 46 }} resizeMode="contain" />
+                </View>
                 <View>
                   <Text style={{ color: TEXT, fontSize: 13, fontWeight: "900" }} numberOfLines={2}>{category.name}</Text>
                   <Text style={{ color: MUTED, fontSize: 10, marginTop: 3 }} numberOfLines={1}>{category.seats ? `${category.seats} seats` : "Parcel"}</Text>
@@ -3885,7 +3868,7 @@ export default function RiderHomeScreen() {
         tripStatus={activeRide?.status ?? null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
         nearbyDrivers={(!activeRide || activeRide.status === "searching")
-          ? nearbyVehiclesForMap.slice(0, 4)
+          ? nearbyVehiclesForMap.slice(0, 4).map((vehicle) => ({ ...vehicle, serviceType: selectedCategory.id }))
           : []}
         onRouteMetrics={handleLiveRouteMetrics}
       />}

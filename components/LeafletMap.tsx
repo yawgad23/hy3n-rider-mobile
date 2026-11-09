@@ -62,7 +62,7 @@ function normaliseColour(value?: string | null, fallback = "#D4AF37") {
   return /^#[0-9a-fA-F]{6}$/.test(value || "") ? value! : fallback;
 }
 
-function markerKind(value?: string | null): "car" | "okada" | "delivery" {
+function markerKind(value?: string | null): "standard" | "comfort" | "kantanka" | "okada" | "delivery" {
   return riderMapMarkerKind(value);
 }
 
@@ -74,9 +74,9 @@ type MapPayload = {
   theme: "light" | "dark";
   user: [number, number] | null;
   destination: [number, number] | null;
-  driver: { point: [number, number]; colour: string; label: string; bearing: number | null; metric: string; kind: "car" | "okada" | "delivery" } | null;
+  driver: { point: [number, number]; colour: string; label: string; bearing: number | null; metric: string; kind: "standard" | "comfort" | "kantanka" | "okada" | "delivery" } | null;
   pickup: [number, number] | null;
-  nearby: Array<{ id: string; point: [number, number]; colour: string; label: string; eta: number; bearing: number | null; kind: "car" | "okada" | "delivery" }>;
+  nearby: Array<{ id: string; point: [number, number]; colour: string; label: string; eta: number; bearing: number | null; kind: "standard" | "comfort" | "kantanka" | "okada" | "delivery" }>;
   route: { points: Array<[number, number]>; colour: string } | null;
 };
 
