@@ -3392,13 +3392,23 @@ export default function RiderHomeScreen() {
             .filter((eta): eta is number => Number.isFinite(eta) && eta > 0);
           const pickupEta = matchingVehicles.length ? Math.min(...matchingVehicles) : null;
           const driverLabel = `${matchingVehicles.length} ${cat.name} Driver${matchingVehicles.length === 1 ? '' : 's'}`;
+          const isCarDeliveryArtwork = cat.id === "car_delivery";
           const vehicleArtwork = cat.id === "okada"
             ? require("@/assets/images/ride-list-map-okada.png")
-            : cat.id === "car_delivery"
+            : isCarDeliveryArtwork
               ? HY3N_CAR_DELIVERY
               : isDeliveryCategory(cat.id)
-              ? require("@/assets/images/ride-list-map-delivery.png")
-              : require("@/assets/images/ride-list-map-car.png");
+                ? require("@/assets/images/ride-list-map-delivery.png")
+                : require("@/assets/images/ride-list-map-car.png");
+          // Keep the existing top-down artwork, but give these assets one
+          // consistent, slightly taller viewport so their visual centres line
+          // up across the ride rows. Car Delivery keeps its original framing.
+          const vehicleArtworkFrame = isCarDeliveryArtwork
+            ? { width: 74, height: 52 }
+            : { width: 74, height: 60 };
+          const vehicleArtworkImage = isCarDeliveryArtwork
+            ? { width: 74, height: 52 }
+            : { width: 64, height: 60 };
           return (
             <TouchableOpacity
               key={cat.id}
@@ -3413,8 +3423,8 @@ export default function RiderHomeScreen() {
               accessibilityState={{ selected: isSelected, disabled: isConfirmedUnavailable }}
               style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 86, paddingVertical: 10, paddingHorizontal: 11, borderRadius: 14, opacity: isConfirmedUnavailable ? 0.58 : 1, backgroundColor: isSelected ? `${GOLD}1A` : "transparent", borderWidth: isSelected ? 1.8 : 0, borderColor: GOLD }}
             >
-              <View style={{ width: 74, height: 52, alignItems: "center", justifyContent: "center" }}>
-                <Image source={vehicleArtwork} style={{ width: 74, height: 52 }} resizeMode="contain" />
+              <View style={{ ...vehicleArtworkFrame, alignItems: "center", justifyContent: "center" }}>
+                <Image source={vehicleArtwork} style={vehicleArtworkImage} resizeMode="contain" />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
