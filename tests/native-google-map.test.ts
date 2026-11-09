@@ -106,6 +106,10 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('bookingRouteFrameKeyRef.current !== frameKey');
     expect(component).toContain('edgePadding: { top: 132, right: 36, bottom: 460, left: 36 }');
     expect(component).toContain('mapRef.current?.animateToRegion(region, 420);');
+    expect(component).toContain('const pendingRouteFrame = [userLocation, destination, ...nearbyPickupDrivers];');
+    expect(component).toContain('mapRef.current?.fitToCoordinates(pendingRouteFrame.map(coordinate)');
+    expect(component).toContain('frame BOTH selected');
+    expect(component).toContain('never');
     expect(component).not.toContain('bookingTimeCallouts');
   });
 
