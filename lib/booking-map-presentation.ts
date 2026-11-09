@@ -15,8 +15,9 @@ function clockTime(value: Date): string {
 /**
  * Booking-preview time callouts are shown only when a matching, live nearby
  * Driver has a valid road ETA AND the current server route quote has a valid
- * destination duration. If either input is missing, hide both callouts rather
- * than showing "Finding Driver", "Calculating", or a misleading partial ETA.
+ * destination duration. Drop-off clock time includes both the Driver's pickup
+ * travel time and the quoted trip duration. If either input is missing, hide
+ * both callouts rather than showing a misleading partial ETA.
  */
 export function bookingMapTimeLabels(input: {
   pickupEtaMinutes?: unknown;
@@ -32,6 +33,6 @@ export function bookingMapTimeLabels(input: {
   const now = input.now ?? new Date();
   return {
     pickup: `Pickup\n${Math.max(1, pickupMinutes)} min`,
-    dropoff: `Drop-off\n${clockTime(new Date(now.getTime() + routeMinutes * 60_000))}`,
+    dropoff: `Drop-off\n${clockTime(new Date(now.getTime() + (pickupMinutes + routeMinutes) * 60_000))}`,
   };
 }
