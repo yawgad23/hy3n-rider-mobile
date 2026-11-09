@@ -214,10 +214,12 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const nearby = useMemo(() => nearbyDrivers
     .filter((driver) => isNativeMapPoint([driver.lat, driver.lng]))
     .slice(0, 8), [nearbyDrivers]);
+  // Booking preview markers and route remain visible even when no nearby
+  // Driver has a valid ETA. Time pills are optional decoration on these
+  // endpoints, not a condition for rendering the pickup/destination preview.
   const bookingPreview = !driverTracking
     && isNativeMapPoint(userLocation)
-    && isNativeMapPoint(destination)
-    && Boolean(bookingPickupTimeLabel || bookingDropoffTimeLabel);
+    && isNativeMapPoint(destination);
 
   const driverMotionAnchor = isNativeMapPoint(driverLocation) ? driverLocation : displayDriverPoint;
   const driverMotionKey = driverMotionAnchor
