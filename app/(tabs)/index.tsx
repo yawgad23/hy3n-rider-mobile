@@ -529,10 +529,8 @@ export default function RiderHomeScreen() {
   // Rider still chooses pickup and destination before the server returns a
   // category quote, so this never turns the home screen into a pricing engine.
   const homeServiceCategories = RIDE_CATEGORIES;
-  const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([
-    { name: "Home", address: "Set location" },
-    { name: "Work", address: "Set location" },
-  ]);
+  const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
+  const [pendingSavedPlaceName, setPendingSavedPlaceName] = useState<string | null>(null);
   const [activeRides, setActiveRides] = useState<ActiveRide[]>([]);
   const activeRidesRef = useRef<ActiveRide[]>([]);
   const rebookPromptedRideIdsRef = useRef(new Set<string>());
@@ -1801,6 +1799,14 @@ export default function RiderHomeScreen() {
       return;
     }
 
+    if (pendingSavedPlaceName) {
+      const saved = { name: pendingSavedPlaceName, address: resolved.address || resolved.name, lat: resolved.lat, lng: resolved.lng };
+      const nextPlaces = [...savedPlaces.filter((place) => place.name.toLowerCase() !== pendingSavedPlaceName.toLowerCase()), saved];
+      setSavedPlaces(nextPlaces);
+      await AsyncStorage.setItem("savedPlaces", JSON.stringify(nextPlaces));
+      setPendingSavedPlaceName(null);
+      Alert.alert("Place saved", `${pendingSavedPlaceName} has been saved to your places.`);
+    }
     setDestination(resolved);
     setBookingSheetCollapsed(false);
     setSearchOpen(false);
@@ -2241,6 +2247,15 @@ export default function RiderHomeScreen() {
     setSelectedCategory(RIDE_CATEGORIES[0]);
     setBookingSheetCollapsed(false);
     resetBookingState();
+  };
+
+  const beginSavePlace = () => {
+    Alert.alert("Save a place", "Choose a shortcut for the destination you are about to select.", [
+      { text: "Home", onPress: () => { setPendingSavedPlaceName("Home"); openLocationSearch("destination"); } },
+      { text: "Work", onPress: () => { setPendingSavedPlaceName("Work"); openLocationSearch("destination"); } },
+      { text: "Favourite", onPress: () => { setPendingSavedPlaceName("Favourite"); openLocationSearch("destination"); } },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   const handleQuickPlace = (place: SavedPlace) => {
@@ -3720,9 +3735,9 @@ export default function RiderHomeScreen() {
             );
           })}
           <TouchableOpacity
-            onPress={() => openLocationSearch("destination")}
+            onPress={beginSavePlace}
             accessibilityRole="button"
-            accessibilityLabel="Add a saved destination"
+            accessibilityLabel="Add a saved place"
             style={{ flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: BORDER }}
           >
             <MaterialIcons name="add" size={16} color={MUTED} />
