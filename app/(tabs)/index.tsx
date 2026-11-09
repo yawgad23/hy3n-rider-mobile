@@ -3397,8 +3397,19 @@ export default function RiderHomeScreen() {
             : cat.id === "car_delivery"
               ? HY3N_CAR_DELIVERY
               : isDeliveryCategory(cat.id)
-              ? require("@/assets/images/ride-list-map-delivery.png")
-              : require("@/assets/images/ride-list-map-car.png");
+                ? require("@/assets/images/ride-list-map-delivery.png")
+                : require("@/assets/images/ride-list-map-car.png");
+          // Match the existing Car Delivery artwork's exact image frame and
+          // placement. Only the image positioning changes; source assets stay
+          // untouched.
+          const vehicleArtworkFrame = {
+            width: 74,
+            height: 52,
+            alignItems: "center" as const,
+            justifyContent: "center" as const,
+            marginLeft: -4,
+            marginTop: -3,
+          };
           return (
             <TouchableOpacity
               key={cat.id}
@@ -3413,7 +3424,7 @@ export default function RiderHomeScreen() {
               accessibilityState={{ selected: isSelected, disabled: isConfirmedUnavailable }}
               style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 86, paddingVertical: 10, paddingHorizontal: 11, borderRadius: 14, opacity: isConfirmedUnavailable ? 0.58 : 1, backgroundColor: isSelected ? `${GOLD}1A` : "transparent", borderWidth: isSelected ? 1.8 : 0, borderColor: GOLD }}
             >
-              <View style={{ width: 74, height: 52, alignItems: "center", justifyContent: "center" }}>
+              <View style={vehicleArtworkFrame}>
                 <Image source={vehicleArtwork} style={{ width: 74, height: 52 }} resizeMode="contain" />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
