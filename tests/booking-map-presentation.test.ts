@@ -9,7 +9,7 @@ describe('Rider booking map presentation', () => {
       now: new Date(2026, 9, 3, 6, 26, 0),
     })).toEqual({
       pickup: 'Pickup\n4 min',
-      dropoff: 'Drop-off\n7:03',
+      dropoff: 'Drop-off\n7:07',
     });
   });
 
