@@ -28,23 +28,21 @@ describe('Rider address-first home flow', () => {
 
   it('keeps service choices visible on the address-first page and selects a category before address search', () => {
     expect(screen).toContain('const homeServiceCategories = RIDE_CATEGORIES;');
-    expect(screen).toContain('isDeliveryCategory(cat.id)');
+    expect(screen).toContain('riderVehicleArtworkFor(cat.id)');
     expect(screen).toContain('Choose a HY3N service');
     expect(screen).toContain('setSelectedCategory(category);');
     expect(screen).toContain('openLocationSearch("destination");');
   });
 
-  it('shows Car Delivery as a HY3N car carrying a box on both service-card stages', () => {
-    expect(screen).toContain('const HY3N_CAR_DELIVERY = require("@/assets/images/hy3n-car-delivery-open-trunk-card-clean.png");');
-    expect(screen).toContain('cat.id === "car_delivery"');
-    expect(screen).toContain('category.id === \'car_delivery\'');
-    expect(screen).toContain('accessibilityLabel="HY3N car with delivery box"');
+  it('uses the shared premium artwork registry for every service-card stage', () => {
+    expect(screen).toContain('const vehicleArtwork = riderVehicleArtworkFor(cat.id);');
+    expect(screen).toContain('source={riderVehicleArtworkFor(category.id)}');
+    expect(screen).toContain('accessibilityLabel={`${category.name} vehicle`}');
   });
 
-  it('uses the branded Comfort car artwork while Kantanka retains the star identity', () => {
-    expect(screen).toContain('const HY3N_COMFORT_CAR = require("@/assets/images/hy3n-comfort-car-3d.png");');
-    expect(screen).toContain("category.id === 'comfort'");
-    expect(screen).toContain('accessibilityLabel="HY3N Comfort car"');
+  it('keeps category-specific artwork available for Comfort and Kantanka', () => {
+    expect(screen).toContain('riderVehicleArtworkFor(cat.id)');
+    expect(screen).toContain('riderVehicleArtworkFor(category.id)');
   });
 
   it('retains server-owned pricing only after destination and fresh pickup are available', () => {

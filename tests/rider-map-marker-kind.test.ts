@@ -7,16 +7,19 @@ const nativeMap = readFileSync(path.join(process.cwd(), 'components/NativeGoogle
 const fallbackMap = readFileSync(path.join(process.cwd(), 'components/LeafletMap.tsx'), 'utf8');
 
 describe('Rider vehicle marker kind mapping', () => {
-  it('keeps Car Delivery on the car marker and Express Delivery on the delivery bike marker', () => {
-    expect(riderMapMarkerKind('car_delivery')).toBe('car');
-    expect(riderMapMarkerKind('car-delivery')).toBe('car');
+  it('keeps car delivery on the Standard car visual and maps all five categories distinctly', () => {
+    expect(riderMapMarkerKind('car_delivery')).toBe('standard');
+    expect(riderMapMarkerKind('car-delivery')).toBe('standard');
+    expect(riderMapMarkerKind('standard')).toBe('standard');
+    expect(riderMapMarkerKind('comfort')).toBe('comfort');
+    expect(riderMapMarkerKind('kantanka')).toBe('kantanka');
     expect(riderMapMarkerKind('express_delivery')).toBe('delivery');
     expect(riderMapMarkerKind('delivery')).toBe('delivery');
     expect(riderMapMarkerKind('okada')).toBe('okada');
   });
 
   it('uses the shared resolver in both Rider map renderers', () => {
-    expect(nativeMap).toContain('const kind = riderMapMarkerKind(serviceType);');
+    expect(nativeMap).toContain('RIDER_VEHICLE_ARTWORK[riderMapMarkerKind(serviceType)]');
     expect(fallbackMap).toContain('return riderMapMarkerKind(value);');
   });
 });

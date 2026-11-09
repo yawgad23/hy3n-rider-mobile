@@ -121,8 +121,9 @@ describe('Rider native Google Maps migration', () => {
     expect(screen).toContain('routeOverview={routeOverview}');
   });
 
-  it('keeps trunk artwork in service cards and uses the delivery bike marker on maps', () => {
-    expect(component).toContain("require('../assets/images/map-delivery-marker.png')");
+  it('uses the shared five-category artwork registry for map markers', () => {
+    expect(component).toContain("import { RIDER_VEHICLE_ARTWORK } from '@/lib/rider-vehicle-artwork';");
+    expect(component).toContain('RIDER_VEHICLE_ARTWORK[riderMapMarkerKind(serviceType)]');
     expect(component).not.toContain("require('../assets/images/hy3n-car-delivery-open-trunk-card.png')");
     expect(screen).toContain('isDeliveryCategory(activeRide?.categoryId) ? activeRide?.categoryId');
   });
@@ -131,7 +132,7 @@ describe('Rider native Google Maps migration', () => {
     expect(screen).toContain('const nearbyVehiclesForMap = nearbyVehiclesForSelectedCategory;');
     expect(screen).toContain('etaMinutes: roadEtaByDriverId[vehicle.id] ?? null');
     expect(screen).toContain('nearbyDrivers={(!activeRide || activeRide.status === "searching")');
-    expect(screen).toContain('? nearbyVehiclesForMap.slice(0, 4)');
+    expect(screen).toContain('? nearbyVehiclesForMap.slice(0, 4).map((vehicle) => ({ ...vehicle, serviceType: selectedCategory.id }))');
     expect(screen).toContain('Drivers nearby for another ride type');
     expect(screen).toContain('choose a matching type');
   });
