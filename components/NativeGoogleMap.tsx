@@ -385,8 +385,33 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         }
         return;
       }
-      // Until the server supplies road geometry, keep the local pickup-area
-      // preview rather than inventing a straight-line route.
+      // Until the server supplies road geometry, frame BOTH selected
+      // endpoints. Previously this fallback considered only pickup and nearby
+      // vehicles, leaving a distant destination off-screen with no way for the
+      // Rider to see where the trip ends. This is camera framing only: never
+      // draw a fabricated straight line in place of an authoritative road route.
+      if (isNativeMapPoint(userLocation) && isNativeMapPoint(destination)) {
+        const nearbyPickupDrivers = nearby
+          .map((driver) => [driver.lat, driver.lng] as NativeMapPoint)
+          .filter((point) => {
+            const latitudeKm = (point[0] - userLocation[0]) * 111.32;
+            const longitudeKm = (point[1] - userLocation[1]) * 111.32
+              * Math.cos(userLocation[0] * Math.PI / 180);
+            return Math.hypot(latitudeKm, longitudeKm) <= 2;
+          });
+        const pendingRouteFrame = [userLocation, destination, ...nearbyPickupDrivers];
+        const frameKey = `pending:${JSON.stringify(pendingRouteFrame)}`;
+        if (bookingRouteFrameKeyRef.current !== frameKey) {
+          mapRef.current?.fitToCoordinates(pendingRouteFrame.map(coordinate), {
+            edgePadding: { top: 132, right: 36, bottom: 460, left: 36 },
+            animated: true,
+          });
+          bookingRouteFrameKeyRef.current = frameKey;
+        }
+        return;
+      }
+      // If an endpoint is temporarily unavailable, retain a safe pickup-area
+      // camera rather than issuing an invalid native map command.
       const region = bookingPreviewRegion(
         userLocation,
         (driverRoutePoints || []).filter(isNativeMapPoint),
