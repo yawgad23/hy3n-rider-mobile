@@ -100,8 +100,8 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
     body[data-theme="light"] .leaflet-control-attribution { background: rgba(255,255,255,.82); color: #4b5563; }
     body[data-theme="light"] .leaflet-control-attribution a { color: #374151; }
     .leaflet-control-zoom { display: none; }
-    .vehicle-icon { width: 44px; height: 44px; position: relative; transform-origin: center; filter: drop-shadow(0 2px 3px rgba(0,0,0,.55)); }
-    .vehicle-icon .vehicle-art { display: block; width: 44px; height: 44px; object-fit: contain; }
+    .vehicle-icon { width: 34px; height: 34px; position: relative; transform-origin: center; filter: drop-shadow(0 2px 3px rgba(0,0,0,.55)); }
+    .vehicle-icon .vehicle-art { display: block; width: 34px; height: 34px; object-fit: contain; }
     .vehicle-icon .label { display: none; }
     .user-dot { width: 22px; height: 22px; border-radius: 50%; background: #006b3f; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,.5); }
     .destination-pin, .pickup-pin { width: 22px; height: 22px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,.5); }
@@ -171,7 +171,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   const icon = (className, html, size, anchor) => L.divIcon({ className: '', html, iconSize: size, iconAnchor: anchor });
   const userIcon = () => icon('user', '<div class="user-dot"></div>', [22,22], [11,11]);
   const pinIcon = (kind) => icon(kind, '<div class="' + kind + '-pin"></div>', [22,22], [11,22]);
-  const vehicleIcon = (item) => icon('vehicle', '<div class="vehicle-icon" style="transform:rotate(' + (Number(item.bearing || 0)) + 'deg);outline:2px solid ' + safeMarkerColour(item.colour) + ';outline-offset:1px;border-radius:50%"><img class="vehicle-art" src="' + (markerAssets[item.kind || 'standard'] || markerAssets.standard) + '" alt="HY3N vehicle" /></div>', [44,44], [22,22]);
+  const vehicleIcon = (item) => icon('vehicle', '<div class="vehicle-icon" style="transform:rotate(' + (Number(item.bearing || 0)) + 'deg);outline:2px solid ' + safeMarkerColour(item.colour) + ';outline-offset:1px;border-radius:50%"><img class="vehicle-art" src="' + (markerAssets[item.kind || 'standard'] || markerAssets.standard) + '" alt="HY3N vehicle" /></div>', [34,34], [17,17]);
   const remove = (key) => { if (layers[key]) { map.removeLayer(layers[key]); layers[key] = null; } };
   const stopAnimation = (marker) => {
     const frame = animationFrames.get(marker);
