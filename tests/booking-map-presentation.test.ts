@@ -9,19 +9,31 @@ describe('Rider booking map presentation', () => {
       now: new Date(2026, 9, 3, 6, 26, 0),
     })).toEqual({
       pickup: 'Pickup\n4 min',
-      dropoff: 'Drop-off\n7:03',
+      dropoff: 'Drop-off\n7:07',
     });
   });
 
-  it('does not invent a pickup or destination time when authoritative inputs are absent', () => {
-    expect(bookingMapTimeLabels({ now: new Date(2026, 9, 3, 6, 26, 0) })).toEqual({
-      pickup: 'Pickup\nFinding Driver',
-      dropoff: 'Drop-off\nCalculating',
-    });
+  it('hides both time callouts when there is no nearby Driver', () => {
+    expect(bookingMapTimeLabels({
+      routeDurationMinutes: 37,
+      now: new Date(2026, 9, 3, 6, 26, 0),
+    })).toEqual({ pickup: null, dropoff: null });
   });
 
-  it.each([null, undefined, ''])('does not turn absent pickup ETA %s into a false 1-minute estimate', (pickupEtaMinutes) => {
-    expect(bookingMapTimeLabels({ pickupEtaMinutes, routeDurationMinutes: 10 }).pickup)
-      .toBe('Pickup\nFinding Driver');
+  it('hides both time callouts until the server route duration is ready', () => {
+    expect(bookingMapTimeLabels({
+      pickupEtaMinutes: 3,
+      now: new Date(2026, 9, 3, 6, 26, 0),
+    })).toEqual({ pickup: null, dropoff: null });
+  });
+
+  it.each([null, undefined, ''])('hides both callouts when pickup ETA %s is absent', (pickupEtaMinutes) => {
+    expect(bookingMapTimeLabels({ pickupEtaMinutes, routeDurationMinutes: 10 }))
+      .toEqual({ pickup: null, dropoff: null });
+  });
+
+  it.each([null, undefined, ''])('hides both callouts when route duration %s is absent', (routeDurationMinutes) => {
+    expect(bookingMapTimeLabels({ pickupEtaMinutes: 3, routeDurationMinutes }))
+      .toEqual({ pickup: null, dropoff: null });
   });
 });
