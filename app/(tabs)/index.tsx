@@ -3241,12 +3241,12 @@ export default function RiderHomeScreen() {
     <View style={{ flex: 1 }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
       {/* Web-parity booking header and editable route card */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14, paddingHorizontal: 2 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8, paddingHorizontal: 2 }}>
         <Text style={{ color: TEXT, fontWeight: "800", fontSize: 22 }}>Choose your ride</Text>
         <TouchableOpacity
           onPress={handleCancelBooking}
@@ -3258,7 +3258,7 @@ export default function RiderHomeScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={{ backgroundColor: CARD, borderRadius: 18, padding: 14, marginBottom: 12, flexDirection: "row", gap: 12 }}>
+      <View style={{ backgroundColor: CARD, borderRadius: 18, padding: 12, marginBottom: 8, flexDirection: "row", gap: 10 }}>
         <View style={{ alignItems: "center", width: 20, paddingTop: 11 }}>
           <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 3, borderColor: GREEN }} />
           <View style={{ width: 2, height: 36, backgroundColor: BORDER, marginVertical: 4 }} />
@@ -3364,7 +3364,7 @@ export default function RiderHomeScreen() {
           <Text style={{ color: GOLD, fontSize: 11, fontWeight: "800" }} numberOfLines={1}>{quoteError} Tap to retry.</Text>
         </TouchableOpacity>
       ) : null}
-      <View style={{ gap: 9, paddingBottom: 14 }}>
+      <View style={{ gap: 6, paddingBottom: 10 }}>
         {RIDE_CATEGORIES.map((cat) => {
           const quote = currentServerQuotes[cat.id];
           const fare = quote?.total ?? 0;
@@ -3396,7 +3396,7 @@ export default function RiderHomeScreen() {
               }}
               accessibilityRole="button"
               accessibilityState={{ selected: isSelected, disabled: isConfirmedUnavailable }}
-              style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 13, borderRadius: 16, opacity: isConfirmedUnavailable ? 0.58 : 1, backgroundColor: isSelected ? `${GOLD}1A` : "transparent", borderWidth: isSelected ? 1.8 : 0, borderColor: GOLD }}
+              style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 86, paddingVertical: 10, paddingHorizontal: 11, borderRadius: 14, opacity: isConfirmedUnavailable ? 0.58 : 1, backgroundColor: isSelected ? `${GOLD}1A` : "transparent", borderWidth: isSelected ? 1.8 : 0, borderColor: GOLD }}
             >
               <View style={{ width: 74, height: 52, alignItems: "center", justifyContent: "center" }}>
                 <Image source={vehicleArtwork} style={{ width: 74, height: 52 }} resizeMode="contain" />
