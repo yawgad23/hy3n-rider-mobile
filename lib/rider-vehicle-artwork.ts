@@ -11,7 +11,7 @@ export const RIDER_VEHICLE_ARTWORK = {
 
 /** Compact silhouettes for live maps; intentionally separate from card renders. */
 export const RIDER_MAP_MARKER_ARTWORK = {
-  standard: require('../assets/images/map-standard-vehicle-256.png'),
+  standard: require('../assets/images/map-standard-vehicle-white-256-optimized.png'),
   comfort: require('../assets/images/map-comfort-vehicle-256.png'),
   kantanka: require('../assets/images/map-kantanka-vehicle-256.png'),
   okada: require('../assets/images/map-okada-vehicle-256.png'),
