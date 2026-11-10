@@ -69,6 +69,8 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('prior native animation completes');
     expect(screen).toContain('driverRouteUpdatedAt: reassignedAfterDriverCancellation ? undefined : (hasCurrentServerRoute');
     expect(screen).toContain('driverRouteUpdatedAt={activeRide?.driverRouteUpdatedAt ?? null}');
+    expect(screen).toContain("activeRide.status === 'searching'");
+    expect(screen).toContain('bookingPickupEtaMinutes={(!activeRide || activeRide.status === \'searching\') ? closestVehicleEta : null}');
   });
 
   it('shows only the Driver vehicle on the Rider map after a trip starts', () => {

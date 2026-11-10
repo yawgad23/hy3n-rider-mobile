@@ -3892,9 +3892,15 @@ export default function RiderHomeScreen() {
         driverServiceType={isDeliveryCategory(activeRide?.categoryId) ? activeRide?.categoryId : (activeRide?.driverServiceType ?? activeRide?.categoryId ?? null)}
         driverEtaMinutes={activeRide?.status !== 'in_progress' && activeRide?.routePhase === 'pickup' ? (activeRide.routeDurationMinutes ?? activeRide.eta ?? null) : null}
         driverDistanceKm={activeRide?.routeDistanceKm ?? null}
-        bookingPickupEtaMinutes={!activeRide ? closestVehicleEta : null}
-        bookingDropoffEtaMinutes={!activeRide ? currentSelectedQuote?.durationMinutes ?? null : null}
-        showBookingTimes={!activeRide && closestVehicleEta !== null && nearbyVehiclesForMap.length > 0}
+        // Keep the Uber/Bolt-style nearby timing visible while a request is
+        // searching. Once a Driver is matched, the active-trip ETA takes over.
+        bookingPickupEtaMinutes={(!activeRide || activeRide.status === 'searching') ? closestVehicleEta : null}
+        bookingDropoffEtaMinutes={(!activeRide || activeRide.status === 'searching')
+          ? currentSelectedQuote?.durationMinutes ?? activeRide?.routeDurationMinutes ?? null
+          : null}
+        showBookingTimes={(!activeRide || activeRide.status === 'searching')
+          && closestVehicleEta !== null
+          && nearbyVehiclesForMap.length > 0}
         driverTracking={Boolean(activeRide && ['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(activeRide.status) && activeRide.driverLocation)}
         driverTrackingTarget={activeRide
           ? (activeRide.status === 'in_progress'
