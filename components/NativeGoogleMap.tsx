@@ -548,7 +548,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           title={tripStatus === 'in_progress' ? 'HY3N Driver en route' : 'Your HY3N Driver'}
           zIndex={8}
         >
-          <CompactVehicleMarker serviceType={driverServiceType} colour={driverColourHex} size={ACTIVE_DRIVER_MARKER_SIZE} />
+          <CompactVehicleMarker serviceType={driverServiceType} colour={driverColourHex} size={ACTIVE_DRIVER_MARKER_SIZE} framed={false} />
         </Marker.Animated>}
         {!driverTracking && nearby.map((driver) => <AnimatedNearbyMarker
           key={`nearby-${driver.id}`}
