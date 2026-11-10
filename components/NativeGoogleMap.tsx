@@ -221,7 +221,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
 
   const driverMotionAnchor = isNativeMapPoint(driverLocation) ? driverLocation : displayDriverPoint;
   const driverMotionKey = driverMotionAnchor
-    ? `${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${driverLocationUpdatedAt || ''}`
+    ? `${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${driverLocationUpdatedAt || ''},${Number(displayDriverBearing).toFixed(2)}`
     : null;
 
   useEffect(() => {
