@@ -415,6 +415,7 @@ export default function RiderHomeScreen() {
   }, [refreshCurrentPickupLocation]);
   // ─── Nearby Drivers ─────────────────────────────────────────────────────────
   const [nearbyDrivers, setNearbyDrivers] = useState<NearbyVehicle[]>([]);
+  const [serverNearbyPickupEta, setServerNearbyPickupEta] = useState<number | null>(null);
   const [roadEtaByDriverId, setRoadEtaByDriverId] = useState<Record<string, number>>({});
   const roadEtaRequestRef = useRef(false);
   const latestRoadEtaDriversRef = useRef<NearbyVehicle[]>([]);
@@ -466,7 +467,7 @@ export default function RiderHomeScreen() {
         const response = await fetch(`${getApiBaseUrl()}/api/rider/nearby-vehicles?${params.toString()}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const payload = await response.json().catch(() => null) as { success?: boolean; nearbyVehicles?: Array<Record<string, any>> } | null;
+        const payload = await response.json().catch(() => null) as { success?: boolean; pickupEtaMinutes?: number | null; nearbyVehicles?: Array<Record<string, any>> } | null;
         if (!response.ok || !payload?.success) throw new Error("Nearby vehicle feed unavailable");
         const vehicles: NearbyVehicle[] = (payload.nearbyVehicles || []).map((vehicle) => ({
           id: String(vehicle.id),
@@ -477,7 +478,14 @@ export default function RiderHomeScreen() {
           serviceType: vehicle.serviceType === "okada" || vehicle.serviceType === "delivery" ? vehicle.serviceType : "car",
           rideCategories: [selectedCategory.id],
         })).filter((vehicle) => Number.isFinite(vehicle.lat) && Number.isFinite(vehicle.lng));
-        if (!disposed) setNearbyDrivers(vehicles);
+        if (!disposed) {
+          setNearbyDrivers(vehicles);
+          setServerNearbyPickupEta(
+            Number.isFinite(Number(payload.pickupEtaMinutes)) && Number(payload.pickupEtaMinutes) > 0
+              ? Math.max(1, Math.ceil(Number(payload.pickupEtaMinutes)))
+              : null,
+          );
+        }
       } catch {
         // Preserve the last successful marker set during transient feed errors.
       } finally {
@@ -491,6 +499,10 @@ export default function RiderHomeScreen() {
       clearInterval(timer);
     };
   }, [selectedCategory.id, user?.uid, userLocation[0], userLocation[1]]);
+
+  useEffect(() => {
+    setServerNearbyPickupEta(null);
+  }, [selectedCategory.id, userLocation[0], userLocation[1]]);
 
   useEffect(() => {
     let disposed = false;
@@ -587,7 +599,8 @@ export default function RiderHomeScreen() {
       etaMinutes: roadEtaByDriverId[vehicle.id] ?? null,
     }))
     .sort((a, b) => (a.etaMinutes ?? Number.POSITIVE_INFINITY) - (b.etaMinutes ?? Number.POSITIVE_INFINITY));
-  const closestVehicleEta = nearbyVehiclesForSelectedCategory.find((vehicle) => vehicle.etaMinutes !== null)?.etaMinutes ?? null;
+  const closestVehicleEta = nearbyVehiclesForSelectedCategory.find((vehicle) => vehicle.etaMinutes !== null)?.etaMinutes
+    ?? serverNearbyPickupEta;
 
   // Only eligible drivers with a current road-route estimate receive an ETA.
   // The map never substitutes straight-line distance or a fixed average speed.
@@ -3430,7 +3443,7 @@ export default function RiderHomeScreen() {
             .filter((eta): eta is number => Number.isFinite(eta) && eta > 0);
           const pickupEta = matchingVehicles.length
             ? Math.min(...matchingVehicles)
-            : quote?.pickupEtaMinutes ?? null;
+            : quote?.pickupEtaMinutes ?? serverNearbyPickupEta;
           const driverLabel = `${matchingVehicles.length} ${cat.name} Driver${matchingVehicles.length === 1 ? '' : 's'}`;
           const vehicleArtwork = riderVehicleArtworkFor(cat.id);
           // Match the existing Car Delivery artwork's exact image frame and
