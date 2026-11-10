@@ -1,7 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import { nextRiderDriverLocation } from '../lib/rider-driver-location';
+import { measureRiderTrackingTelemetry } from '../lib/rider-tracking-telemetry';
 
 describe('Rider Driver presence ordering', () => {
+  it('measures tracking segments without exposing identity or coordinates', () => {
+    const sample = measureRiderTrackingTelemetry({
+      sample_id: 'sample-12345678',
+      client_sent_at_ms: 1_700_000_000_000,
+      server_received_at_ms: 1_700_000_000_120,
+    }, 1_700_000_000_260);
+
+    expect(sample).toMatchObject({
+      sampleId: 'sample-12345678',
+      driverToBackendMs: 120,
+      backendToRiderMs: 140,
+      endToEndMs: 260,
+    });
+    expect(sample).not.toHaveProperty('latitude');
+    expect(sample).not.toHaveProperty('longitude');
+  });
+
+  it('ignores missing, skewed, or unreasonable telemetry timestamps', () => {
+    expect(measureRiderTrackingTelemetry(null, 1_700_000_000_260)).toBeNull();
+    expect(measureRiderTrackingTelemetry({
+      sample_id: 'sample-12345678',
+      client_sent_at_ms: 1_700_000_000_500,
+      server_received_at_ms: 1_700_000_000_120,
+    }, 1_700_000_000_260)).toBeNull();
+    expect(measureRiderTrackingTelemetry({
+      sample_id: 'sample-12345678',
+      client_sent_at_ms: 1_700_000_000_000,
+      server_received_at_ms: 1_700_000_000_120,
+    }, 1_700_700_000_260)).toBeNull();
+  });
+
   it('accepts a complete newer Driver location', () => {
     expect(nextRiderDriverLocation({
       latitude: 5.6037,

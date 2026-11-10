@@ -67,6 +67,7 @@ import { riderVehicleArtworkFor } from "@/lib/rider-vehicle-artwork";
 import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } from "@/lib/rider-completion-presentation";
 import { deliveryRequestDetails, isDeliveryCategory, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
+import { logRiderTrackingTelemetry, measureRiderTrackingTelemetry } from "@/lib/rider-tracking-telemetry";
 import { destinationArrivalReminder, shouldPromptForDestinationArrival } from "@/lib/rider-trip-feedback";
 import { bookingMapTimeLabels } from "@/lib/booking-map-presentation";
 import { riderBookingRouteDisplay } from "@/lib/rider-booking-route-display";
@@ -533,6 +534,7 @@ export default function RiderHomeScreen() {
   const [activeRides, setActiveRides] = useState<ActiveRide[]>([]);
   const activeRidesRef = useRef<ActiveRide[]>([]);
   const rebookPromptedRideIdsRef = useRef(new Set<string>());
+  const trackingTelemetrySamplesRef = useRef(new Set<string>());
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const activeRide = activeRides.find((ride) => ride.id === selectedRideId) ?? activeRides[0] ?? null;
   const [inTripRouteChangeKind, setInTripRouteChangeKind] = useState<RiderTripRouteChangeKind | null>(null);
@@ -1222,6 +1224,16 @@ export default function RiderHomeScreen() {
     if (!driverId || !ride || !['matched', 'driver_arriving', 'driver_arrived', 'in_progress'].includes(ride.status)) return;
 
     return firestoreDB.subscribeDoc(COLLECTIONS.DRIVER_PRESENCE, driverId, (profile: any) => {
+      const telemetry = profile?.current_location?.tracking_telemetry;
+      const measuredTelemetry = measureRiderTrackingTelemetry(telemetry, Date.now());
+      if (measuredTelemetry && !trackingTelemetrySamplesRef.current.has(measuredTelemetry.sampleId)) {
+        trackingTelemetrySamplesRef.current.add(measuredTelemetry.sampleId);
+        if (trackingTelemetrySamplesRef.current.size > 100) {
+          const oldest = trackingTelemetrySamplesRef.current.values().next().value;
+          if (oldest) trackingTelemetrySamplesRef.current.delete(oldest);
+        }
+        logRiderTrackingTelemetry(measuredTelemetry);
+      }
       const current = profile?.current_location || profile?.location;
       const currentRide = activeRidesRef.current.find((item) => item.id === ride.id);
       const incoming = nextRiderDriverLocation(
