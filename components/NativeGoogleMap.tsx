@@ -221,7 +221,11 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
 
   const driverMotionAnchor = isNativeMapPoint(driverLocation) ? driverLocation : displayDriverPoint;
   const driverMotionKey = driverMotionAnchor
-    ? `${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${driverLocationUpdatedAt || ''},${Number(displayDriverBearing).toFixed(2)}`
+    // Heading updates are intentionally excluded. Compass/GPS heading can
+    // fluctuate while a car is already gliding; treating each fluctuation as
+    // a new motion sample stops the in-flight animation and makes the marker
+    // visibly shake. Position/timestamp changes remain the movement authority.
+    ? `${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${driverLocationUpdatedAt || ''}`
     : null;
 
   useEffect(() => {
