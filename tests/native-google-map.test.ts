@@ -38,7 +38,7 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 44');
     expect(component).toContain('anchor={{ x: 0.5, y: 0.78 }}');
     expect(component).toContain('Keep the last server-published road geometry visible');
-    expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 30');
+    expect(component).toContain('NEARBY_DRIVER_MARKER_SIZE = 40');
     expect(component).toContain('framed={false}');
     expect(component).toContain('function CompactVehicleMarker');
     expect(component).toContain('bookingMapPin: { width: 14, height: 14');
