@@ -120,7 +120,36 @@ const TEXT = "#FAFAFA";
 const MUTED = "#9CA3AF";
 const HY3N_CAR_WORDMARK = require("@/assets/images/hy3n-car-wordmark-transparent.png");
 const EMPTY_ROUTE_POINTS: [number, number][] = [];
+const VEHICLE_COLOUR_HEX: Record<string, string> = {
+  black: "#1A1A1A",
+  white: "#F5F5F5",
+  silver: "#C0C0C0",
+  grey: "#808080",
+  gray: "#808080",
+  red: "#CE1126",
+  blue: "#1D4ED8",
+  green: "#006B3F",
+  gold: "#D4AF37",
+  brown: "#92400E",
+  orange: "#EA580C",
+  maroon: "#7F1D1D",
+  yellow: "#FBBF24",
+};
 
+function vehicleCardColourHex(colourName?: string, storedHex?: string) {
+  if (/^#[0-9a-f]{6}$/i.test(String(storedHex || ""))) return String(storedHex);
+  return VEHICLE_COLOUR_HEX[String(colourName || "").trim().toLowerCase()] || `${GOLD}24`;
+}
+
+function vehicleCardIconColour(hex: string) {
+  const match = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!match) return TEXT;
+  const value = Number.parseInt(match[1], 16);
+  const red = (value >> 16) & 255;
+  const green = (value >> 8) & 255;
+  const blue = value & 255;
+  return (red * 299 + green * 587 + blue * 114) > 150000 ? "#111111" : TEXT;
+}
 interface Location {
   name: string;
   address: string;
@@ -2579,6 +2608,8 @@ export default function RiderHomeScreen() {
     const pairingDriverName = activeRide.driverName || "Your driver";
     const pairingVehicle = activeRide.driverVehicle || "HY3N vehicle";
     const pairingVehicleIdentity = [activeRide.driverColour, pairingVehicle].filter(Boolean).join(" ");
+    const pairingVehicleColourHex = vehicleCardColourHex(activeRide.driverColour, activeRide.driverColourHex);
+    const pairingVehicleColourLabel = activeRide.driverColour || "Colour pending";
     const pairingEtaMinutes = activeRide.status === 'in_progress'
       ? null
       : activeRide.routePhase === 'pickup' && activeRide.routeDurationMinutes
@@ -2812,11 +2843,12 @@ export default function RiderHomeScreen() {
 
               <View style={{ padding: 16 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                  <View style={{ width: 60, height: 60, borderRadius: 18, backgroundColor: activeRide.driverColourHex || `${GOLD}24`, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: `${GOLD}88` }}>
-                    <MaterialIcons name="directions-car" size={33} color={activeRide.driverColourHex?.toLowerCase() === "#f5f5f5" ? "#111" : "#fff"} />
+                  <View style={{ width: 60, height: 60, borderRadius: 18, backgroundColor: pairingVehicleColourHex, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: `${GOLD}88` }} accessibilityLabel={`Vehicle colour ${pairingVehicleColourLabel}`}>
+                    <MaterialIcons name="directions-car" size={33} color={vehicleCardIconColour(pairingVehicleColourHex)} />
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }} numberOfLines={1}>{pairingVehicleIdentity}</Text>
+                    <Text style={{ color: MUTED, fontSize: 11, fontWeight: "800", marginTop: 2 }} numberOfLines={1}>Vehicle colour: {pairingVehicleColourLabel}</Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 }}>
                       <MaterialIcons name="star" size={15} color={GOLD} />
                       <Text style={{ color: TEXT, fontSize: 12, fontWeight: "800" }}>{Number(activeRide.driverRating ?? 5).toFixed(1)}</Text>
