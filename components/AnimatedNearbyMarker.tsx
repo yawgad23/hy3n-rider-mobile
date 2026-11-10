@@ -61,14 +61,18 @@ export default function AnimatedNearbyMarker({ latitude, longitude, heading = nu
     const now = Date.now();
     const elapsed = now - lastUpdateAtRef.current;
 
-    if (moved < MIN_MOVE_METERS) return; // GPS jitter: keep the car still
-
     // Face the direction of travel; prefer the real heading when provided.
-    const targetHeading = Number.isFinite(Number(heading)) && heading !== null
+    const hasHeading = Number.isFinite(Number(heading)) && heading !== null;
+    if (!hasHeading && moved < MIN_MOVE_METERS) return; // GPS jitter: keep the car still
+    const targetHeading = hasHeading
       ? Number(heading)
       : bearingDegrees(last.latitude, last.longitude, latitude, longitude);
     rotationRef.current = unwrapAngle(rotationRef.current, targetHeading);
     setRotation(rotationRef.current);
+
+    // A stopped or slow-moving vehicle can still turn its heading. Apply that
+    // rotation without animating GPS jitter as visible map movement.
+    if (moved < MIN_MOVE_METERS) return;
 
     lastPointRef.current = { latitude, longitude };
     lastUpdateAtRef.current = now;
