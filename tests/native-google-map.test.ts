@@ -46,8 +46,8 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('bookingEndpointWithTime');
     expect(component).not.toContain('bookingCallout');
     expect(component).not.toContain('bookingCalloutDetail');
-    expect(component).toContain('<BookingEndpointMarker tone="pickup" timeLabel={bookingPickupTimeLabel} />');
-    expect(component).toContain('<BookingEndpointMarker tone="dropoff" timeLabel={bookingDropoffTimeLabel} />');
+    expect(component).toContain('<BookingEndpointMarker tone="pickup" />');
+    expect(component).toContain('<BookingEndpointMarker tone="dropoff" />');
     expect(component).toContain('CompactVehicleMarker');
     expect(component).not.toContain('react-native-webview');
   });
@@ -90,15 +90,15 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('animateToRegion(region, cameraDurationMs)');
   });
 
-  it('renders a green booking route with pickup-focused camera and time callouts', () => {
+  it('renders a green booking route with clean Pickup and Drop-off endpoint labels', () => {
     expect(component).toContain("const HY3N_ROUTE_GREEN = '#007E4F';");
     expect(component).toContain('strokeColor={HY3N_ROUTE_GREEN}');
     expect(component).toContain('strokeColors={routeCoordinates.map(() => HY3N_ROUTE_GREEN)}');
-    expect(component).toContain('bookingPickupTimeLabel');
-    expect(component).toContain('bookingRouteTimePill');
+    expect(component).not.toContain('bookingPickupTimeLabel');
+    expect(component).not.toContain('timeLabel={booking');
     expect(component).toContain('Pickup');
     expect(component).toContain('Drop-off');
-    expect(component).toContain('bookingDropoffTimeLabel');
+    expect(component).not.toContain('bookingDropoffTimeLabel');
     expect(component).toContain('BookingEndpointMarker');
     expect(component).toContain('bookingPreviewRegion');
     expect(component).toContain('const bookingRouteFrame = [');

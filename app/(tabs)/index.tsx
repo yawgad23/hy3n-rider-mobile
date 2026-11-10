@@ -69,7 +69,6 @@ import { deliveryRequestDetails, isDeliveryCategory, validateDeliveryBookingDeta
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
 import { logRiderTrackingTelemetry, measureRiderTrackingTelemetry } from "@/lib/rider-tracking-telemetry";
 import { destinationArrivalReminder, shouldPromptForDestinationArrival } from "@/lib/rider-trip-feedback";
-import { bookingMapTimeLabels } from "@/lib/booking-map-presentation";
 import { riderBookingRouteDisplay } from "@/lib/rider-booking-route-display";
 import { authoritativeRouteOverviewPoints } from "@/lib/native-map-camera";
 import { riderDisplayedRoute, riderLiveRouteIsCurrent } from "@/lib/rider-live-route-display";
@@ -1500,16 +1499,6 @@ export default function RiderHomeScreen() {
   const currentServerQuotes = selectedQuoteIsCurrent ? serverQuotes : {};
   const currentSelectedQuote = selectedQuoteIsCurrent ? selectedQuote : undefined;
   const bookingRouteDisplay = riderBookingRouteDisplay(currentSelectedQuote);
-  const bookingMapTimes = destination
-    ? bookingMapTimeLabels({
-        // The protected quote contains the server's dispatch-equivalent
-        // nearby-Driver preview. Use it when the optional client road-ETA
-        // refresh has not returned yet, so pre-booking never says "Finding
-        // Driver" while eligible vehicles are already visible on the map.
-        pickupEtaMinutes: closestVehicleEta ?? currentSelectedQuote?.pickupEtaMinutes ?? null,
-        routeDurationMinutes: currentSelectedQuote?.durationMinutes,
-      })
-    : null;
   const displayedRoutePoints = riderDisplayedRoute(activeRide, currentSelectedQuote?.routePoints);
   const routeOverviewPoints = useMemo(
     () => authoritativeRouteOverviewPoints(displayedRoutePoints),
@@ -3407,7 +3396,9 @@ export default function RiderHomeScreen() {
             .filter((vehicle) => vehicleServesRideCategory(vehicle, cat.id))
             .map((vehicle) => roadEtaByDriverId[vehicle.id])
             .filter((eta): eta is number => Number.isFinite(eta) && eta > 0);
-          const pickupEta = matchingVehicles.length ? Math.min(...matchingVehicles) : null;
+          const pickupEta = matchingVehicles.length
+            ? Math.min(...matchingVehicles)
+            : quote?.pickupEtaMinutes ?? null;
           const driverLabel = `${matchingVehicles.length} ${cat.name} Driver${matchingVehicles.length === 1 ? '' : 's'}`;
           const vehicleArtwork = riderVehicleArtworkFor(cat.id);
           // Match the existing Car Delivery artwork's exact image frame and
@@ -3459,20 +3450,6 @@ export default function RiderHomeScreen() {
           );
         })}
       </View>
-
-      {bookingMapTimes && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, backgroundColor: `${GREEN}14`, borderRadius: 12, borderWidth: 1, borderColor: `${GREEN}44`, paddingHorizontal: 12, paddingVertical: 9, marginTop: -3, marginBottom: 12 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-            <MaterialIcons name="my-location" size={15} color={GREEN} />
-            <Text style={{ color: TEXT, fontSize: 12, fontWeight: '800' }}>{bookingMapTimes?.pickup.replace('\n', ' ')}</Text>
-          </View>
-          <MaterialIcons name="arrow-forward" size={16} color={MUTED} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'flex-end' }}>
-            <Text style={{ color: TEXT, fontSize: 12, fontWeight: '800' }}>{bookingMapTimes?.dropoff.replace('\n', ' ')}</Text>
-            <MaterialIcons name="place" size={16} color={GOLD} />
-          </View>
-        </View>
-      )}
 
       {isDeliveryCategory(selectedCategory.id) && (
         <View style={{ backgroundColor: CARD, borderRadius: 18, borderWidth: 1, borderColor: GOLD, marginBottom: 14, padding: 14, gap: 10 }}>
@@ -3881,8 +3858,6 @@ export default function RiderHomeScreen() {
           : null}
         driverRoutePoints={displayedRoutePoints}
         routeOverview={routeOverview}
-        bookingPickupTimeLabel={!activeRide && destination ? bookingMapTimes?.pickup ?? null : null}
-        bookingDropoffTimeLabel={!activeRide && destination ? bookingMapTimes?.dropoff ?? null : null}
         tripStatus={activeRide?.status ?? null}
         safetySignal={activeRide?.safetySignal ?? "clear"}
         nearbyDrivers={(!activeRide || activeRide.status === "searching")
