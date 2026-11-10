@@ -88,10 +88,12 @@ function markerAsset(serviceType?: string | null) {
   return RIDER_MAP_MARKER_ARTWORK[riderMapMarkerKind(serviceType)];
 }
 
-function CompactVehicleMarker({ serviceType, size, colour }: { serviceType?: string | null; size: number; colour?: string | null }) {
+function CompactVehicleMarker({ serviceType, size, colour, framed = true }: { serviceType?: string | null; size: number; colour?: string | null; framed?: boolean }) {
   return (
-    <View pointerEvents="none" style={{ width: size, height: size, borderRadius: size / 2, borderWidth: 2, borderColor: safeColour(colour, '#D4AF37'), backgroundColor: 'rgba(10,10,10,0.82)', alignItems: 'center', justifyContent: 'center' }}>
-      <Image source={markerAsset(serviceType)} style={{ width: size - 4, height: size - 4 }} resizeMode="contain" />
+    <View pointerEvents="none" style={framed
+      ? { width: size, height: size, borderRadius: size / 2, borderWidth: 2, borderColor: safeColour(colour, '#D4AF37'), backgroundColor: 'rgba(10,10,10,0.82)', alignItems: 'center', justifyContent: 'center' }
+      : { width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Image source={markerAsset(serviceType)} style={{ width: framed ? size - 4 : size, height: framed ? size - 4 : size }} resizeMode="contain" />
     </View>
   );
 }
@@ -552,7 +554,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           heading={driver.heading}
           zIndex={9}
         >
-          <CompactVehicleMarker serviceType={driver.serviceType} colour={driver.vehicleColourHex} size={NEARBY_DRIVER_MARKER_SIZE} />
+          <CompactVehicleMarker serviceType={driver.serviceType} colour={driver.vehicleColourHex} size={NEARBY_DRIVER_MARKER_SIZE} framed={false} />
         </AnimatedNearbyMarker>)}
       </MapView>
 

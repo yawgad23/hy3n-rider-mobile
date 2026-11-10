@@ -171,7 +171,7 @@ function buildMapHtml(initialCenter: [number, number], initialPayload: MapPayloa
   const icon = (className, html, size, anchor) => L.divIcon({ className: '', html, iconSize: size, iconAnchor: anchor });
   const userIcon = () => icon('user', '<div class="user-dot"></div>', [22,22], [11,11]);
   const pinIcon = (kind) => icon(kind, '<div class="' + kind + '-pin"></div>', [22,22], [11,22]);
-  const vehicleIcon = (item) => icon('vehicle', '<div class="vehicle-icon" style="transform:rotate(' + (Number(item.bearing || 0)) + 'deg);outline:2px solid ' + safeMarkerColour(item.colour) + ';outline-offset:1px;border-radius:50%"><img class="vehicle-art" src="' + (markerAssets[item.kind || 'standard'] || markerAssets.standard) + '" alt="HY3N vehicle" /></div>', [34,34], [17,17]);
+  const vehicleIcon = (item) => icon('vehicle', '<div class="vehicle-icon" style="transform:rotate(' + (Number(item.bearing || 0)) + 'deg)"><img class="vehicle-art" src="' + (markerAssets[item.kind || 'standard'] || markerAssets.standard) + '" alt="HY3N vehicle" /></div>', [34,34], [17,17]);
   const remove = (key) => { if (layers[key]) { map.removeLayer(layers[key]); layers[key] = null; } };
   const stopAnimation = (marker) => {
     const frame = animationFrames.get(marker);
