@@ -151,6 +151,8 @@ interface ServerRideQuote {
   breakdown: Record<string, unknown>;
   routePoints?: [number, number][];
   routeSource?: 'google_routes_traffic' | 'osrm' | 'server_coordinate_estimate';
+  eligibleDriverCount?: number;
+  pickupEtaMinutes?: number | null;
 }
 
 interface ActiveRide {
@@ -1500,7 +1502,11 @@ export default function RiderHomeScreen() {
   const bookingRouteDisplay = riderBookingRouteDisplay(currentSelectedQuote);
   const bookingMapTimes = destination
     ? bookingMapTimeLabels({
-        pickupEtaMinutes: closestVehicleEta,
+        // The protected quote contains the server's dispatch-equivalent
+        // nearby-Driver preview. Use it when the optional client road-ETA
+        // refresh has not returned yet, so pre-booking never says "Finding
+        // Driver" while eligible vehicles are already visible on the map.
+        pickupEtaMinutes: closestVehicleEta ?? currentSelectedQuote?.pickupEtaMinutes ?? null,
         routeDurationMinutes: currentSelectedQuote?.durationMinutes,
       })
     : null;

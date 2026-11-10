@@ -27,7 +27,9 @@ export function bookingMapTimeLabels(input: {
   const now = input.now ?? new Date();
 
   return {
-    pickup: pickupMinutes === null ? 'Pickup\nFinding Driver' : `Pickup\n${Math.max(1, pickupMinutes)} min`,
+    pickup: pickupMinutes === null
+      ? 'Pickup\nNearby ETA unavailable'
+      : `Pickup\n${clockTime(new Date(now.getTime() + Math.max(1, pickupMinutes) * 60_000))} · ${Math.max(1, pickupMinutes)} min`,
     dropoff: routeMinutes === null ? 'Drop-off\nCalculating' : `Drop-off\n${clockTime(new Date(now.getTime() + routeMinutes * 60_000))}`,
   };
 }
