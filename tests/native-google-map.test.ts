@@ -42,6 +42,7 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('framed={false}');
     expect(component).toContain('size={ACTIVE_DRIVER_MARKER_SIZE} framed={false}');
     expect(component).toContain('function CompactVehicleMarker');
+    expect(readFileSync(path.join(process.cwd(), 'lib/rider-vehicle-artwork.ts'), 'utf8')).toContain("standard: require('../assets/images/map-car-marker.png')");
     expect(component).toContain('bookingMapPin: { width: 14, height: 14');
     expect(component).toContain('zIndex={9}');
     expect(component).toContain('bookingEndpointWithTime');
