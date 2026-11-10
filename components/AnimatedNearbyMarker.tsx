@@ -34,10 +34,6 @@ function bearingDegrees(aLat: number, aLng: number, bLat: number, bLng: number) 
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-function angularDifference(left: number, right: number) {
-  return Math.abs(((right - left + 540) % 360) - 180);
-}
-
 /** Adds the shortest signed turn so 350° -> 10° rotates 20°, not -340°. */
 function unwrapAngle(previous: number, next: number) {
   const delta = ((next - previous + 540) % 360) - 180;
@@ -71,12 +67,12 @@ export default function AnimatedNearbyMarker({ latitude, longitude, heading = nu
     const movementHeading = moved >= MIN_MOVE_METERS
       ? bearingDegrees(last.latitude, last.longitude, latitude, longitude)
       : null;
-    // A heading that points broadly opposite to observed GPS movement is stale
-    // or device-relative. Never show a car driving backwards on the map.
-    const targetHeading = hasHeading && (movementHeading === null
-      || angularDifference(Number(heading), movementHeading) <= 120)
-      ? Number(heading)
-      : movementHeading ?? Number(heading);
+    // While moving, the bearing between authenticated GPS samples is the most
+    // stable direction for the visual car. Raw compass headings can fluctuate
+    // by many degrees between samples and make a smoothly gliding marker shake
+    // or rotate back and forth. Use the raw heading only while stationary,
+    // when there is no reliable movement bearing to derive.
+    const targetHeading = movementHeading ?? Number(heading);
     rotationRef.current = unwrapAngle(rotationRef.current, targetHeading);
     setRotation(rotationRef.current);
 
