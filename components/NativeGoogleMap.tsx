@@ -35,6 +35,9 @@ type NativeGoogleMapProps = {
   driverServiceType?: string | null;
   driverEtaMinutes?: number | null;
   driverDistanceKm?: number | null;
+  bookingPickupEtaMinutes?: number | null;
+  bookingDropoffEtaMinutes?: number | null;
+  showBookingTimes?: boolean;
   driverTracking?: boolean;
   driverTrackingTarget?: NativeMapPoint | null;
   driverRoutePoints?: NativeMapPoint[] | null;
@@ -96,13 +99,17 @@ function CompactVehicleMarker({ serviceType, size, colour, framed = true }: { se
   );
 }
 
-function BookingEndpointMarker({ tone }: { tone: 'pickup' | 'dropoff' }) {
+function BookingEndpointMarker({ tone, etaMinutes, showTime }: { tone: 'pickup' | 'dropoff'; etaMinutes?: number | null; showTime: boolean }) {
   const backgroundColor = '#006B3F';
   const label = tone === 'pickup' ? 'Pickup' : 'Drop-off';
+  const minutes = Number(etaMinutes);
+  const timingLabel = showTime && Number.isFinite(minutes) && minutes >= 0
+    ? `${Math.max(1, Math.ceil(minutes))} min`
+    : null;
   return (
     <View pointerEvents="none" style={styles.bookingEndpointWithTime}>
       <View style={[styles.bookingRouteTimePill, { backgroundColor, borderColor: backgroundColor }]}>
-        <Text style={styles.bookingRouteTimeText} numberOfLines={1}>{label}</Text>
+        <Text style={styles.bookingRouteTimeText} numberOfLines={2}>{timingLabel ? `${label}\n${timingLabel}` : label}</Text>
       </View>
       <View style={[styles.bookingMapPin, { backgroundColor, borderColor: '#FFFFFF' }]}>
         <View style={styles.bookingMapPinInner} />
@@ -143,6 +150,9 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   routeOverview = false,
   tripStatus = null,
   nearbyDrivers = [],
+  bookingPickupEtaMinutes = null,
+  bookingDropoffEtaMinutes = null,
+  showBookingTimes = false,
 }, ref) {
   const mapRef = useRef<MapView>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -496,7 +506,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           tracksViewChanges
           zIndex={7}
         >
-          <BookingEndpointMarker tone="pickup" />
+          <BookingEndpointMarker tone="pickup" etaMinutes={bookingPickupEtaMinutes} showTime={showBookingTimes} />
         </Marker>}
         {bookingPreview && isNativeMapPoint(destination) && <Marker
           coordinate={coordinate(destination)}
@@ -504,7 +514,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           tracksViewChanges
           zIndex={7}
         >
-          <BookingEndpointMarker tone="dropoff" />
+          <BookingEndpointMarker tone="dropoff" etaMinutes={bookingDropoffEtaMinutes} showTime={showBookingTimes} />
         </Marker>}
         {/* Once a Driver is matched, `pickupPoint` below is the one server-owned
             pickup marker. Rendering the changing phone location too creates two

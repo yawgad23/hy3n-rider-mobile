@@ -46,8 +46,8 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('bookingEndpointWithTime');
     expect(component).not.toContain('bookingCallout');
     expect(component).not.toContain('bookingCalloutDetail');
-    expect(component).toContain('<BookingEndpointMarker tone="pickup" />');
-    expect(component).toContain('<BookingEndpointMarker tone="dropoff" />');
+    expect(component).toContain('<BookingEndpointMarker tone="pickup" etaMinutes={bookingPickupEtaMinutes} showTime={showBookingTimes} />');
+    expect(component).toContain('<BookingEndpointMarker tone="dropoff" etaMinutes={bookingDropoffEtaMinutes} showTime={showBookingTimes} />');
     expect(component).toContain('CompactVehicleMarker');
     expect(component).not.toContain('react-native-webview');
   });
@@ -90,15 +90,16 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('animateToRegion(region, cameraDurationMs)');
   });
 
-  it('renders a green booking route with clean Pickup and Drop-off endpoint labels', () => {
+  it('renders clean endpoint labels and adds times only when nearby ETA data exists', () => {
     expect(component).toContain("const HY3N_ROUTE_GREEN = '#007E4F';");
     expect(component).toContain('strokeColor={HY3N_ROUTE_GREEN}');
     expect(component).toContain('strokeColors={routeCoordinates.map(() => HY3N_ROUTE_GREEN)}');
-    expect(component).not.toContain('bookingPickupTimeLabel');
-    expect(component).not.toContain('timeLabel={booking');
+    expect(component).toContain('bookingPickupEtaMinutes?: number | null');
+    expect(component).toContain('bookingDropoffEtaMinutes?: number | null');
+    expect(component).toContain('showBookingTimes?: boolean');
+    expect(component).toContain('showTime={showBookingTimes}');
     expect(component).toContain('Pickup');
     expect(component).toContain('Drop-off');
-    expect(component).not.toContain('bookingDropoffTimeLabel');
     expect(component).toContain('BookingEndpointMarker');
     expect(component).toContain('bookingPreviewRegion');
     expect(component).toContain('const bookingRouteFrame = [');
