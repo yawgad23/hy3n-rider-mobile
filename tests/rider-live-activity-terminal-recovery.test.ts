@@ -16,4 +16,10 @@ describe('Rider Live Activity terminal recovery', () => {
     const stopHelper = source.slice(source.indexOf('async function stopRiderLiveActivity'));
     expect(stopHelper.indexOf('await stopActivity(activity.activityId')).toBeLessThan(stopHelper.indexOf('activitiesByRideId.delete(activity.rideId)'));
   });
+
+  it('resolves terminal cleanup through the stored ride identity when the lookup key differs', () => {
+    expect(source).toContain('function activityForRideId(rideId: string)');
+    expect(source).toContain('for (const activity of activitiesById.values())');
+    expect(source).toContain('const activity = activityForRideId(rideId)');
+  });
 });

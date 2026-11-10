@@ -234,9 +234,21 @@ async function stopRiderLiveActivity(activity: ActiveActivity, completed: boolea
   }
 }
 
+function activityForRideId(rideId: string) {
+  const direct = activitiesByRideId.get(rideId);
+  if (direct) return direct;
+  // A recovered ride can carry a local key in one snapshot and the Firestore
+  // document key in another. Resolve the native activity by its stored ride
+  // identity as a final safeguard before terminal cleanup.
+  for (const activity of activitiesById.values()) {
+    if (activity.rideId === rideId) return activity;
+  }
+  return null;
+}
+
 /** Ends the local Island/Lock Screen card immediately for a terminal trip state. */
 export async function endRiderLiveActivity(rideId: string, completed: boolean) {
-  const activity = activitiesByRideId.get(rideId);
+  const activity = activityForRideId(rideId);
   if (!activity) return;
   await stopRiderLiveActivity(activity, completed);
 }
