@@ -34,6 +34,10 @@ function bearingDegrees(aLat: number, aLng: number, bLat: number, bLng: number) 
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
+function angularDifference(left: number, right: number) {
+  return Math.abs(((right - left + 540) % 360) - 180);
+}
+
 /** Adds the shortest signed turn so 350° -> 10° rotates 20°, not -340°. */
 function unwrapAngle(previous: number, next: number) {
   const delta = ((next - previous + 540) % 360) - 180;
@@ -64,9 +68,15 @@ export default function AnimatedNearbyMarker({ latitude, longitude, heading = nu
     // Face the direction of travel; prefer the real heading when provided.
     const hasHeading = Number.isFinite(Number(heading)) && heading !== null;
     if (!hasHeading && moved < MIN_MOVE_METERS) return; // GPS jitter: keep the car still
-    const targetHeading = hasHeading
+    const movementHeading = moved >= MIN_MOVE_METERS
+      ? bearingDegrees(last.latitude, last.longitude, latitude, longitude)
+      : null;
+    // A heading that points broadly opposite to observed GPS movement is stale
+    // or device-relative. Never show a car driving backwards on the map.
+    const targetHeading = hasHeading && (movementHeading === null
+      || angularDifference(Number(heading), movementHeading) <= 120)
       ? Number(heading)
-      : bearingDegrees(last.latitude, last.longitude, latitude, longitude);
+      : movementHeading ?? Number(heading);
     rotationRef.current = unwrapAngle(rotationRef.current, targetHeading);
     setRotation(rotationRef.current);
 

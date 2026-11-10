@@ -56,7 +56,8 @@ describe('Rider route-aware vehicle animation', () => {
       durationMs: 2_400,
     });
 
-    expect(noRoute).toMatchObject({ mode: 'direct', steps: [{ point: [5.6001, -0.1999], bearing: 41, durationMs: 2_400 }] });
+    expect(noRoute).toMatchObject({ mode: 'direct', steps: [{ point: [5.6001, -0.1999], durationMs: 2_400 }] });
+    expect(noRoute.steps[0].bearing).toBeCloseTo(44.86, 1);
     expect(offRoute).toMatchObject({ mode: 'direct', steps: [{ point: [5.6041, -0.1999], durationMs: 2_400 }] });
     expect(untimestampedRoute.mode).toBe('direct');
   });

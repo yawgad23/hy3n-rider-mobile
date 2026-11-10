@@ -71,10 +71,6 @@ function timestampMs(value: string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function validBearing(value: number | null | undefined) {
-  return Number.isFinite(Number(value)) ? (Number(value) % 360 + 360) % 360 : null;
-}
-
 function angularDifference(left: number, right: number) {
   return Math.abs(((right - left + 540) % 360) - 180);
 }
@@ -116,7 +112,10 @@ function directPlan(input: RiderRouteAnimationInput): RiderRouteAnimationPlan {
     mode: 'direct',
     steps: [{
       point: input.to,
-      bearing: validBearing(input.fallbackBearing) ?? routeSegmentBearing(input.from, input.to),
+      // When road geometry is unavailable or stale, the authenticated movement
+      // between the two GPS samples is the safest direction. A raw heading can
+      // be stale, device-relative, or point opposite to the actual progress.
+      bearing: routeSegmentBearing(input.from, input.to),
       durationMs: boundedDuration(input.durationMs),
     }],
   };
