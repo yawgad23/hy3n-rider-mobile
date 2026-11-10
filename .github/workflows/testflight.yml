@@ -1,0 +1,74 @@
+name: HY3N Rider iOS TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_paid_build:
+        description: "Start a paid EAS iOS build and submit it to TestFlight"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install project dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install EAS CLI
+        run: npm install --global eas-cli
+      - name: Verify Expo authentication
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::GitHub Actions secret EXPO_TOKEN is missing or empty."
+            exit 1
+          fi
+          eas whoami
+      - name: Validate Rider source
+        run: |
+          pnpm check
+          pnpm test
+      - name: Show configured EAS profiles (no build)
+        run: |
+          node -e "const e=require('./eas.json'); if (!e.build?.production) process.exit(1); if (!e.submit?.production?.ios?.ascAppId) process.exit(1); console.log('Production iOS build profile and App Store Connect submission app ID are present. No build was started.')"
+
+  build-and-submit:
+    if: ${{ inputs.start_paid_build == true }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install project dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install EAS CLI
+        run: npm install --global eas-cli
+      - name: Build iOS app
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas build --platform ios --profile production --non-interactive
+      - name: Submit latest iOS build to TestFlight
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas submit --platform ios --profile production --latest --non-interactive

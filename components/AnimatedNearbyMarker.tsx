@@ -72,7 +72,9 @@ export default function AnimatedNearbyMarker({ latitude, longitude, heading = nu
     // by many degrees between samples and make a smoothly gliding marker shake
     // or rotate back and forth. Use the raw heading only while stationary,
     // when there is no reliable movement bearing to derive.
-    const targetHeading = movementHeading ?? Number(heading);
+    // If the vehicle is stationary and the server has no valid heading, keep
+    // its last rendered orientation instead of converting null to 0° (north).
+    const targetHeading = movementHeading ?? (hasHeading ? Number(heading) : rotationRef.current);
     rotationRef.current = unwrapAngle(rotationRef.current, targetHeading);
     setRotation(rotationRef.current);
 
