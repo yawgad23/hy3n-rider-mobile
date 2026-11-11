@@ -689,6 +689,9 @@ export default function RiderHomeScreen() {
     // Clear the Island immediately as well as relying on the server's remote
     // ActivityKit end push, so a completed trip never stays on screen.
     void endRiderLiveActivity(trackedRide.id, true);
+    if (trackedRide.firestoreId && trackedRide.firestoreId !== trackedRide.id) {
+      void endRiderLiveActivity(trackedRide.firestoreId, true);
+    }
     setActiveRides((previous) => removeRide(previous, trackedRide.id));
     setTerminalRide(terminal);
     setRideRated(false);
