@@ -754,6 +754,7 @@ export default function RiderHomeScreen() {
   const [totalDistanceTraveled, setTotalDistanceTraveled] = useState<number>(0);
   const [searchHistory, setSearchHistory] = useState<Location[]>([]);
   const [locationFreshnessTick, setLocationFreshnessTick] = useState(0);
+  const [longStopCheckIn, setLongStopCheckIn] = useState<{ rideId: string; acknowledgedAt: number } | null>(null);
 
   // Schedule
   const [isScheduled, setIsScheduled] = useState(false);
@@ -3072,12 +3073,42 @@ export default function RiderHomeScreen() {
               </View>
             )}
             {activeRide.safetySignal === "long_stop" && (
-              <View style={{ flexDirection: "row", gap: 10, alignItems: "center", backgroundColor: `${GOLD}18`, borderColor: `${GOLD}66`, borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 10 }}>
-                <MaterialIcons name="pause-circle-outline" size={20} color={GOLD} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: GOLD, fontWeight: "800", fontSize: 13 }}>Trip check</Text>
-                  <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>The vehicle has been stationary for several minutes. Check in with your driver or use Emergency Assist.</Text>
+              <View style={{ backgroundColor: `${GOLD}18`, borderColor: `${GOLD}66`, borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 10 }}>
+                <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start" }}>
+                  <MaterialIcons name="pause-circle-outline" size={20} color={GOLD} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: GOLD, fontWeight: "900", fontSize: 13 }}>Are you okay?</Text>
+                    <Text style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>The vehicle has been stationary for several minutes. Check in with your Driver before continuing.</Text>
+                  </View>
                 </View>
+                {!(longStopCheckIn?.rideId === activeRide.id && Date.now() - longStopCheckIn.acknowledgedAt < 10 * 60_000) && (
+                  <View style={{ flexDirection: "row", gap: 8, marginTop: 11 }}>
+                    <TouchableOpacity
+                      onPress={() => setLongStopCheckIn({ rideId: activeRide.id, acknowledgedAt: Date.now() })}
+                      accessibilityRole="button"
+                      accessibilityLabel="Confirm everything is okay"
+                      style={{ flex: 1, minHeight: 40, borderRadius: 10, backgroundColor: `${GREEN}28`, borderWidth: 1, borderColor: `${GREEN}88`, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 }}
+                    >
+                      <Text style={{ color: GREEN, fontSize: 11, fontWeight: "900" }}>I’m okay</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => void handleCallDriver()}
+                      accessibilityRole="button"
+                      accessibilityLabel="Call driver about stopped trip"
+                      style={{ flex: 1, minHeight: 40, borderRadius: 10, backgroundColor: `${GOLD}24`, borderWidth: 1, borderColor: `${GOLD}88`, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 }}
+                    >
+                      <Text style={{ color: GOLD, fontSize: 11, fontWeight: "900" }}>Call Driver</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleEmergencyAssist}
+                      accessibilityRole="button"
+                      accessibilityLabel="Open safety tools for stopped trip"
+                      style={{ width: 42, minHeight: 40, borderRadius: 10, backgroundColor: `${RED}20`, borderWidth: 1, borderColor: `${RED}88`, alignItems: "center", justifyContent: "center" }}
+                    >
+                      <MaterialIcons name="security" size={19} color={RED} />
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             )}
 
