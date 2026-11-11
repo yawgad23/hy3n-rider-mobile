@@ -37,10 +37,11 @@ let tokenListenerReady = false;
 let fcmTokenPromise: Promise<string | null> | null = null;
 const tokenRegistrationRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const liveActivityStopRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
-// Firestore and the status fallback can deliver the same active ride at nearly
-// the same time. Serialize creation per ride so two native ActivityKit cards
-// cannot be started before the first activity is inserted into the maps.
-const activityStartGates = new Map<string, Promise<void>>();
+// Firestore/status refreshes and terminal cleanup can overlap. Serialize all
+// native operations per ride so a late driver-arrived update cannot overwrite
+// a completed-trip dismissal.
+const activityOperationGates = new Map<string, Promise<void>>();
+const terminalRideIds = new Set<string>();
 const MAX_ACTIVITY_TOKEN_REGISTRATION_ATTEMPTS = 3;
 const MAX_LIVE_ACTIVITY_STOP_ATTEMPTS = 3;
 
@@ -163,22 +164,20 @@ const activityConfig = {
 /** Starts or refreshes the one native Live Activity for the Rider's active trip. */
 export async function syncRiderLiveActivity(user: User | null | undefined, ride: RiderLiveActivityRide) {
   if (!available() || !user || !riderLiveActivityEligible(ride.status)) return;
+  if (terminalRideIds.has(ride.id)) return;
+  await enqueueActivityOperation(ride.id, async () => {
+    if (!terminalRideIds.has(ride.id)) await syncRiderLiveActivityOnce(user, ride);
+  });
+}
 
-  const pendingStart = activityStartGates.get(ride.id);
-  if (pendingStart) {
-    await pendingStart;
-    return;
-  }
-
-  let releaseStartGate!: () => void;
-  const startGate = new Promise<void>((resolve) => { releaseStartGate = resolve; });
-  activityStartGates.set(ride.id, startGate);
-
+async function enqueueActivityOperation(rideId: string, operation: () => Promise<void>) {
+  const previous = activityOperationGates.get(rideId) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(operation);
+  activityOperationGates.set(rideId, next.catch(() => undefined));
   try {
-    await syncRiderLiveActivityOnce(user, ride);
+    await next;
   } finally {
-    releaseStartGate();
-    activityStartGates.delete(ride.id);
+    if (activityOperationGates.get(rideId) === next) activityOperationGates.delete(rideId);
   }
 }
 
@@ -191,6 +190,10 @@ async function syncRiderLiveActivityOnce(user: User, ride: RiderLiveActivityRide
     if (previous.ending) return;
     try {
       await updateActivity(previous.activityId, rendered.state);
+      if (terminalRideIds.has(ride.id)) {
+        await stopRiderLiveActivity(previous, true);
+        return;
+      }
       previous.progress = rendered.progress;
       return;
     } catch {
@@ -205,6 +208,10 @@ async function syncRiderLiveActivityOnce(user: User, ride: RiderLiveActivityRide
     const activity = { activityId, rideId: ride.id, user, progress: rendered.progress, imageName: rendered.imageName };
     activitiesByRideId.set(ride.id, activity);
     activitiesById.set(activityId, activity);
+    if (terminalRideIds.has(ride.id)) {
+      await stopRiderLiveActivity(activity, true);
+      return;
+    }
     const earlyPushToken = pendingActivityPushTokens.get(activityId);
     if (earlyPushToken) {
       pendingActivityPushTokens.delete(activityId);
@@ -272,7 +279,9 @@ function activityForRideId(rideId: string) {
 
 /** Ends the local Island/Lock Screen card immediately for a terminal trip state. */
 export async function endRiderLiveActivity(rideId: string, completed: boolean) {
-  const activity = activityForRideId(rideId);
-  if (!activity) return;
-  await stopRiderLiveActivity(activity, completed);
+  terminalRideIds.add(rideId);
+  await enqueueActivityOperation(rideId, async () => {
+    const activity = activityForRideId(rideId);
+    if (activity) await stopRiderLiveActivity(activity, completed);
+  });
 }
