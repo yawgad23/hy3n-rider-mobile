@@ -11,7 +11,8 @@
     "format": "prettier --write .",
     "android": "node ./node_modules/.bin/cross-env EXPO_NO_METRO_WORKSPACE_ROOT=1 node ./node_modules/.bin/expo start --android",
     "ios": "node ./node_modules/.bin/cross-env EXPO_NO_METRO_WORKSPACE_ROOT=1 node ./node_modules/.bin/expo start --ios",
-    "qr": "node scripts/generate_qr.mjs"
+    "qr": "node scripts/generate_qr.mjs",
+    "postinstall": "node scripts/patch-expo-live-activity.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
