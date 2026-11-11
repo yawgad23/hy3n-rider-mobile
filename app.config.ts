@@ -29,12 +29,14 @@ const schemeFromBundleId = `manus${timestamp}`;
 // must be separately restricted in Google Cloud. They are injected only by
 // EAS at build time and must never reuse the server-only Routes API key.
 const nativeGoogleMaps = {
-  iosApiKey: process.env.GOOGLE_MAPS_IOS_API_KEY?.trim()
-    || process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS?.trim()
-    || "",
-  androidApiKey: process.env.GOOGLE_MAPS_ANDROID_API_KEY?.trim()
-    || process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID?.trim()
-    || "",
+  iosApiKey:
+    process.env.GOOGLE_MAPS_IOS_API_KEY?.trim() ||
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS?.trim() ||
+    "",
+  androidApiKey:
+    process.env.GOOGLE_MAPS_ANDROID_API_KEY?.trim() ||
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID?.trim() ||
+    "",
 };
 
 const env = {
@@ -43,7 +45,8 @@ const env = {
   appSlug: "hy3n-mobile-app",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663767879005/DOmuRrvQQNqEEdHe.png",
+  logoUrl:
+    "https://files.manuscdn.com/user_upload_by_module/session_file/310519663767879005/DOmuRrvQQNqEEdHe.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
@@ -56,8 +59,8 @@ const config: ExpoConfig = {
   version: "1.0.0",
   extra: {
     eas: {
-      projectId: "0b06ad22-f4a1-4aa7-aab6-0e03237ad63c"
-    }
+      projectId: "0b06ad22-f4a1-4aa7-aab6-0e03237ad63c",
+    },
   },
   orientation: "portrait",
   icon: "./assets/images/rider-ios-icon.png",
@@ -71,22 +74,26 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    // Package 131 contains the verified live-map, driver-location,
-    // Firestore-ID reconciliation, and category-filtering fixes.
-    buildNumber: "131",
+    // Package 132 contains the vehicle-color card and prolonged-stop safety
+    // check-in fixes on top of the verified live-map release.
+    buildNumber: "132",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
     entitlements: {
-      "aps-environment": process.env.EAS_BUILD_PROFILE === "production" ? "production" : "development",
+      "aps-environment":
+        process.env.EAS_BUILD_PROFILE === "production"
+          ? "production"
+          : "development",
     },
     ...(nativeGoogleMaps.iosApiKey
       ? { config: { googleMapsApiKey: nativeGoogleMaps.iosApiKey } }
       : {}),
-    "infoPlist": {
-      "ITSAppUsesNonExemptEncryption": false,
-      "NSContactsUsageDescription": "HY3N uses the contact you choose to fill in a passenger name and phone number when you book a ride for someone else."
-    }
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false,
+      NSContactsUsageDescription:
+        "HY3N uses the contact you choose to fill in a passenger name and phone number when you book a ride for someone else.",
+    },
   },
   android: {
     adaptiveIcon: {
@@ -148,7 +155,8 @@ const config: ExpoConfig = {
     [
       "expo-location",
       {
-        locationWhenInUsePermission: "HY3N uses your location to set your pickup point and connect you with nearby drivers.",
+        locationWhenInUsePermission:
+          "HY3N uses your location to set your pickup point and connect you with nearby drivers.",
       },
     ],
     "@react-native-firebase/app",
@@ -187,14 +195,8 @@ const config: ExpoConfig = {
         },
       },
     ],
-    [
-      "./plugins/withPodfileModularHeaders",
-      {},
-    ],
-    [
-      "./plugins/withHy3nLiveActivityBranding",
-      {},
-    ],
+    ["./plugins/withPodfileModularHeaders", {}],
+    ["./plugins/withHy3nLiveActivityBranding", {}],
   ],
   experiments: {
     typedRoutes: true,
