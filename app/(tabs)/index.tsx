@@ -2856,8 +2856,13 @@ export default function RiderHomeScreen() {
 
               <View style={{ padding: 16 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                  <View style={{ width: 60, height: 60, borderRadius: 18, backgroundColor: pairingVehicleColourHex, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: `${GOLD}88` }} accessibilityLabel={`Vehicle colour ${pairingVehicleColourLabel}`}>
-                    <MaterialIcons name="directions-car" size={33} color={vehicleCardIconColour(pairingVehicleColourHex)} />
+                  <View style={{ width: 68, height: 60, alignItems: "center", justifyContent: "center" }} accessibilityLabel={`Vehicle colour ${pairingVehicleColourLabel}`}>
+                    <MaterialIcons
+                      name="directions-car"
+                      size={46}
+                      color={pairingVehicleColourHex}
+                      style={{ textShadowColor: vehicleCardIconColour(pairingVehicleColourHex), textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 2 }}
+                    />
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }} numberOfLines={1}>{pairingVehicleIdentity}</Text>
