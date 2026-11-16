@@ -101,6 +101,11 @@ function routeDistanceKm(points: NativeMapPoint[]) {
   return points.slice(1).reduce((total, point, index) => total + distanceMeters(points[index], point), 0) / 1000;
 }
 
+function timestampMs(value?: string | null) {
+  const parsed = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function markerAsset(serviceType?: string | null) {
   return RIDER_MAP_MARKER_ARTWORK[riderMapMarkerKind(serviceType)];
 }
@@ -194,21 +199,35 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     () => (driverRoutePoints || []).filter(isNativeMapPoint),
     [driverRoutePoints],
   );
+  // A live route refresh is generated from the Driver's newest accepted GPS
+  // sample. If that route arrives before the matching location field, using its
+  // first road point keeps the marker and the moving route on the same sample
+  // instead of leaving the car parked at the previous location.
+  const locationAtMs = timestampMs(driverLocationUpdatedAt);
+  const routeAtMs = timestampMs(driverRouteUpdatedAt);
+  const routeAnchor = trustedDriverRoute[0] || null;
+  const routeAnchorIsNewer = routeAtMs !== null
+    && (locationAtMs === null || routeAtMs >= locationAtMs);
+  const liveDriverLocation = routeAnchorIsNewer && routeAnchor
+    && (!isNativeMapPoint(driverLocation) || distanceMeters(driverLocation, routeAnchor) > 8)
+    ? routeAnchor
+    : driverLocation;
+  const liveDriverUpdatedAt = routeAnchorIsNewer ? driverRouteUpdatedAt : driverLocationUpdatedAt;
   const routeProgressKey = String(tripStatus || '') + ':' + String(driverRouteUpdatedAt || '') + ':' + (trustedDriverRoute.length ? trustedDriverRoute[trustedDriverRoute.length - 1][0].toFixed(5) + ',' + trustedDriverRoute[trustedDriverRoute.length - 1][1].toFixed(5) : 'empty');
   if (routeProgressRef.current.key !== routeProgressKey) {
     routeProgressRef.current = { key: routeProgressKey, segmentIndex: 0 };
   }
   const displayDriverMatch = useMemo(
-    () => matchPointToServerRoute(driverLocation, trustedDriverRoute, undefined, Math.max(0, routeProgressRef.current.segmentIndex - 2)),
-    [driverLocation, trustedDriverRoute, routeProgressKey],
+    () => matchPointToServerRoute(liveDriverLocation, trustedDriverRoute, undefined, Math.max(0, routeProgressRef.current.segmentIndex - 2)),
+    [liveDriverLocation, trustedDriverRoute, routeProgressKey],
   );
   if (displayDriverMatch) {
     routeProgressRef.current.segmentIndex = Math.max(routeProgressRef.current.segmentIndex, displayDriverMatch.segmentIndex);
   }
   const displayDriverPoint = useMemo(() => {
     return displayDriverMatch?.point
-      ?? (isNativeMapPoint(driverLocation) ? driverLocation : null);
-  }, [displayDriverMatch, driverLocation]);
+      ?? (isNativeMapPoint(liveDriverLocation) ? liveDriverLocation : null);
+  }, [displayDriverMatch, liveDriverLocation]);
   const displayDriverBearing = useMemo(() => {
     // The vehicle's actual direction must not be replaced by the direction of
     // an old route when the Driver reverses along the same road.
@@ -219,13 +238,13 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const trackedTarget = driverTracking && isNativeMapPoint(driverTrackingTarget) ? driverTrackingTarget : null;
   const remainingRoutePoints = useMemo(() => {
     const serverRoute = driverTracking
-      ? riderRemainingLiveRoute(driverLocation, trustedDriverRoute, routeOverview, Math.max(0, routeProgressRef.current.segmentIndex - 2))
+      ? riderRemainingLiveRoute(liveDriverLocation, trustedDriverRoute, routeOverview, Math.max(0, routeProgressRef.current.segmentIndex - 2))
       : trustedDriverRoute;
     if (serverRoute.length > 1) return serverRoute;
     // A direct line is not a road route. The booking API and active-trip route
     // service publish the geometry that is safe to show to a Rider.
     return [];
-  }, [driverLocation, driverTracking, routeOverview, trustedDriverRoute]);
+  }, [driverTracking, liveDriverLocation, routeOverview, trustedDriverRoute]);
   const routeCoordinates = useMemo(() => remainingRoutePoints.map(coordinate), [remainingRoutePoints]);
   const liveRouteDistanceKm = driverTracking && remainingRoutePoints.length > 1
     ? routeDistanceKm(remainingRoutePoints)
@@ -244,13 +263,13 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     && isNativeMapPoint(userLocation)
     && isNativeMapPoint(destination);
 
-  const driverMotionAnchor = isNativeMapPoint(driverLocation) ? driverLocation : displayDriverPoint;
+  const driverMotionAnchor = isNativeMapPoint(liveDriverLocation) ? liveDriverLocation : displayDriverPoint;
   const driverMotionKey = driverMotionAnchor
     // Heading updates are intentionally excluded. Compass/GPS heading can
     // fluctuate while a car is already gliding; treating each fluctuation as
     // a new motion sample stops the in-flight animation and makes the marker
     // visibly shake. Position/timestamp changes remain the movement authority.
-    ? `${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${driverLocationUpdatedAt || ''}`
+    ? `${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${liveDriverUpdatedAt || ''}`
     : null;
 
   useEffect(() => {
@@ -266,11 +285,11 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
 
     const nextPoint = displayDriverPoint;
     const nextBearing = Number(displayDriverBearing) || 0;
-    const nextUpdatedAt = driverLocationUpdatedAt ? new Date(driverLocationUpdatedAt).getTime() : Number.NaN;
+    const nextUpdatedAt = liveDriverUpdatedAt ? new Date(liveDriverUpdatedAt).getTime() : Number.NaN;
     // Keep each verified segment moving for a small period beyond its GPS
     // cadence. This absorbs normal network delivery delay without estimating a
     // position beyond the newest authenticated Driver coordinate.
-    const durationMs = riderDriverMarkerMotionDuration(previousDriverUpdatedAtRef.current, driverLocationUpdatedAt);
+    const durationMs = riderDriverMarkerMotionDuration(previousDriverUpdatedAtRef.current, liveDriverUpdatedAt);
     const generation = animationGenerationRef.current + 1;
     const retainedRoute = previousFreshRouteRef.current;
     animationGenerationRef.current = generation;
@@ -299,7 +318,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         durationMs,
         fallbackBearing: nextBearing,
         routeUpdatedAt: route.updatedAt,
-        locationUpdatedAt: driverLocationUpdatedAt,
+        locationUpdatedAt: liveDriverUpdatedAt,
       }));
       const plan = plans.find((candidate) => candidate.mode === 'road') ?? plans[plans.length - 1];
 
@@ -356,7 +375,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     animatedDriverCoordinate,
     displayDriverBearing,
     displayDriverPoint,
-    driverLocationUpdatedAt,
+    liveDriverUpdatedAt,
     driverMotionKey,
     driverRouteUpdatedAt,
     tripStatus,
@@ -451,16 +470,16 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     let cameraDurationMs = displayDriverPoint && trackedTarget ? 650 : 350;
     if (driverTracking && displayDriverPoint) {
       const previousCameraAt = previousCameraUpdatedAtRef.current;
-      const currentCameraAt = driverLocationUpdatedAt ? Date.parse(driverLocationUpdatedAt) : Number.NaN;
+      const currentCameraAt = liveDriverUpdatedAt ? Date.parse(liveDriverUpdatedAt) : Number.NaN;
       if (previousCameraAt !== null && Number.isFinite(currentCameraAt) && currentCameraAt > previousCameraAt) {
-        cameraDurationMs = riderDriverMarkerMotionDuration(previousCameraAt, driverLocationUpdatedAt);
+        cameraDurationMs = riderDriverMarkerMotionDuration(previousCameraAt, liveDriverUpdatedAt);
       }
       if (Number.isFinite(currentCameraAt)) previousCameraUpdatedAtRef.current = currentCameraAt;
     } else {
       previousCameraUpdatedAtRef.current = null;
     }
     mapRef.current?.animateToRegion(region, cameraDurationMs);
-  }, [bookingPreview, center, destination, displayDriverPoint, driverLocationUpdatedAt, driverRoutePoints, driverTracking, mapReady, nearby, routeCoordinates, routeOverview, trackedTarget, userLocation]);
+  }, [bookingPreview, center, destination, displayDriverPoint, driverRoutePoints, driverTracking, liveDriverUpdatedAt, mapReady, nearby, routeCoordinates, routeOverview, trackedTarget, userLocation]);
 
   useEffect(() => {
     if (!routeOverview) {

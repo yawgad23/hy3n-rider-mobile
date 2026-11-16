@@ -62,7 +62,7 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('previousFreshRouteRef');
     expect(component).toContain('rotation={visualDriverBearing}');
     expect(component).toContain('Heading updates are intentionally excluded');
-    expect(component).toContain("${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${driverLocationUpdatedAt || ''}");
+    expect(component).toContain("${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${liveDriverUpdatedAt || ''}");
     expect(component).not.toContain("${Number(displayDriverBearing).toFixed(2)}");
     expect(component).toContain('Stop at the exact in-flight native coordinate');
     expect(component).toContain('riderDriverMarkerMotionDuration');
@@ -93,7 +93,7 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('onMapReady={() => setMapReady(true)}');
     expect(component).toContain('animateToRegion(region');
     expect(component).toContain('previousCameraUpdatedAtRef');
-    expect(component).toContain('riderDriverMarkerMotionDuration(previousCameraAt, driverLocationUpdatedAt)');
+    expect(component).toContain('riderDriverMarkerMotionDuration(previousCameraAt, liveDriverUpdatedAt)');
     expect(component).toContain('animateToRegion(region, cameraDurationMs)');
   });
 
