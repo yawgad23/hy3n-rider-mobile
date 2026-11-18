@@ -256,6 +256,36 @@ interface ActiveRide {
 }
 
 const DEFAULT_LOCATION: [number, number] = [5.6037, -0.187]; // Accra, Ghana
+const RIDER_LOCATION_TIMEOUT_MS = 12_000;
+const RIDER_LAST_LOCATION_MAX_AGE_MS = 120_000;
+
+function withLocationTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('LOCATION_TIMEOUT')), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
+function isUsableRiderLocation(location: ExpoLocation.LocationObject | null | undefined) {
+  const latitude = Number(location?.coords?.latitude);
+  const longitude = Number(location?.coords?.longitude);
+  return Boolean(
+    location
+    && Number.isFinite(latitude)
+    && Number.isFinite(longitude)
+    && Math.abs(latitude) <= 90
+    && Math.abs(longitude) <= 180,
+  );
+}
 
 const STATUS_LABELS: Record<string, string> = {
   searching: "Searching for driver...",
@@ -327,6 +357,12 @@ export default function RiderHomeScreen() {
     setPickupLocationReady(false);
     setRefreshingPickupLocation(true);
     try {
+      if (!(await ExpoLocation.hasServicesEnabledAsync())) {
+        if (generation !== pickupRefreshGenerationRef.current) return false;
+        setPickupAddress('Turn on location services');
+        return false;
+      }
+
       const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         if (generation !== pickupRefreshGenerationRef.current) return false;
@@ -334,7 +370,29 @@ export default function RiderHomeScreen() {
         return false;
       }
 
-      const location = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy.Balanced });
+      let location: ExpoLocation.LocationObject;
+      try {
+        location = await withLocationTimeout(
+          ExpoLocation.getCurrentPositionAsync({
+            accuracy: Platform.OS === 'android' ? ExpoLocation.Accuracy.High : ExpoLocation.Accuracy.Balanced,
+          }),
+          RIDER_LOCATION_TIMEOUT_MS,
+        );
+      } catch (error) {
+        // Android can leave getCurrentPositionAsync pending when Google Play
+        // Location Services has no fix. Do not leave the Rider on an infinite
+        // "Getting your location..." state; use only a very recent cached fix.
+        const lastKnown = await ExpoLocation.getLastKnownPositionAsync({
+          maxAge: RIDER_LAST_LOCATION_MAX_AGE_MS,
+          requiredAccuracy: 1_000,
+        });
+        if (!lastKnown || !isUsableRiderLocation(lastKnown)) {
+          console.warn('[HY3N] Rider location request failed', error);
+          throw error;
+        }
+        location = lastKnown;
+        if (generation === pickupRefreshGenerationRef.current) setPickupAddress('Recent location');
+      }
       if (generation !== pickupRefreshGenerationRef.current) return false;
       setUserLocation([location.coords.latitude, location.coords.longitude]);
 
