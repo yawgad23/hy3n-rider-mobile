@@ -256,8 +256,8 @@ interface ActiveRide {
 }
 
 const DEFAULT_LOCATION: [number, number] = [5.6037, -0.187]; // Accra, Ghana
-const RIDER_LOCATION_TIMEOUT_MS = 12_000;
-const RIDER_LAST_LOCATION_MAX_AGE_MS = 120_000;
+const RIDER_LOCATION_TIMEOUT_MS = Platform.OS === 'android' ? 8_000 : 12_000;
+const RIDER_LAST_LOCATION_MAX_AGE_MS = Platform.OS === 'android' ? 15 * 60_000 : 120_000;
 
 function withLocationTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -351,11 +351,14 @@ export default function RiderHomeScreen() {
   const riderAppStateRef = useRef(AppState.currentState);
   const [surge, setSurge] = useState({ multiplier: 1, active: false, reason: null as string | null });
 
-  const refreshCurrentPickupLocation = useCallback(async (): Promise<boolean> => {
+  const refreshCurrentPickupLocation = useCallback(async (explicitRequest = false): Promise<boolean> => {
     const generation = ++pickupRefreshGenerationRef.current;
     pickupSelectionSourceRef.current = 'device';
     setPickupLocationReady(false);
     setRefreshingPickupLocation(true);
+    // Keep an intentionally typed pickup visible during the automatic startup
+    // refresh. Only an explicit tap on current location replaces that label.
+    if (explicitRequest) setPickupAddress('Getting your location...');
     try {
       if (!(await ExpoLocation.hasServicesEnabledAsync())) {
         if (generation !== pickupRefreshGenerationRef.current) return false;
@@ -370,29 +373,42 @@ export default function RiderHomeScreen() {
         return false;
       }
 
-      let location: ExpoLocation.LocationObject;
+      let location: ExpoLocation.LocationObject | null = null;
+      // Android may not have a fresh GPS fix immediately after launch. Use a
+      // recent cache to populate the pickup promptly, then replace it with a
+      // live fix when the current-position request succeeds.
+      const lastKnown = await ExpoLocation.getLastKnownPositionAsync({
+        maxAge: RIDER_LAST_LOCATION_MAX_AGE_MS,
+        requiredAccuracy: Platform.OS === 'android' ? 5_000 : 1_000,
+      });
+      if (isUsableRiderLocation(lastKnown)) {
+        const cachedLocation = lastKnown as ExpoLocation.LocationObject;
+        location = cachedLocation;
+        if (generation === pickupRefreshGenerationRef.current) {
+          setUserLocation([cachedLocation.coords.latitude, cachedLocation.coords.longitude]);
+          setPickupAddress('Recent location');
+        }
+      }
       try {
-        location = await withLocationTimeout(
+        const currentLocation = await withLocationTimeout(
           ExpoLocation.getCurrentPositionAsync({
-            accuracy: Platform.OS === 'android' ? ExpoLocation.Accuracy.High : ExpoLocation.Accuracy.Balanced,
+            accuracy: ExpoLocation.Accuracy.Balanced,
+            ...(Platform.OS === 'android' ? { mayShowUserSettingsDialog: true } : {}),
           }),
           RIDER_LOCATION_TIMEOUT_MS,
         );
+        if (isUsableRiderLocation(currentLocation)) location = currentLocation;
       } catch (error) {
         // Android can leave getCurrentPositionAsync pending when Google Play
         // Location Services has no fix. Do not leave the Rider on an infinite
-        // "Getting your location..." state; use only a very recent cached fix.
-        const lastKnown = await ExpoLocation.getLastKnownPositionAsync({
-          maxAge: RIDER_LAST_LOCATION_MAX_AGE_MS,
-          requiredAccuracy: 1_000,
-        });
-        if (!lastKnown || !isUsableRiderLocation(lastKnown)) {
+        // "Getting your location..." state; retain only the recent cache.
+        if (!location) {
           console.warn('[HY3N] Rider location request failed', error);
           throw error;
         }
-        location = lastKnown;
         if (generation === pickupRefreshGenerationRef.current) setPickupAddress('Recent location');
       }
+      if (!location) throw new Error('LOCATION_UNAVAILABLE');
       if (generation !== pickupRefreshGenerationRef.current) return false;
       setUserLocation([location.coords.latitude, location.coords.longitude]);
 
@@ -421,7 +437,7 @@ export default function RiderHomeScreen() {
   }, []);
 
   const handleUseCurrentPickupLocation = useCallback(async () => {
-    const refreshed = await refreshCurrentPickupLocation();
+    const refreshed = await refreshCurrentPickupLocation(true);
     if (!refreshed) {
       Alert.alert(
         'Current location unavailable',

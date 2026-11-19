@@ -15,6 +15,10 @@ describe('Rider current pickup selection', () => {
   it('provides a separate current-location control while retaining manual pickup search', () => {
     expect(screen).toContain('const handleUseCurrentPickupLocation = useCallback(async () =>');
     expect(screen).toContain('ExpoLocation.getCurrentPositionAsync');
+    expect(screen).toContain("accuracy: ExpoLocation.Accuracy.Balanced");
+    expect(screen).toContain("mayShowUserSettingsDialog: true");
+    expect(screen).toContain("setPickupAddress('Getting your location...');");
+    expect(screen).toContain("RIDER_LAST_LOCATION_MAX_AGE_MS = Platform.OS === 'android' ? 15 * 60_000 : 120_000");
     expect(screen).toContain('setUserLocation([location.coords.latitude, location.coords.longitude]);');
     expect(screen).toContain('accessibilityLabel="Use current location for pickup"');
     expect(screen).toContain('onPress={() => openLocationSearch("pickup")}');
