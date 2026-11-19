@@ -56,7 +56,7 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   owner: "yawgad",
-  version: "1.0.2",
+  version: "1.0.3",
   extra: {
     eas: {
       projectId: "0b06ad22-f4a1-4aa7-aab6-0e03237ad63c",
@@ -106,8 +106,8 @@ const config: ExpoConfig = {
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    // Incremented for the Android location timeout and fallback correction.
-    versionCode: 58021,
+    // Incremented for the Android location timeout and optional portrait-feature correction.
+    versionCode: 58022,
     googleServicesFile: "./firebase/google-services.json",
     ...(nativeGoogleMaps.androidApiKey
       ? { config: { googleMaps: { apiKey: nativeGoogleMaps.androidApiKey } } }
@@ -159,6 +159,7 @@ const config: ExpoConfig = {
           "HY3N uses your location to set your pickup point and connect you with nearby drivers.",
       },
     ],
+    "./plugins/with-optional-android-features",
     "@react-native-firebase/app",
     "@react-native-firebase/messaging",
     [
