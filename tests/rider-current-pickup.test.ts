@@ -31,4 +31,11 @@ describe('Rider current pickup selection', () => {
     expect(screen).toContain("pickupSelectionSourceRef.current = 'rider-selected';");
     expect(screen).toContain('pickupRefreshGenerationRef.current += 1;');
   });
+
+  it('keeps a valid older Android last-known coordinate available while GPS warms up', () => {
+    expect(screen).toContain("if (!isUsableRiderLocation(lastKnown) && Platform.OS === 'android')");
+    expect(screen).toContain('const anyLastKnown = await ExpoLocation.getLastKnownPositionAsync();');
+    expect(screen).toContain('lastKnown = anyLastKnown;');
+    expect(screen).toContain("setPickupAddress('Recent location');");
+  });
 });

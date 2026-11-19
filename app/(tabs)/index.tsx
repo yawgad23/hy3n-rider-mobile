@@ -376,11 +376,29 @@ export default function RiderHomeScreen() {
       let location: ExpoLocation.LocationObject | null = null;
       // Android may not have a fresh GPS fix immediately after launch. Use a
       // recent cache to populate the pickup promptly, then replace it with a
-      // live fix when the current-position request succeeds.
-      const lastKnown = await ExpoLocation.getLastKnownPositionAsync({
-        maxAge: RIDER_LAST_LOCATION_MAX_AGE_MS,
-        requiredAccuracy: Platform.OS === 'android' ? 5_000 : 1_000,
-      });
+      // live fix when the current-position request succeeds. Some Android
+      // providers return a valid older cache instead of a recent one while
+      // Google Location Services is warming up, so keep a second, unbounded
+      // last-known lookup as a safe fallback rather than reverting to Accra.
+      let lastKnown: ExpoLocation.LocationObject | null = null;
+      try {
+        lastKnown = await ExpoLocation.getLastKnownPositionAsync({
+          maxAge: RIDER_LAST_LOCATION_MAX_AGE_MS,
+          requiredAccuracy: Platform.OS === 'android' ? 5_000 : 1_000,
+        });
+      } catch {
+        // A cache lookup is optional; continue to the live request.
+      }
+      if (!isUsableRiderLocation(lastKnown) && Platform.OS === 'android') {
+        try {
+          const anyLastKnown = await ExpoLocation.getLastKnownPositionAsync();
+          if (isUsableRiderLocation(anyLastKnown)) {
+            lastKnown = anyLastKnown;
+          }
+        } catch {
+          // Continue to the live request when Android has no cache at all.
+        }
+      }
       if (isUsableRiderLocation(lastKnown)) {
         const cachedLocation = lastKnown as ExpoLocation.LocationObject;
         location = cachedLocation;
