@@ -107,7 +107,7 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
     // Incremented for the Android location timeout and fallback correction.
-    versionCode: 58020,
+    versionCode: 58021,
     googleServicesFile: "./firebase/google-services.json",
     ...(nativeGoogleMaps.androidApiKey
       ? { config: { googleMaps: { apiKey: nativeGoogleMaps.androidApiKey } } }
