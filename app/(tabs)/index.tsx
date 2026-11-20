@@ -3841,34 +3841,34 @@ export default function RiderHomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={{ color: TEXT, fontSize: 24, fontWeight: "900", marginTop: 20, letterSpacing: -0.35 }}>Let’s get you moving.</Text>
-        <Text style={{ color: MUTED, fontSize: 14, lineHeight: 20, marginTop: 5 }}>Enter your destination first, then compare live HY3N ride prices.</Text>
+        <Text style={{ color: TEXT, fontSize: 22, fontWeight: "900", marginTop: 14, letterSpacing: -0.35 }}>Let’s get you moving.</Text>
+        <Text style={{ color: MUTED, fontSize: 13, lineHeight: 18, marginTop: 3 }}>Enter your destination first, then compare live HY3N ride prices.</Text>
 
         <TouchableOpacity
           onPress={() => openLocationSearch("destination")}
           accessibilityRole="button"
           accessibilityLabel="Where to"
           accessibilityHint="Choose a destination before selecting a live ride price"
-          style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: CARD, borderRadius: 18, padding: 14, marginTop: 18, borderWidth: 1.5, borderColor: GOLD }}
+          style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: CARD, borderRadius: 16, padding: 11, marginTop: 12, borderWidth: 1.5, borderColor: GOLD }}
         >
-          <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
-            <MaterialIcons name="search" size={25} color="#151515" />
+          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
+            <MaterialIcons name="search" size={22} color="#151515" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: TEXT, fontSize: 19, fontWeight: "900" }}>Wo kɔ he?</Text>
-            <Text style={{ color: MUTED, fontSize: 13, marginTop: 2 }}>Where are you going?</Text>
+            <Text style={{ color: TEXT, fontSize: 17, fontWeight: "900" }}>Wo kɔ he?</Text>
+            <Text style={{ color: MUTED, fontSize: 12, marginTop: 1 }}>Where are you going?</Text>
           </View>
           <MaterialIcons name="arrow-forward-ios" size={18} color={MUTED} />
         </TouchableOpacity>
 
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 12, paddingBottom: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 9, paddingTop: 8, paddingBottom: 5 }}>
           <TouchableOpacity
             onPress={handleUseCurrentPickupLocation}
             disabled={refreshingPickupLocation}
             accessibilityRole="button"
             accessibilityLabel="Use current location for pickup"
             accessibilityHint="Replaces a typed pickup with your live phone location"
-            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: `${GREEN}22`, alignItems: "center", justifyContent: "center", opacity: refreshingPickupLocation ? 0.55 : 1 }}
+            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${GREEN}22`, alignItems: "center", justifyContent: "center", opacity: refreshingPickupLocation ? 0.55 : 1 }}
           >
             {refreshingPickupLocation
               ? <ActivityIndicator size="small" color={GREEN} />
@@ -3920,11 +3920,11 @@ export default function RiderHomeScreen() {
           </TouchableOpacity>
         </ScrollView>
 
-        <View style={{ height: 1, backgroundColor: BORDER, marginTop: 3, marginBottom: 14 }} />
-        <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }}>Choose a HY3N service</Text>
-        <Text style={{ color: MUTED, fontSize: 13, marginTop: 4 }}>Pick one now or choose after entering your destination.</Text>
+        <View style={{ height: 1, backgroundColor: BORDER, marginTop: 1, marginBottom: 9 }} />
+        <Text style={{ color: TEXT, fontSize: 17, fontWeight: "900" }}>Choose a HY3N service</Text>
+        <Text style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>Pick one now or after entering your destination.</Text>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 7 }}>
           {homeServiceCategories.map((category) => {
             const selected = selectedCategory.id === category.id;
             return (
@@ -3936,21 +3936,21 @@ export default function RiderHomeScreen() {
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Choose ${category.name} and enter destination`}
-                style={{ width: "31%", minHeight: 112, justifyContent: "space-between", backgroundColor: selected ? `${GOLD}1A` : CARD, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
+                style={{ width: "31%", minHeight: 92, justifyContent: "space-between", backgroundColor: selected ? `${GOLD}1A` : CARD, borderRadius: 14, padding: 9, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
               >
-                <View style={{ width: 62, height: 46, alignItems: 'center', justifyContent: 'center', marginLeft: -6, marginTop: -4 }}>
-                  <Image source={riderVehicleArtworkFor(category.id)} accessibilityLabel={`${category.name} vehicle`} style={{ width: 62, height: 46 }} resizeMode="contain" />
+                <View style={{ width: 52, height: 34, alignItems: 'center', justifyContent: 'center', marginLeft: -4, marginTop: -2 }}>
+                  <Image source={riderVehicleArtworkFor(category.id)} accessibilityLabel={`${category.name} vehicle`} style={{ width: 52, height: 34 }} resizeMode="contain" />
                 </View>
                 <View>
-                  <Text style={{ color: TEXT, fontSize: 13, fontWeight: "900" }} numberOfLines={2}>{category.name}</Text>
-                  <Text style={{ color: MUTED, fontSize: 10, marginTop: 3 }} numberOfLines={1}>{category.seats ? `${category.seats} seats` : "Parcel"}</Text>
+                  <Text style={{ color: TEXT, fontSize: 12, fontWeight: "900" }} numberOfLines={2}>{category.name}</Text>
+                  <Text style={{ color: MUTED, fontSize: 9, marginTop: 2 }} numberOfLines={1}>{category.seats ? `${category.seats} seats` : "Parcel"}</Text>
                 </View>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", lineHeight: 18, marginTop: 6, paddingHorizontal: 12 }}>Choose your destination to see live prices and available Drivers.</Text>
+        <Text style={{ color: MUTED, fontSize: 11, textAlign: "center", lineHeight: 16, marginTop: 4, paddingHorizontal: 12 }}>Choose your destination to see live prices and available Drivers.</Text>
       </ScrollView>
     </View>
   );
