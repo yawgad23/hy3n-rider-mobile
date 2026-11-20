@@ -173,7 +173,12 @@ const config: ExpoConfig = {
         enablePushNotifications: true,
       },
     ],
-    "@react-native-google-signin/google-signin",
+    [
+      "@react-native-google-signin/google-signin",
+      {
+        iosUrlScheme: "com.googleusercontent.apps.362594902321-tesfioc66munsekhq8ghb5jvkkhk94m5",
+      },
+    ],
     "expo-video",
     "expo-web-browser",
     [

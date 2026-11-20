@@ -76,6 +76,10 @@ function googleWebClientId(): string {
   throw new Error('Google Sign-In is not configured for this app. Please update the native Google service file.');
 }
 
+// OAuth client IDs are identifiers, not secrets. Pin the Rider iOS client so
+// the native Google SDK cannot fall back to a client from another target.
+const GOOGLE_IOS_CLIENT_ID = '362594902321-tesfioc66munsekhq8ghb5jvkkhk94m5.apps.googleusercontent.com';
+
 // Initialize Firebase (avoid re-initialization)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
@@ -131,7 +135,11 @@ export const firebaseAuth = {
   async loginWithGoogle() {
     if (Platform.OS !== 'web') {
       const { GoogleSignin } = require('@react-native-google-signin/google-signin') as typeof import('@react-native-google-signin/google-signin');
-      GoogleSignin.configure({ webClientId: googleWebClientId() });
+      GoogleSignin.configure({
+        webClientId: googleWebClientId(),
+        iosClientId: GOOGLE_IOS_CLIENT_ID,
+        offlineAccess: true,
+      });
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
       const result = await GoogleSignin.signIn();
       if (result.type !== 'success') {
