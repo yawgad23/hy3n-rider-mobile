@@ -85,6 +85,7 @@ const config: ExpoConfig = {
         process.env.EAS_BUILD_PROFILE === "production"
           ? "production"
           : "development",
+      "com.apple.developer.applesignin": ["Default"],
     },
     ...(nativeGoogleMaps.iosApiKey
       ? { config: { googleMapsApiKey: nativeGoogleMaps.iosApiKey } }
@@ -93,6 +94,8 @@ const config: ExpoConfig = {
       ITSAppUsesNonExemptEncryption: false,
       NSContactsUsageDescription:
         "HY3N uses the contact you choose to fill in a passenger name and phone number when you book a ride for someone else.",
+      NSPhotoLibraryUsageDescription:
+        "HY3N uses your selected photo as your Rider profile picture.",
     },
   },
   android: {

@@ -156,6 +156,10 @@ export const firebaseAuth = {
     if (Platform.OS !== 'web') {
       const AppleAuthentication = require('expo-apple-authentication') as typeof import('expo-apple-authentication');
       const Crypto = require('expo-crypto') as typeof import('expo-crypto');
+      const available = await AppleAuthentication.isAvailableAsync();
+      if (!available) {
+        throw new Error('Sign in with Apple is not available on this device.');
+      }
       const rawNonce = Crypto.randomUUID();
       const hashedNonce = await Crypto.digestStringAsync(
         Crypto.CryptoDigestAlgorithm.SHA256,
