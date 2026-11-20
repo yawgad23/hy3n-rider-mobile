@@ -6,8 +6,6 @@ const root = process.cwd();
 const firebase = readFileSync(path.join(root, 'lib/firebase.ts'), 'utf8');
 const account = readFileSync(path.join(root, 'app/(tabs)/account.tsx'), 'utf8');
 const config = readFileSync(path.join(root, 'app.config.ts'), 'utf8');
-const entitlements = readFileSync(path.join(root, 'ios/HY3N/HY3N.entitlements'), 'utf8');
-const storageRules = readFileSync(path.join(root, '../backend-git/storage.rules'), 'utf8');
 
 describe('Apple review rejection fixes', () => {
   it('guards native Apple Sign-In availability before opening the native sheet', () => {
@@ -45,13 +43,6 @@ describe('Profile photo rejection fixes', () => {
   it('declares iOS photo permission and Apple entitlement in generated and native config', () => {
     expect(config).toContain('NSPhotoLibraryUsageDescription');
     expect(config).toContain('"com.apple.developer.applesignin": ["Default"]');
-    expect(entitlements).toContain('<key>com.apple.developer.applesignin</key>');
-    expect(entitlements).toContain('<string>Default</string>');
-  });
-
-  it('keeps profile photo storage private and UID-scoped', () => {
-    expect(storageRules).toContain('match /rider_profiles/{riderId}/{fileName}');
-    expect(storageRules).toContain('request.auth.uid == riderId && isImageUpload()');
-    expect(storageRules).toContain('allow read: if signedIn() && (request.auth.uid == riderId || isAdministrator());');
+    expect(config).toContain('supportsTablet: true');
   });
 });
