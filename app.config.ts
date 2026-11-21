@@ -72,6 +72,9 @@ const config: ExpoConfig = {
   // been proven stable on the supported iOS devices.
   newArchEnabled: false,
   ios: {
+    // Tell Expo/EAS to enable the Sign in with Apple capability and provision
+    // the App ID/profile accordingly; a raw entitlement alone is insufficient.
+    usesAppleSignIn: true,
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
     // Package 132 contains the vehicle-color card and prolonged-stop safety
