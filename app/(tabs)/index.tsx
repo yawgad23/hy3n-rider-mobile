@@ -3841,34 +3841,34 @@ export default function RiderHomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={{ color: TEXT, fontSize: 22, fontWeight: "900", marginTop: 14, letterSpacing: -0.35 }}>Let’s get you moving.</Text>
-        <Text style={{ color: MUTED, fontSize: 13, lineHeight: 18, marginTop: 3 }}>Enter your destination first, then compare live HY3N ride prices.</Text>
+        <Text style={{ color: TEXT, fontSize: Platform.OS === "android" ? 22 : 24, fontWeight: "900", marginTop: Platform.OS === "android" ? 14 : 20, letterSpacing: -0.35 }}>Let’s get you moving.</Text>
+        <Text style={{ color: MUTED, fontSize: Platform.OS === "android" ? 13 : 14, lineHeight: Platform.OS === "android" ? 18 : 20, marginTop: Platform.OS === "android" ? 3 : 5 }}>Enter your destination first, then compare live HY3N ride prices.</Text>
 
         <TouchableOpacity
           onPress={() => openLocationSearch("destination")}
           accessibilityRole="button"
           accessibilityLabel="Where to"
           accessibilityHint="Choose a destination before selecting a live ride price"
-          style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: CARD, borderRadius: 16, padding: 11, marginTop: 12, borderWidth: 1.5, borderColor: GOLD }}
+          style={{ flexDirection: "row", alignItems: "center", gap: Platform.OS === "android" ? 10 : 12, backgroundColor: CARD, borderRadius: Platform.OS === "android" ? 16 : 18, padding: Platform.OS === "android" ? 11 : 14, marginTop: Platform.OS === "android" ? 12 : 18, borderWidth: 1.5, borderColor: GOLD }}
         >
-          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
-            <MaterialIcons name="search" size={22} color="#151515" />
+          <View style={{ width: Platform.OS === "android" ? 40 : 46, height: Platform.OS === "android" ? 40 : 46, borderRadius: Platform.OS === "android" ? 12 : 14, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
+            <MaterialIcons name="search" size={Platform.OS === "android" ? 22 : 25} color="#151515" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: TEXT, fontSize: 17, fontWeight: "900" }}>Wo kɔ he?</Text>
-            <Text style={{ color: MUTED, fontSize: 12, marginTop: 1 }}>Where are you going?</Text>
+            <Text style={{ color: TEXT, fontSize: Platform.OS === "android" ? 17 : 19, fontWeight: "900" }}>Wo kɔ he?</Text>
+            <Text style={{ color: MUTED, fontSize: Platform.OS === "android" ? 12 : 13, marginTop: 2 }}>Where are you going?</Text>
           </View>
           <MaterialIcons name="arrow-forward-ios" size={18} color={MUTED} />
         </TouchableOpacity>
 
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 9, paddingTop: 8, paddingBottom: 5 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: Platform.OS === "android" ? 8 : 12, paddingBottom: Platform.OS === "android" ? 5 : 8 }}>
           <TouchableOpacity
             onPress={handleUseCurrentPickupLocation}
             disabled={refreshingPickupLocation}
             accessibilityRole="button"
             accessibilityLabel="Use current location for pickup"
             accessibilityHint="Replaces a typed pickup with your live phone location"
-            style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: `${GREEN}22`, alignItems: "center", justifyContent: "center", opacity: refreshingPickupLocation ? 0.55 : 1 }}
+            style={{ width: Platform.OS === "android" ? 34 : 36, height: Platform.OS === "android" ? 34 : 36, borderRadius: Platform.OS === "android" ? 17 : 18, backgroundColor: `${GREEN}22`, alignItems: "center", justifyContent: "center", opacity: refreshingPickupLocation ? 0.55 : 1 }}
           >
             {refreshingPickupLocation
               ? <ActivityIndicator size="small" color={GREEN} />
