@@ -42,6 +42,7 @@ describe('Profile photo rejection fixes', () => {
 
   it('declares iOS photo permission and Apple entitlement in generated and native config', () => {
     expect(config).toContain('NSPhotoLibraryUsageDescription');
+    expect(config).toContain('usesAppleSignIn: true');
     expect(config).toContain('"com.apple.developer.applesignin": ["Default"]');
     expect(config).toContain('supportsTablet: true');
   });
