@@ -7,8 +7,14 @@ const home = readFileSync(path.join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf
 describe('Rider Android pre-booking home layout', () => {
   it('keeps all service cards in a compact wrapping grid', () => {
     expect(home).toContain('flexDirection: "row", flexWrap: "wrap"');
-    expect(home).toContain('minHeight: 92');
+    expect(home).toContain('minHeight: Platform.OS === "android" ? 92 : 112');
     expect(home).toContain('width: "31%"');
+  });
+
+  it('limits the compact card treatment to Android', () => {
+    expect(home).toContain('Platform.OS === "android" ? 92 : 112');
+    expect(home).toContain('Platform.OS === "android" ? 7 : 10');
+    expect(home).toContain('Platform.OS === "android" ? 1 : 3');
   });
 
   it('keeps the destination-first service selection above the booking flow', () => {
