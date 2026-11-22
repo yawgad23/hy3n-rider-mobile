@@ -167,6 +167,9 @@ describe('Rider native Google Maps migration', () => {
     expect(appConfig).toContain('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID');
     expect(appConfig).toContain('googleMapsApiKey');
     expect(appConfig).toContain('googleMaps: { apiKey');
+    expect(appConfig).toContain('riderFirebaseIosApiKey()');
+    expect(appConfig).toContain('firebase/GoogleService-Info.plist');
+    expect(appConfig).toContain('googleMapsApiKey');
     expect(appConfig).toContain('process.env.EAS_BUILD_PLATFORM === "ios"');
     expect(appConfig).toContain('process.env.EAS_BUILD_PROFILE === "production"');
     expect(appConfig).toContain('Missing GOOGLE_MAPS_IOS_API_KEY');
