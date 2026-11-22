@@ -69,7 +69,9 @@ export async function checkAppleAuthenticationIntegration(projectRoot = root) {
   const module = result.modules?.find((item) => item.packageName === 'expo-apple-authentication');
   assert(module?.packageVersion === native.appleVersion,
     'iOS autolinking discovered a different Apple package version.');
-  assert(module.modules?.includes('AppleAuthenticationModule')
+  // SDK57 autolinking resolves native classes as { name, class } records.
+  // Keep validating the real registration, not the old SDK54 string schema.
+  assert(module.modules?.some((item) => item?.class === 'AppleAuthenticationModule')
     && module.swiftModuleNames?.includes('ExpoAppleAuthentication')
     && module.pods?.some((pod) => pod.podName === 'ExpoAppleAuthentication'),
     'The Apple Swift module and CocoaPod are not discoverable for iOS.');

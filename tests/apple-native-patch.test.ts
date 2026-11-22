@@ -114,7 +114,7 @@ function preflightFixture(project: string, options: { expoVersion?: string; appl
   });
   writeJSON(path.join(project, 'autolinking.json'), options.autolinking ?? { modules: [{
     packageName: 'expo-apple-authentication', packageVersion: '57.0.2',
-    modules: ['AppleAuthenticationModule'], swiftModuleNames: ['ExpoAppleAuthentication'],
+    modules: [{ name: null, class: 'AppleAuthenticationModule' }], swiftModuleNames: ['ExpoAppleAuthentication'],
     pods: [{ podName: 'ExpoAppleAuthentication' }],
   }] });
   // Stub only the two allowed source introspection commands. This tests preflight
@@ -412,6 +412,8 @@ describe('SDK57 Core audit and Apple preflight boundaries (offline)', () => {
   it.each([
     [{ modules: [] }, 'different Apple package version'],
     [{ modules: [{ packageName: 'expo-apple-authentication', packageVersion: '57.0.2', modules: [], pods: [] }] }, 'not discoverable'],
+    [{ modules: [{ packageName: 'expo-apple-authentication', packageVersion: '57.0.2', modules: ['AppleAuthenticationModule'], swiftModuleNames: ['ExpoAppleAuthentication'], pods: [{ podName: 'ExpoAppleAuthentication' }] }] }, 'not discoverable'],
+    [{ modules: [{ packageName: 'expo-apple-authentication', packageVersion: '57.0.2', modules: [{ name: null, class: 'WrongAuthenticationModule' }], swiftModuleNames: ['ExpoAppleAuthentication'], pods: [{ podName: 'ExpoAppleAuthentication' }] }] }, 'not discoverable'],
   ])('preflight rejects incomplete source autolinking: %j', (autolinking, error) => {
     const project = fixture();
     expect(run(project).status).toBe(0);
