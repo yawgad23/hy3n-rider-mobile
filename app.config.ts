@@ -1,6 +1,24 @@
 // Load environment variables with proper priority (system > .env)
 import "./scripts/load-env.js";
 import type { ExpoConfig } from "expo/config";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+// Expo prebuild generates the native iOS project from this config. If EAS
+// does not inject a dedicated Maps key, use the Rider app's own Firebase iOS
+// API key as the fallback. It must have Maps SDK for iOS enabled in Google
+// Cloud; the explicit EAS Maps key remains the preferred configuration.
+function riderFirebaseIosApiKey(): string {
+  try {
+    const plist = readFileSync(
+      resolve(process.cwd(), "firebase/GoogleService-Info.plist"),
+      "utf8",
+    );
+    return plist.match(/<key>API_KEY<\/key>\s*<string>([^<]+)<\/string>/)?.[1]?.trim() || "";
+  } catch {
+    return "";
+  }
+}
 
 // Bundle ID format: space.manus.<project_name_dots>.<timestamp>
 // e.g., "my-app" created at 2024-01-15 10:30:45 -> "space.manus.my.app.t20240115103045"
@@ -32,12 +50,27 @@ const nativeGoogleMaps = {
   iosApiKey:
     process.env.GOOGLE_MAPS_IOS_API_KEY?.trim() ||
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS?.trim() ||
-    "",
+    riderFirebaseIosApiKey(),
   androidApiKey:
     process.env.GOOGLE_MAPS_ANDROID_API_KEY?.trim() ||
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID?.trim() ||
     "",
 };
+
+// Never ship a TestFlight/App Store build with a silently missing native
+// Google Maps iOS key. Without this key, react-native-maps can still render
+// React markers and polylines over the map background while Google road tiles
+// remain blank — matching the reported Rider screenshot.
+if (
+  process.env.EAS_BUILD_PLATFORM === "ios" &&
+  process.env.EAS_BUILD_PROFILE === "production" &&
+  !nativeGoogleMaps.iosApiKey
+) {
+  throw new Error(
+    "Missing GOOGLE_MAPS_IOS_API_KEY (or EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS). " +
+    "Set it in the EAS production environment before creating the iOS build."
+  );
+}
 
 const env = {
   // App branding - update these values directly (do not use env vars)
