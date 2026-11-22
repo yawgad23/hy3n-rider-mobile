@@ -89,6 +89,7 @@ import {
   parseRiderStoredSearchHistory,
 } from "@/lib/rider-persisted-location";
 import { currentPickupLabel } from "@/lib/rider-current-pickup";
+import { acquireAndroidPickup } from "@/lib/rider-android-pickup";
 import {
   riderPickupIsReadyForBooking,
   shouldRefreshRiderPickupOnForeground,
@@ -257,8 +258,8 @@ interface ActiveRide {
 }
 
 const DEFAULT_LOCATION: [number, number] = [5.6037, -0.187]; // Accra, Ghana
-const RIDER_LOCATION_TIMEOUT_MS = Platform.OS === 'android' ? 8_000 : 12_000;
-const RIDER_LAST_LOCATION_MAX_AGE_MS = Platform.OS === 'android' ? 15 * 60_000 : 120_000;
+const RIDER_LOCATION_TIMEOUT_MS = 12_000; // Existing non-Android path.
+const RIDER_LAST_LOCATION_MAX_AGE_MS = 120_000;
 
 function withLocationTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -353,9 +354,43 @@ export default function RiderHomeScreen() {
   const pickupSelectionSourceRef = useRef<RiderPickupSelectionSource>('device');
   const pickupRefreshGenerationRef = useRef(0);
   const riderAppStateRef = useRef(AppState.currentState);
+  const androidPickupRequestRef = useRef<ReturnType<typeof acquireAndroidPickup> | null>(null);
+  const androidPickupMountedRef = useRef(true);
+  const androidPickupActiveRideRef = useRef(false);
   const [surge, setSurge] = useState({ multiplier: 1, active: false, reason: null as string | null });
 
   const refreshCurrentPickupLocation = useCallback(async (explicitRequest = false): Promise<boolean> => {
+    if (Platform.OS === 'android') {
+      if (!androidPickupMountedRef.current || androidPickupActiveRideRef.current
+        || (riderAppStateRef.current !== null && riderAppStateRef.current !== 'active')) return false;
+      androidPickupRequestRef.current?.cancel();
+      const generation = ++pickupRefreshGenerationRef.current;
+      pickupSelectionSourceRef.current = 'device';
+      setPickupLocationReady(false);
+      setRefreshingPickupLocation(true);
+      if (explicitRequest) setPickupAddress('Getting your location...');
+      const isCurrent = () => androidPickupMountedRef.current
+        && generation === pickupRefreshGenerationRef.current
+        && pickupSelectionSourceRef.current === 'device'
+        && !androidPickupActiveRideRef.current
+        && (riderAppStateRef.current === null || riderAppStateRef.current === 'active');
+      const request = acquireAndroidPickup(ExpoLocation, {
+        isCurrent,
+        onCoordinate: (point, label) => {
+          setUserLocation(point);
+          setPickupAddress(label);
+          setPickupLocationReady(true);
+          void Haptics.selectionAsync().catch(() => {});
+        },
+        onLabel: setPickupAddress,
+        onUnavailable: (label) => { setPickupLocationReady(false); setPickupAddress(label); },
+        onExpired: () => { setPickupLocationReady(false); setPickupAddress('Update current location'); },
+      });
+      androidPickupRequestRef.current = request;
+      const ready = await request.result;
+      if (isCurrent()) setRefreshingPickupLocation(false);
+      return ready;
+    }
     const generation = ++pickupRefreshGenerationRef.current;
     pickupSelectionSourceRef.current = 'device';
     setPickupLocationReady(false);
@@ -378,30 +413,15 @@ export default function RiderHomeScreen() {
       }
 
       let location: ExpoLocation.LocationObject | null = null;
-      // Android may not have a fresh GPS fix immediately after launch. Use a
-      // recent cache to populate the pickup promptly, then replace it with a
-      // live fix when the current-position request succeeds. Some Android
-      // providers return a valid older cache instead of a recent one while
-      // Google Location Services is warming up, so keep a second, unbounded
-      // last-known lookup as a safe fallback rather than reverting to Accra.
+      // Preserve the existing non-Android recent-cache/live acquisition path.
       let lastKnown: ExpoLocation.LocationObject | null = null;
       try {
         lastKnown = await ExpoLocation.getLastKnownPositionAsync({
           maxAge: RIDER_LAST_LOCATION_MAX_AGE_MS,
-          requiredAccuracy: Platform.OS === 'android' ? 5_000 : 1_000,
+          requiredAccuracy: 1_000,
         });
       } catch {
         // A cache lookup is optional; continue to the live request.
-      }
-      if (!isUsableRiderLocation(lastKnown) && Platform.OS === 'android') {
-        try {
-          const anyLastKnown = await ExpoLocation.getLastKnownPositionAsync();
-          if (isUsableRiderLocation(anyLastKnown)) {
-            lastKnown = anyLastKnown;
-          }
-        } catch {
-          // Continue to the live request when Android has no cache at all.
-        }
       }
       if (isUsableRiderLocation(lastKnown)) {
         const cachedLocation = lastKnown as ExpoLocation.LocationObject;
@@ -415,7 +435,6 @@ export default function RiderHomeScreen() {
         const currentLocation = await withLocationTimeout(
           ExpoLocation.getCurrentPositionAsync({
             accuracy: ExpoLocation.Accuracy.Balanced,
-            ...(Platform.OS === 'android' ? { mayShowUserSettingsDialog: true } : {}),
           }),
           RIDER_LOCATION_TIMEOUT_MS,
         );
@@ -459,7 +478,13 @@ export default function RiderHomeScreen() {
   }, []);
 
   const handleUseCurrentPickupLocation = useCallback(async () => {
-    const refreshed = await refreshCurrentPickupLocation(true);
+    const refresh = refreshCurrentPickupLocation(true);
+    const generation = pickupRefreshGenerationRef.current;
+    const refreshed = await refresh;
+    if (Platform.OS === 'android' && (!androidPickupMountedRef.current
+      || generation !== pickupRefreshGenerationRef.current
+      || pickupSelectionSourceRef.current !== 'device' || androidPickupActiveRideRef.current
+      || riderAppStateRef.current !== 'active')) return;
     if (!refreshed) {
       Alert.alert(
         'Current location unavailable',
@@ -493,7 +518,14 @@ export default function RiderHomeScreen() {
 
   // Request GPS and center the map on the Rider's actual starting pickup.
   useEffect(() => {
+    if (Platform.OS === 'android') androidPickupMountedRef.current = true;
     void refreshCurrentPickupLocation();
+    return () => {
+      if (Platform.OS !== 'android') return;
+      androidPickupMountedRef.current = false;
+      pickupRefreshGenerationRef.current += 1;
+      androidPickupRequestRef.current?.cancel();
+    };
   }, [refreshCurrentPickupLocation]);
 
   // Returning to a still-mounted app used to retain the prior automatic pickup
@@ -503,6 +535,12 @@ export default function RiderHomeScreen() {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       const returnedToForeground = riderAppStateRef.current !== 'active' && nextAppState === 'active';
       riderAppStateRef.current = nextAppState;
+      if (Platform.OS === 'android' && nextAppState !== 'active') {
+        pickupRefreshGenerationRef.current += 1;
+        androidPickupRequestRef.current?.cancel();
+        setRefreshingPickupLocation(false);
+        if (pickupSelectionSourceRef.current === 'device') setPickupLocationReady(false);
+      }
       if (returnedToForeground && shouldRefreshRiderPickupOnForeground(pickupSelectionSourceRef.current)) {
         void refreshCurrentPickupLocation();
       }
@@ -675,6 +713,16 @@ export default function RiderHomeScreen() {
   const trackingTelemetrySamplesRef = useRef(new Set<string>());
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const activeRide = activeRides.find((ride) => ride.id === selectedRideId) ?? activeRides[0] ?? null;
+  const androidPickupHasActiveRide = Boolean(activeRide);
+  androidPickupActiveRideRef.current = androidPickupHasActiveRide;
+  useEffect(() => {
+    if (Platform.OS === 'android' && androidPickupHasActiveRide) {
+      pickupRefreshGenerationRef.current += 1;
+      androidPickupRequestRef.current?.cancel();
+      setRefreshingPickupLocation(false);
+      if (pickupSelectionSourceRef.current === 'device') setPickupLocationReady(false);
+    }
+  }, [androidPickupHasActiveRide]);
   const [inTripRouteChangeKind, setInTripRouteChangeKind] = useState<RiderTripRouteChangeKind | null>(null);
   const [inTripRouteChangeBusy, setInTripRouteChangeBusy] = useState(false);
   const [showInTripRouteChangeOptions, setShowInTripRouteChangeOptions] = useState(false);
@@ -1919,6 +1967,7 @@ export default function RiderHomeScreen() {
       // Invalidate a foreground GPS request that began before the Rider chose
       // an address. The Rider's deliberate map selection always wins.
       pickupRefreshGenerationRef.current += 1;
+      if (Platform.OS === 'android') androidPickupRequestRef.current?.cancel();
       pickupSelectionSourceRef.current = 'rider-selected';
       setUserLocation([resolved.lat, resolved.lng]);
       setPickupAddress(resolved.address || resolved.name || "Selected pickup");
