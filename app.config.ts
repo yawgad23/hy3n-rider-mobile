@@ -39,6 +39,21 @@ const nativeGoogleMaps = {
     "",
 };
 
+// Never ship a TestFlight/App Store build with a silently missing native
+// Google Maps iOS key. Without this key, react-native-maps can still render
+// React markers and polylines over the map background while Google road tiles
+// remain blank — matching the reported Rider screenshot.
+if (
+  process.env.EAS_BUILD_PLATFORM === "ios" &&
+  process.env.EAS_BUILD_PROFILE === "production" &&
+  !nativeGoogleMaps.iosApiKey
+) {
+  throw new Error(
+    "Missing GOOGLE_MAPS_IOS_API_KEY (or EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS). " +
+    "Set it in the EAS production environment before creating the iOS build."
+  );
+}
+
 const env = {
   // App branding - update these values directly (do not use env vars)
   appName: "HY3N",
