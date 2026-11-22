@@ -69,6 +69,8 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('without estimating a');
     expect(component).toContain('previousDriverUpdatedAtRef.current = nextUpdatedAt');
     expect(component).toContain('prior native animation completes');
+    expect(component).toContain("Never replace a valid live GPS point with the route's first vertex");
+    expect(component).toContain('&& !isNativeMapPoint(driverLocation)');
     expect(screen).toContain('driverRouteUpdatedAt: reassignedAfterDriverCancellation ? undefined : (hasCurrentServerRoute');
     expect(screen).toContain('driverRouteUpdatedAt={activeRide?.driverRouteUpdatedAt ?? null}');
     expect(screen).toContain("activeRide.status === 'searching'");
