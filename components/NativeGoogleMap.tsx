@@ -200,16 +200,18 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     [driverRoutePoints],
   );
   // A live route refresh is generated from the Driver's newest accepted GPS
-  // sample. If that route arrives before the matching location field, using its
-  // first road point keeps the marker and the moving route on the same sample
-  // instead of leaving the car parked at the previous location.
+  // sample. A route can arrive before the matching location field, so its first
+  // point may seed the marker only when no authenticated Driver location exists.
+  // Never replace a valid live GPS point with the route's first vertex: older
+  // route geometry commonly starts at the pickup/original route origin, and
+  // doing so makes the iOS marker glide backward and snap back on every refresh.
   const locationAtMs = timestampMs(driverLocationUpdatedAt);
   const routeAtMs = timestampMs(driverRouteUpdatedAt);
   const routeAnchor = trustedDriverRoute[0] || null;
   const routeAnchorIsNewer = routeAtMs !== null
     && (locationAtMs === null || routeAtMs >= locationAtMs);
   const liveDriverLocation = routeAnchorIsNewer && routeAnchor
-    && (!isNativeMapPoint(driverLocation) || distanceMeters(driverLocation, routeAnchor) > 8)
+    && !isNativeMapPoint(driverLocation)
     ? routeAnchor
     : driverLocation;
   const liveDriverUpdatedAt = routeAnchorIsNewer ? driverRouteUpdatedAt : driverLocationUpdatedAt;
