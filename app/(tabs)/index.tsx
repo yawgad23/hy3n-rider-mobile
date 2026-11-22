@@ -64,6 +64,7 @@ import { createLiveTripShareLink, createRecipientTripShare, revokeLiveTripShareL
 import { payWithHubtelCard } from "@/lib/card-checkout";
 import { type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
 import { riderVehicleArtworkFor } from "@/lib/rider-vehicle-artwork";
+import { riderHomeServiceLayout } from "@/lib/rider-home-service-layout";
 import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } from "@/lib/rider-completion-presentation";
 import { deliveryRequestDetails, isDeliveryCategory, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
@@ -340,6 +341,9 @@ export default function RiderHomeScreen() {
   const { user, riderProfile, updateProfile } = useAuth();
   const insets = useSafeAreaInsets();
   const safeTop = insets.top > 0 ? insets.top : (Constants.statusBarHeight ?? 44);
+  const [iosHomeViewport, setIosHomeViewport] = useState({ width: 0, height: 0 });
+  const [iosHomeGridTop, setIosHomeGridTop] = useState<number | null>(null);
+  const [iosHomeFooterHeight, setIosHomeFooterHeight] = useState<number | null>(null);
   const [userLocation, setUserLocation] = useState<[number, number]>(DEFAULT_LOCATION);
   const [pickupAddress, setPickupAddress] = useState<string>("Getting your location...");
   const [pickupLocationReady, setPickupLocationReady] = useState(false);
@@ -3811,9 +3815,25 @@ export default function RiderHomeScreen() {
     </View>
   );
 
+  const homeServiceLayout = riderHomeServiceLayout({
+    platform: Platform.OS,
+    viewportWidth: iosHomeViewport.width,
+    viewportHeight: iosHomeViewport.height,
+    gridTop: iosHomeGridTop,
+    footerHeight: iosHomeFooterHeight,
+    categoryCount: homeServiceCategories.length,
+  });
+
   const renderAddressFirstHome = () => (
-    <View style={{ flex: 1, backgroundColor: BG }}>
+    <View
+      style={{ flex: 1, backgroundColor: BG }}
+      onLayout={Platform.OS === "ios" ? ({ nativeEvent: { layout } }) => {
+        setIosHomeViewport((previous) => previous.width === layout.width && previous.height === layout.height
+          ? previous : { width: layout.width, height: layout.height });
+      } : undefined}
+    >
       <ScrollView
+        style={Platform.OS === "ios" ? { flex: 1 } : undefined}
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: safeTop + 6, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
       >
@@ -3924,7 +3944,10 @@ export default function RiderHomeScreen() {
         <Text style={{ color: TEXT, fontSize: Platform.OS === "android" ? 17 : 18, fontWeight: "900" }}>Choose a HY3N service</Text>
         <Text style={{ color: MUTED, fontSize: Platform.OS === "android" ? 12 : 13, marginTop: Platform.OS === "android" ? 2 : 4 }}>Pick one now or choose after entering your destination.</Text>
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: Platform.OS === "android" ? 7 : 8, marginTop: Platform.OS === "android" ? 7 : 10 }}>
+        <View
+          onLayout={Platform.OS === "ios" ? ({ nativeEvent: { layout } }) => setIosHomeGridTop(layout.y) : undefined}
+          style={{ flexDirection: "row", flexWrap: "wrap", gap: Platform.OS === "android" ? 7 : 8, marginTop: Platform.OS === "android" ? 7 : 10 }}
+        >
           {homeServiceCategories.map((category) => {
             const selected = selectedCategory.id === category.id;
             return (
@@ -3936,21 +3959,24 @@ export default function RiderHomeScreen() {
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Choose ${category.name} and enter destination`}
-                style={{ width: "31%", minHeight: Platform.OS === "android" ? 92 : 112, justifyContent: "space-between", backgroundColor: selected ? `${GOLD}1A` : CARD, borderRadius: Platform.OS === "android" ? 14 : 16, padding: Platform.OS === "android" ? 9 : 12, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
+                style={{ width: homeServiceLayout.cardWidth, minHeight: homeServiceLayout.cardMinHeight, justifyContent: "space-between", backgroundColor: selected ? `${GOLD}1A` : CARD, borderRadius: Platform.OS === "android" ? 14 : 16, padding: Platform.OS === "android" ? 9 : 12, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
               >
-                <View style={{ width: Platform.OS === "android" ? 52 : 62, height: Platform.OS === "android" ? 34 : 46, alignItems: 'center', justifyContent: 'center', marginLeft: Platform.OS === "android" ? -4 : -6, marginTop: Platform.OS === "android" ? -2 : -4 }}>
-                  <Image source={riderVehicleArtworkFor(category.id)} accessibilityLabel={`${category.name} vehicle`} style={{ width: Platform.OS === "android" ? 52 : 62, height: Platform.OS === "android" ? 34 : 46 }} resizeMode="contain" />
+                <View style={{ width: homeServiceLayout.artworkWidth, height: homeServiceLayout.artworkHeight, alignItems: 'center', justifyContent: 'center', marginLeft: Platform.OS === "ios" ? 0 : Platform.OS === "android" ? -4 : -6, marginTop: Platform.OS === "ios" ? 0 : Platform.OS === "android" ? -2 : -4 }}>
+                  <Image source={riderVehicleArtworkFor(category.id)} accessibilityLabel={`${category.name} vehicle`} style={{ width: homeServiceLayout.artworkWidth, height: homeServiceLayout.artworkHeight }} resizeMode="contain" />
                 </View>
                 <View>
-                  <Text style={{ color: TEXT, fontSize: Platform.OS === "android" ? 12 : 13, fontWeight: "900" }} numberOfLines={2}>{category.name}</Text>
-                  <Text style={{ color: MUTED, fontSize: Platform.OS === "android" ? 9 : 10, marginTop: Platform.OS === "android" ? 2 : 3 }} numberOfLines={1}>{category.seats ? `${category.seats} seats` : "Parcel"}</Text>
+                  <Text style={{ color: TEXT, fontSize: Platform.OS === "android" ? 12 : 13, fontWeight: "900" }} numberOfLines={Platform.OS === "ios" ? undefined : 2}>{category.name}</Text>
+                  <Text style={{ color: MUTED, fontSize: Platform.OS === "android" ? 9 : 10, marginTop: Platform.OS === "android" ? 2 : 3 }} numberOfLines={Platform.OS === "ios" ? undefined : 1}>{category.seats ? `${category.seats} seats` : "Parcel"}</Text>
                 </View>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        <Text style={{ color: MUTED, fontSize: Platform.OS === "android" ? 11 : 12, textAlign: "center", lineHeight: Platform.OS === "android" ? 16 : 18, marginTop: Platform.OS === "android" ? 4 : 6, paddingHorizontal: 12 }}>Choose your destination to see live prices and available Drivers.</Text>
+        <Text
+          onLayout={Platform.OS === "ios" ? ({ nativeEvent: { layout } }) => setIosHomeFooterHeight(layout.height) : undefined}
+          style={{ color: MUTED, fontSize: Platform.OS === "android" ? 11 : 12, textAlign: "center", lineHeight: Platform.OS === "android" ? 16 : 18, marginTop: Platform.OS === "android" ? 4 : 6, paddingHorizontal: 12 }}
+        >Choose your destination to see live prices and available Drivers.</Text>
       </ScrollView>
     </View>
   );
