@@ -55,10 +55,10 @@ describe("SDK57 scene-lifecycle migration candidate", () => {
     );
   });
 
-  it("preserves identity, system theme, tablet support, and delivered release numbers", () => {
+  it("uses approved iOS134 while preserving identity, theme, tablets and Android release number", () => {
     expect(config).toContain('const rawBundleId = "com.hy3n.rider"');
     expect(config).toContain('version: "1.0.4"');
-    expect(config).toContain('buildNumber: "133"');
+    expect(config).toContain('buildNumber: "134"');
     expect(config).toContain("versionCode: 58023");
     expect(config).toContain('userInterfaceStyle: "automatic"');
     expect(config).toContain("supportsTablet: true");

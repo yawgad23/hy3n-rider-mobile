@@ -75,9 +75,9 @@ const config: ExpoConfig = {
     usesAppleSignIn: true,
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    // Preparation only:133 is already delivered. Assign a new unused number
-    // only when a future SDK57 binary is explicitly approved; do not rebuild133.
-    buildNumber: "133",
+    // Explicitly approved SDK57/Xcode27 TestFlight build on2026-11-22.
+    // Build133 stays delivered and unchanged; Android58023 is not rebuilt.
+    buildNumber: "134",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.

@@ -1,5 +1,7 @@
 # HY3N Rider SDK57 scene-lifecycle migration
 
+**Build134 authorization update:** On November22,2026 at11:36UTC, the user explicitly approved one SDK57/Xcode27 Rider1.0.4(134) iOS build and upload of that exact successful build to TestFlight. Source now assigns iOS134; Android58023 remains unchanged. No automatic paid retry, Android build, Apple App Review submission or store-availability change is authorized. The preparation notes below describe the earlier source-only stage; native build and physical-device results must be reported separately rather than inferred from source CI.
+
 The SDK migration is prepared on `task/rider-xcode27-configuration-20261122`, based on Rider main commit `33d7666192444817246acd3fe26357eeb964d1b8`. This is a source-only candidate, not a released app. No new EAS build, native prebuild, upload, store submission, or Android deployment was started. Main and the delivered Rider1.0.4 build133 remain unchanged.
 
 Build133 is already valid and available to internal TestFlight testers. Apple’s ITMS-90725 warning concerns its older build SDK; source changes cannot remove the warning from that existing binary. A later, separately approved Xcode27/iOS27-SDK binary will be needed. Do not rebuild133: this preparation branch intentionally retains the existing release numbers until a new build is authorized and an unused iOS build number is assigned.
