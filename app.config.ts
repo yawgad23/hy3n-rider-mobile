@@ -224,7 +224,9 @@ const config: ExpoConfig = {
   ],
   experiments: {
     typedRoutes: true,
-    reactCompiler: true,
+    // Compiler adoption is a separate refactor: preserve unoptimized React
+    // behavior while SDK57's new compiler diagnostics are triaged.
+    reactCompiler: false,
   },
 };
 

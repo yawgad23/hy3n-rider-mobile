@@ -38,6 +38,17 @@ describe("SDK57 scene-lifecycle migration candidate", () => {
     expect(manifest.expo.install.exclude).not.toContain("react-native-reanimated");
   });
 
+  it("separates optional compiler adoption without disabling core React checks", () => {
+    const lint = readFileSync(resolve(root, "eslint.config.js"), "utf8");
+    expect(config).toContain("reactCompiler: false");
+    expect(lint).toContain('"react-hooks/rules-of-hooks": "error"');
+    expect(lint).toContain('"react-hooks/set-state-in-render": "error"');
+    for (const rule of ["immutability", "purity", "refs", "set-state-in-effect", "static-components"]) {
+      expect(lint).toContain(`"react-hooks/${rule}": "warn"`);
+    }
+    expect(lint).not.toMatch(/"react-hooks\/[^\"]+":\s*"off"/);
+  });
+
   it("preserves the deployed backend revision rather than pulling a new backend", () => {
     expect(manifest.dependencies["hy3n-backend"]).toBe(
       "github:yawgad23/backend#275b227a2ddeb2db157b1f6b061ffeea312e6ea1",
