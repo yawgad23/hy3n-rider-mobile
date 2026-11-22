@@ -32,10 +32,12 @@ const LIVE_TRACKING_LONGITUDE_DELTA = 0.016;
 export function isNativeMapPoint(value: unknown): value is NativeMapPoint {
   return Array.isArray(value)
     && value.length >= 2
-    && Number.isFinite(Number(value[0]))
-    && Number.isFinite(Number(value[1]))
-    && Math.abs(Number(value[0])) <= 90
-    && Math.abs(Number(value[1])) <= 180;
+    && typeof value[0] === 'number'
+    && typeof value[1] === 'number'
+    && Number.isFinite(value[0])
+    && Number.isFinite(value[1])
+    && Math.abs(value[0]) <= 90
+    && Math.abs(value[1]) <= 180;
 }
 
 /**

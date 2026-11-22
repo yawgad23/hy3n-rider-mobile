@@ -110,7 +110,7 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('BookingEndpointMarker');
     expect(component).toContain('bookingPreviewRegion');
     expect(component).toContain('const bookingRouteFrame = [');
-    expect(component).toContain('...routeCoordinates,');
+    expect(component).toContain('...remainingRoutePoints,');
     expect(component).toContain('destination,');
     expect(component).toContain('mapRef.current?.fitToCoordinates(bookingRouteFrame.map(coordinate)');
     expect(component).toContain('bookingRouteFrameKeyRef.current !== frameKey');

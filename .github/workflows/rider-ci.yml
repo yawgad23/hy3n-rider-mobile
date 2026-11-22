@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, "audit/**"]
+    branches: [main, "audit/**", "task/rider-xcode27-configuration-*"]
 
 jobs:
   quality:
@@ -19,6 +19,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: SDK dependency alignment (no native generation or build)
+        run: pnpm exec expo install --check
       - name: Apple native source integration
         run: pnpm check:apple-native
       - name: TypeScript check

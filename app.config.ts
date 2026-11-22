@@ -66,19 +66,17 @@ const config: ExpoConfig = {
   icon: "./assets/images/rider-ios-icon.png",
   scheme: env.scheme,
   userInterfaceStyle: "automatic",
-  // TestFlight crash reports for the Rider map builds showed an ObjC
-  // TurboModule abort in the Fabric-native map path. Keep the production app
-  // on the established legacy renderer until that upstream combination has
-  // been proven stable on the supported iOS devices.
-  newArchEnabled: false,
+  // SDK55+ requires the New Architecture. This isolated SDK57 candidate uses
+  // the SDK-matched maps release; the previous Fabric crash remains a required
+  // physical-device regression gate before a new build/release is approved.
   ios: {
     // Tell Expo/EAS to enable the Sign in with Apple capability and provision
     // the App ID/profile accordingly; a raw entitlement alone is insufficient.
     usesAppleSignIn: true,
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    // Package 132 contains the vehicle-color card and prolonged-stop safety
-    // check-in fixes on top of the verified live-map release.
+    // Preparation only:133 is already delivered. Assign a new unused number
+    // only when a future SDK57 binary is explicitly approved; do not rebuild133.
     buildNumber: "133",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
@@ -109,7 +107,7 @@ const config: ExpoConfig = {
       backgroundImage: "./assets/images/rider-adaptive-background.png",
       monochromeImage: "./assets/images/rider-adaptive-monochrome.png",
     },
-    edgeToEdgeEnabled: true,
+    // SDK55+ enforces edge-to-edge; its retired opt-out config is omitted.
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
     // Incremented for the Android location timeout and optional portrait-feature correction.
@@ -153,6 +151,15 @@ const config: ExpoConfig = {
   },
   plugins: [
     "expo-router",
+    [
+      "react-native-maps",
+      {
+        // The SDK-matched plugin installs/initializes the iOS Google provider.
+        // Keep using Rider's existing EAS-injected, platform-restricted keys.
+        iosGoogleMapsApiKey: nativeGoogleMaps.iosApiKey,
+        androidGoogleMapsApiKey: nativeGoogleMaps.androidApiKey,
+      },
+    ],
     "expo-apple-authentication",
     "expo-asset",
     "expo-audio",
@@ -199,6 +206,11 @@ const config: ExpoConfig = {
     [
       "expo-build-properties",
       {
+        // Expo57.0.23+ and scene-capable build-properties are required. This
+        // generates Expo's scene manifest/window startup rather than a shim.
+        ios: {
+          enableSceneSupport: true,
+        },
         android: {
           buildArchs: ["armeabi-v7a", "arm64-v8a"],
           compileSdkVersion: 36,

@@ -211,7 +211,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const liveDriverLocation = routeAnchorIsNewer && routeAnchor
     && (!isNativeMapPoint(driverLocation) || distanceMeters(driverLocation, routeAnchor) > 8)
     ? routeAnchor
-    : driverLocation;
+    : (isNativeMapPoint(driverLocation) ? driverLocation : null);
   const liveDriverUpdatedAt = routeAnchorIsNewer ? driverRouteUpdatedAt : driverLocationUpdatedAt;
   const routeProgressKey = String(tripStatus || '') + ':' + String(driverRouteUpdatedAt || '') + ':' + (trustedDriverRoute.length ? trustedDriverRoute[trustedDriverRoute.length - 1][0].toFixed(5) + ',' + trustedDriverRoute[trustedDriverRoute.length - 1][1].toFixed(5) : 'empty');
   if (routeProgressRef.current.key !== routeProgressKey) {
@@ -271,6 +271,13 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     // visibly shake. Position/timestamp changes remain the movement authority.
     ? `${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${liveDriverUpdatedAt || ''}`
     : null;
+
+  // Dispose only on unmount, not on position/heading dependency changes.
+  // Invalidate queued segment callbacks before stopping the animated values.
+  useEffect(() => () => {
+    animationGenerationRef.current += 1;
+    animatedDriverCoordinate.stopAnimation(() => {});
+  }, [animatedDriverCoordinate]);
 
   useEffect(() => {
     if (!displayDriverPoint) {
@@ -352,6 +359,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     };
 
     if (!previousDriverPointRef.current) {
+      animatedDriverCoordinate.stopAnimation(() => {});
       animatedDriverCoordinate.setValue(initialRegion(nextPoint));
       setVisualDriverBearing(nextBearing);
       finishSnapshot();
@@ -420,7 +428,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         // driver refresh; refit only when the route or either endpoint changes.
         const bookingRouteFrame = [
           userLocation,
-          ...routeCoordinates,
+          ...remainingRoutePoints,
           destination,
         ].filter(isNativeMapPoint);
         const frameKey = JSON.stringify(bookingRouteFrame);
@@ -479,7 +487,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       previousCameraUpdatedAtRef.current = null;
     }
     mapRef.current?.animateToRegion(region, cameraDurationMs);
-  }, [bookingPreview, center, destination, displayDriverPoint, driverRoutePoints, driverTracking, liveDriverUpdatedAt, mapReady, nearby, routeCoordinates, routeOverview, trackedTarget, userLocation]);
+  }, [bookingPreview, center, destination, displayDriverPoint, driverRoutePoints, driverTracking, liveDriverUpdatedAt, mapReady, nearby, remainingRoutePoints, routeCoordinates, routeOverview, trackedTarget, userLocation]);
 
   useEffect(() => {
     if (!routeOverview) {
@@ -500,18 +508,19 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
 
   useImperativeHandle(ref, () => ({
     panTo(latitude, longitude) {
-      if (!isNativeMapPoint([latitude, longitude])) return;
+      if (!mapReady || !mapRef.current || !isNativeMapPoint([latitude, longitude])) return;
       userMovedMapRef.current = true;
       mapRef.current?.animateToRegion(initialRegion([latitude, longitude]), 350);
     },
     fitBounds(points) {
-      const valid = points.filter(isNativeMapPoint).map(coordinate);
+      if (!mapReady || !mapRef.current) return;
+      const valid = points.filter(isNativeMapPoint);
       if (valid.length === 0) return;
       userMovedMapRef.current = true;
-      if (valid.length === 1) mapRef.current?.animateToRegion(initialRegion(points[0]), 350);
-      else mapRef.current?.fitToCoordinates(valid, { edgePadding: { top: 96, right: 32, bottom: 340, left: 32 }, animated: true });
+      if (valid.length === 1) mapRef.current?.animateToRegion(initialRegion(valid[0]), 350);
+      else mapRef.current?.fitToCoordinates(valid.map(coordinate), { edgePadding: { top: 96, right: 32, bottom: 340, left: 32 }, animated: true });
     },
-  }), []);
+  }), [mapReady]);
 
   const mapCenter = isNativeMapPoint(userLocation)
     ? userLocation
@@ -533,7 +542,6 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         customMapStyle={colorScheme === 'dark' ? GOOGLE_DARK_STYLE : undefined}
         showsBuildings={false}
         showsCompass={false}
-        showsPointsOfInterest={false}
         showsScale={false}
         toolbarEnabled={false}
         onMapReady={() => setMapReady(true)}

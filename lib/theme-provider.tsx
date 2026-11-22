@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo } from "react";
-import { View, useColorScheme as useSystemColorScheme } from "react-native";
+import { Platform, View, useColorScheme as useSystemColorScheme } from "react-native";
 import { colorScheme as nativewindColorScheme, vars } from "nativewind";
 
 import { SchemeColors, type ColorScheme } from "@/constants/theme";
@@ -15,7 +15,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const colorScheme: ColorScheme = useSystemColorScheme() === "dark" ? "dark" : "light";
 
   useEffect(() => {
-    nativewindColorScheme.set(colorScheme);
+    // NativeWind4.2's light/dark setters also set native Appearance. Retain
+    // "system" on phones/tablets so later OS appearance changes still arrive.
+    nativewindColorScheme.set(Platform.OS === "web" ? colorScheme : "system");
     if (typeof document !== "undefined") {
       const root = document.documentElement;
       root.dataset.theme = colorScheme;

@@ -55,6 +55,11 @@ export default function AnimatedNearbyMarker({ latitude, longitude, heading = nu
   const rotationRef = useRef(Number(heading) || 0);
   const [rotation, setRotation] = useState(rotationRef.current);
 
+  // Heading-only updates must not interrupt an in-flight position animation.
+  useEffect(() => () => {
+    region.stopAnimation(() => {});
+  }, [region]);
+
   useEffect(() => {
     const last = lastPointRef.current;
     const moved = distanceMeters(last.latitude, last.longitude, latitude, longitude);
@@ -84,6 +89,8 @@ export default function AnimatedNearbyMarker({ latitude, longitude, heading = nu
 
     lastPointRef.current = { latitude, longitude };
     lastUpdateAtRef.current = now;
+    // Cancel the old glide before either replacing it or placing a teleport.
+    region.stopAnimation(() => {});
 
     if (moved > MAX_GLIDE_METERS) {
       region.setValue({ latitude, longitude, latitudeDelta: 0.001, longitudeDelta: 0.001 });

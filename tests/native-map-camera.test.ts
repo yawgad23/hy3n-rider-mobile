@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { authoritativeRouteOverviewPoints, bookingPreviewRegion, nativeTrackingRegion } from '../lib/native-map-camera';
+import { authoritativeRouteOverviewPoints, bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion } from '../lib/native-map-camera';
 
 describe('native Google Maps tracking camera', () => {
   it('keeps a Driver and nearby pickup in a road-level visible frame', () => {
@@ -64,5 +64,37 @@ describe('native Google Maps tracking camera', () => {
     ]);
     expect(authoritativeRouteOverviewPoints([[5.6037, -0.187]])).toEqual([]);
     expect(authoritativeRouteOverviewPoints(null)).toEqual([]);
+  });
+
+  it('accepts only actual finite bounded coordinate numbers without coercion', () => {
+    for (const invalid of ['5.6037', '', ' ', null, undefined, true, false, NaN, Infinity, -Infinity]) {
+      expect(isNativeMapPoint([invalid, -0.187])).toBe(false);
+      expect(isNativeMapPoint([5.6037, invalid])).toBe(false);
+    }
+    for (const invalid of [null, {}, { latitude: 5.6037, longitude: -0.187 }, [], [5.6037], [90.001, 0], [0, -180.001]]) {
+      expect(isNativeMapPoint(invalid)).toBe(false);
+    }
+    expect(isNativeMapPoint([0, 0])).toBe(true);
+    expect(isNativeMapPoint([-90, 180])).toBe(true);
+    expect(isNativeMapPoint([90, -180])).toBe(true);
+  });
+
+  it('drops malformed road points without changing valid numeric server geometry', () => {
+    const start: [number, number] = [5.6037, -0.187];
+    const end: [number, number] = [5.61, -0.18];
+    const points = authoritativeRouteOverviewPoints([
+      start, ['5.604', '-0.185'], [null, null], ['', false], [true, 0], end,
+    ]);
+    expect(points).toEqual([start, end]);
+    expect(points[0]).toBe(start);
+    expect(points[1]).toBe(end);
+    expect(authoritativeRouteOverviewPoints([['0', '0'], [null, null]])).toEqual([]);
+  });
+
+  it('does not turn malformed fallback or preview coordinates into native numeric regions', () => {
+    const malformed = ['5.6037', '-0.187'] as unknown as [number, number];
+    expect(nativeTrackingRegion(malformed, null, null)).toBeNull();
+    expect(bookingPreviewRegion(malformed, [], [])).toBeNull();
+    expect(nativeTrackingRegion(null, null, [null, false] as unknown as [number, number])).toBeNull();
   });
 });

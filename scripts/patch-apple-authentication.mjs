@@ -6,14 +6,24 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const prefix = "[HY3N Apple authentication]";
 
-// Audited publication: https://registry.npmjs.org/expo-apple-authentication/-/expo-apple-authentication-8.0.8.tgz
+// Audited publication: https://registry.npmjs.org/expo-apple-authentication/-/expo-apple-authentication-57.0.2.tgz
+// These three Swift files are byte-identical to 8.0.8: SDK57 still needs this backport.
 // Backports the request queue, retained anchor, and WindowUnavailableException from:
 // https://registry.npmjs.org/expo-apple-authentication/-/expo-apple-authentication-58.0.2.tgz
-// Core 3.0.30 has runOnQueue and Exception, but DOES NOT have Utilities.keyWindow():
-// https://registry.npmjs.org/expo-modules-core/-/expo-modules-core-3.0.30.tgz
-// Use local UIKit scene selection, not an invented Core API. Keep the legacy-window
-// path for SDK54 apps without a UIScene lifecycle; never use it for a background scene.
+// Core 57.0.26 has runOnQueue and Exception, but DOES NOT have Utilities.keyWindow():
+// https://registry.npmjs.org/expo-modules-core/-/expo-modules-core-57.0.26.tgz
+// Use local UIKit scene selection, not an invented Core API. The legacy-window
+// fallback is only for a lifecycle with no connected scenes; never a background scene.
 // Do not skip on Linux/Android: postinstall must also prepare later iOS builds.
+const appleVersion = "57.0.2";
+const coreVersion = "57.0.26";
+// Bind the Core APIs used by this backport to the reviewed publication, not just
+// editable package metadata. Core is always read-only, including external overlays.
+const coreSources = [
+  { file: "Core/Functions/AsyncFunctionDefinition.swift", originalHash: "8fa2ce2108df97f352a6f9c624cd1e2555862a14324db46f4144429d6b3b4387" },
+  { file: "Core/Exceptions/Exception.swift", originalHash: "a2c5ecb174606a77357ba33fb66fa4015a88daeaae1b72d90488693589ac28d3" },
+  { file: "Utilities/Utilities.swift", originalHash: "115312ddb3a4219b48ba5ae68a714481ae89a3c7ced6cf600f46de2b5a86e76e" },
+];
 const patches = [
   {
     file: "AppleAuthenticationModule.swift",
@@ -49,7 +59,7 @@ const patches = [
         .flatMap { $0.windows }
         .first { $0.isKeyWindow && !$0.isHidden }
     }
-    // SDK54 also supports a legacy AppDelegate without connected window scenes.
+    // SDK57 can still use an AppDelegate without opt-in connected window scenes.
     // Only that lifecycle may fall back to application windows, and only when active.
     guard application.applicationState == .active else {
       return nil
@@ -87,7 +97,7 @@ const patches = [
     edits: [
       {
         before: "func exceptionForAuthorizationError(_ error: ASAuthorizationError) -> Exception {",
-        after: `final class WindowUnavailableException: Exception {
+        after: `final class WindowUnavailableException: Exception, @unchecked Sendable {
   override var reason: String {
     "Couldn't present the Sign in with Apple sheet because no active window is available"
   }
@@ -133,7 +143,7 @@ function prepare(source, patch) {
   } catch {
     // Report the same actionable failure for both drifted and partly edited files.
   }
-  throw new Error(`Incompatible source in ${patch.file}; refusing to patch anything. Reinstall the audited 8.0.8 publication or review this backport.`);
+  throw new Error(`Incompatible source in ${patch.file}; refusing to patch anything. Reinstall the audited ${appleVersion} publication or review this backport.`);
 }
 
 function assertWithin(parent, target, label) {
@@ -146,7 +156,7 @@ function assertWithin(parent, target, label) {
 async function auditedPackage(projectRoot, name, expectedVersion, writable = false) {
   const packageRoot = await realpath(join(projectRoot, "node_modules", name));
   // Only Apple sources are written. Core may be an external read-only symlink
-  // in an isolated validation overlay; its version is still checked exactly.
+  // in an isolated validation overlay; its version and audited APIs are checked.
   if (writable) assertWithin(projectRoot, packageRoot, name);
   const metadataPath = await realpath(join(packageRoot, "package.json"));
   assertWithin(packageRoot, metadataPath, `${name} metadata`);
@@ -157,11 +167,17 @@ async function auditedPackage(projectRoot, name, expectedVersion, writable = fal
   return packageRoot;
 }
 
-export async function patchAppleAuthentication(projectRoot = root) {
+async function auditSources(projectRoot, writable) {
   projectRoot = await realpath(projectRoot);
-  const packageRoot = await auditedPackage(projectRoot, "expo-apple-authentication", "8.0.8", true);
-  await auditedPackage(projectRoot, "expo-modules-core", "3.0.30");
-
+  const packageRoot = await auditedPackage(projectRoot, "expo-apple-authentication", appleVersion, writable);
+  const coreRoot = await auditedPackage(projectRoot, "expo-modules-core", coreVersion);
+  for (const source of coreSources) {
+    const path = await realpath(join(coreRoot, "ios", source.file));
+    assertWithin(coreRoot, path, `Core ${source.file}`);
+    if (hash(await readFile(path, "utf8")) !== source.originalHash) {
+      throw new Error(`Incompatible source in Core ${source.file}; refusing to patch anything. Reinstall the audited Core ${coreVersion} publication.`);
+    }
+  }
   // Read and validate EVERY target before writing ANY target. Fully patched files
   // are accepted individually, allowing a rerun after an interrupted filesystem write.
   const plans = [];
@@ -171,6 +187,19 @@ export async function patchAppleAuthentication(projectRoot = root) {
     const source = await readFile(path, "utf8");
     plans.push({ path, source, next: prepare(source, patch) });
   }
+  return plans;
+}
+
+export async function verifyAppleAuthentication(projectRoot = root) {
+  const plans = await auditSources(projectRoot, false);
+  if (plans.some((plan) => plan.source !== plan.next)) {
+    throw new Error("Apple native safety backport is missing or incomplete; run the audited postinstall patch in project-local dependencies before building.");
+  }
+  return { appleVersion, coreVersion };
+}
+
+export async function patchAppleAuthentication(projectRoot = root) {
+  const plans = await auditSources(projectRoot, true);
   let changed = 0;
   for (const plan of plans) {
     if (plan.source === plan.next) continue;
@@ -184,7 +213,7 @@ export async function patchAppleAuthentication(projectRoot = root) {
     }
     changed += 1;
   }
-  console.log(`${prefix} ${changed ? `Patched ${changed} audited Swift files` : "Audited backport already applied"} (8.0.8 / Core 3.0.30).`);
+  console.log(`${prefix} ${changed ? `Patched ${changed} audited Swift files` : "Audited backport already applied"} (${appleVersion} / Core ${coreVersion}).`);
   return changed;
 }
 
