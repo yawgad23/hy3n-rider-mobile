@@ -1,12 +1,11 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Image, Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import AnimatedNearbyMarker from '@/components/AnimatedNearbyMarker';
 import { matchPointToServerRoute } from '@/lib/rider-route-matching';
 import { planRiderRouteAnimation } from '@/lib/rider-route-animation';
 import { riderDriverMarkerMotionDuration } from '@/lib/rider-driver-marker-motion';
 import { riderRemainingLiveRoute } from '@/lib/rider-live-route-display';
-import { riderDriverMarkerLabel } from '@/lib/rider-live-tracking-presentation';
 import { authoritativeRouteOverviewPoints, bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
 import { riderMapMarkerKind } from '@/lib/rider-map-marker-kind';
 import { RIDER_MAP_MARKER_ARTWORK } from '@/lib/rider-vehicle-artwork';
@@ -86,26 +85,6 @@ function safeColour(value: string | null | undefined, fallback: string) {
   return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : fallback;
 }
 
-function distanceMeters(from: NativeMapPoint, to: NativeMapPoint) {
-  const radius = 6_371_000;
-  const lat1 = (from[0] * Math.PI) / 180;
-  const lat2 = (to[0] * Math.PI) / 180;
-  const dLat = ((to[0] - from[0]) * Math.PI) / 180;
-  const dLng = ((to[1] - from[1]) * Math.PI) / 180;
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-  return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function routeDistanceKm(points: NativeMapPoint[]) {
-  return points.slice(1).reduce((total, point, index) => total + distanceMeters(points[index], point), 0) / 1000;
-}
-
-function timestampMs(value?: string | null) {
-  const parsed = value ? Date.parse(value) : Number.NaN;
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function markerAsset(serviceType?: string | null) {
   return RIDER_MAP_MARKER_ARTWORK[riderMapMarkerKind(serviceType)];
 }
@@ -165,8 +144,6 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   driverBearing = null,
   driverColourHex = null,
   driverServiceType = null,
-  driverEtaMinutes = null,
-  driverDistanceKm = null,
   driverTracking = false,
   driverTrackingTarget = null,
   driverRoutePoints = null,
@@ -199,37 +176,21 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     () => (driverRoutePoints || []).filter(isNativeMapPoint),
     [driverRoutePoints],
   );
-  // A live route refresh is generated from the Driver's newest accepted GPS
-  // sample. A route can arrive before the matching location field, so its first
-  // point may seed the marker only when no authenticated Driver location exists.
-  // Never replace a valid live GPS point with the route's first vertex: older
-  // route geometry commonly starts at the pickup/original route origin, and
-  // doing so makes the iOS marker glide backward and snap back on every refresh.
-  const locationAtMs = timestampMs(driverLocationUpdatedAt);
-  const routeAtMs = timestampMs(driverRouteUpdatedAt);
-  const routeAnchor = trustedDriverRoute[0] || null;
-  const routeAnchorIsNewer = routeAtMs !== null
-    && (locationAtMs === null || routeAtMs >= locationAtMs);
-  const liveDriverLocation = routeAnchorIsNewer && routeAnchor
-    && !isNativeMapPoint(driverLocation)
-    ? routeAnchor
-    : driverLocation;
-  const liveDriverUpdatedAt = routeAnchorIsNewer ? driverRouteUpdatedAt : driverLocationUpdatedAt;
   const routeProgressKey = String(tripStatus || '') + ':' + String(driverRouteUpdatedAt || '') + ':' + (trustedDriverRoute.length ? trustedDriverRoute[trustedDriverRoute.length - 1][0].toFixed(5) + ',' + trustedDriverRoute[trustedDriverRoute.length - 1][1].toFixed(5) : 'empty');
   if (routeProgressRef.current.key !== routeProgressKey) {
     routeProgressRef.current = { key: routeProgressKey, segmentIndex: 0 };
   }
   const displayDriverMatch = useMemo(
-    () => matchPointToServerRoute(liveDriverLocation, trustedDriverRoute, undefined, Math.max(0, routeProgressRef.current.segmentIndex - 2)),
-    [liveDriverLocation, trustedDriverRoute, routeProgressKey],
+    () => matchPointToServerRoute(driverLocation, trustedDriverRoute, undefined, Math.max(0, routeProgressRef.current.segmentIndex - 2)),
+    [driverLocation, trustedDriverRoute, routeProgressKey],
   );
   if (displayDriverMatch) {
     routeProgressRef.current.segmentIndex = Math.max(routeProgressRef.current.segmentIndex, displayDriverMatch.segmentIndex);
   }
   const displayDriverPoint = useMemo(() => {
     return displayDriverMatch?.point
-      ?? (isNativeMapPoint(liveDriverLocation) ? liveDriverLocation : null);
-  }, [displayDriverMatch, liveDriverLocation]);
+      ?? (isNativeMapPoint(driverLocation) ? driverLocation : null);
+  }, [displayDriverMatch, driverLocation]);
   const displayDriverBearing = useMemo(() => {
     // The vehicle's actual direction must not be replaced by the direction of
     // an old route when the Driver reverses along the same road.
@@ -238,22 +199,15 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const animatedDriverCoordinate = useRef(new AnimatedRegion(initialRegion(displayDriverPoint || FALLBACK_CENTER))).current;
   const [visualDriverBearing, setVisualDriverBearing] = useState(() => Number(displayDriverBearing) || 0);
   const trackedTarget = driverTracking && isNativeMapPoint(driverTrackingTarget) ? driverTrackingTarget : null;
-  const remainingRoutePoints = useMemo(() => {
+  const routeCoordinates = useMemo(() => {
     const serverRoute = driverTracking
-      ? riderRemainingLiveRoute(liveDriverLocation, trustedDriverRoute, routeOverview, Math.max(0, routeProgressRef.current.segmentIndex - 2))
+      ? riderRemainingLiveRoute(driverLocation, trustedDriverRoute, routeOverview, Math.max(0, routeProgressRef.current.segmentIndex - 2))
       : trustedDriverRoute;
-    if (serverRoute.length > 1) return serverRoute;
+    if (serverRoute.length > 1) return serverRoute.map(coordinate);
     // A direct line is not a road route. The booking API and active-trip route
     // service publish the geometry that is safe to show to a Rider.
     return [];
-  }, [driverTracking, liveDriverLocation, routeOverview, trustedDriverRoute]);
-  const routeCoordinates = useMemo(() => remainingRoutePoints.map(coordinate), [remainingRoutePoints]);
-  const liveRouteDistanceKm = driverTracking && remainingRoutePoints.length > 1
-    ? routeDistanceKm(remainingRoutePoints)
-    : driverDistanceKm;
-  const driverMarkerLabel = driverTracking
-    ? riderDriverMarkerLabel({ tripStatus, distanceKm: liveRouteDistanceKm, etaMinutes: driverEtaMinutes })
-    : null;
+  }, [driverLocation, driverTracking, routeOverview, trustedDriverRoute]);
   const routeOverviewPoints = useMemo(
     () => authoritativeRouteOverviewPoints(driverRoutePoints),
     [driverRoutePoints],
@@ -265,13 +219,13 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     && isNativeMapPoint(userLocation)
     && isNativeMapPoint(destination);
 
-  const driverMotionAnchor = isNativeMapPoint(liveDriverLocation) ? liveDriverLocation : displayDriverPoint;
+  const driverMotionAnchor = isNativeMapPoint(driverLocation) ? driverLocation : displayDriverPoint;
   const driverMotionKey = driverMotionAnchor
     // Heading updates are intentionally excluded. Compass/GPS heading can
     // fluctuate while a car is already gliding; treating each fluctuation as
     // a new motion sample stops the in-flight animation and makes the marker
     // visibly shake. Position/timestamp changes remain the movement authority.
-    ? `${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${liveDriverUpdatedAt || ''}`
+    ? `${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${driverLocationUpdatedAt || ''}`
     : null;
 
   useEffect(() => {
@@ -287,11 +241,11 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
 
     const nextPoint = displayDriverPoint;
     const nextBearing = Number(displayDriverBearing) || 0;
-    const nextUpdatedAt = liveDriverUpdatedAt ? new Date(liveDriverUpdatedAt).getTime() : Number.NaN;
+    const nextUpdatedAt = driverLocationUpdatedAt ? new Date(driverLocationUpdatedAt).getTime() : Number.NaN;
     // Keep each verified segment moving for a small period beyond its GPS
     // cadence. This absorbs normal network delivery delay without estimating a
     // position beyond the newest authenticated Driver coordinate.
-    const durationMs = riderDriverMarkerMotionDuration(previousDriverUpdatedAtRef.current, liveDriverUpdatedAt);
+    const durationMs = riderDriverMarkerMotionDuration(previousDriverUpdatedAtRef.current, driverLocationUpdatedAt);
     const generation = animationGenerationRef.current + 1;
     const retainedRoute = previousFreshRouteRef.current;
     animationGenerationRef.current = generation;
@@ -320,7 +274,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         durationMs,
         fallbackBearing: nextBearing,
         routeUpdatedAt: route.updatedAt,
-        locationUpdatedAt: liveDriverUpdatedAt,
+        locationUpdatedAt: driverLocationUpdatedAt,
       }));
       const plan = plans.find((candidate) => candidate.mode === 'road') ?? plans[plans.length - 1];
 
@@ -338,7 +292,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
           return;
         }
         // Rotation belongs to the visual marker rather than the latest raw GPS
-        // prop so the branded vehicle turns with each server road segment.
+        // prop so the branded car faces each server road segment as it turns.
         setVisualDriverBearing(step.bearing);
         animatedDriverCoordinate.timing({
           ...initialRegion(step.point),
@@ -377,7 +331,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     animatedDriverCoordinate,
     displayDriverBearing,
     displayDriverPoint,
-    liveDriverUpdatedAt,
+    driverLocationUpdatedAt,
     driverMotionKey,
     driverRouteUpdatedAt,
     tripStatus,
@@ -472,16 +426,16 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     let cameraDurationMs = displayDriverPoint && trackedTarget ? 650 : 350;
     if (driverTracking && displayDriverPoint) {
       const previousCameraAt = previousCameraUpdatedAtRef.current;
-      const currentCameraAt = liveDriverUpdatedAt ? Date.parse(liveDriverUpdatedAt) : Number.NaN;
+      const currentCameraAt = driverLocationUpdatedAt ? Date.parse(driverLocationUpdatedAt) : Number.NaN;
       if (previousCameraAt !== null && Number.isFinite(currentCameraAt) && currentCameraAt > previousCameraAt) {
-        cameraDurationMs = riderDriverMarkerMotionDuration(previousCameraAt, liveDriverUpdatedAt);
+        cameraDurationMs = riderDriverMarkerMotionDuration(previousCameraAt, driverLocationUpdatedAt);
       }
       if (Number.isFinite(currentCameraAt)) previousCameraUpdatedAtRef.current = currentCameraAt;
     } else {
       previousCameraUpdatedAtRef.current = null;
     }
     mapRef.current?.animateToRegion(region, cameraDurationMs);
-  }, [bookingPreview, center, destination, displayDriverPoint, driverRoutePoints, driverTracking, liveDriverUpdatedAt, mapReady, nearby, routeCoordinates, routeOverview, trackedTarget, userLocation]);
+  }, [bookingPreview, center, destination, displayDriverPoint, driverLocationUpdatedAt, driverRoutePoints, driverTracking, mapReady, nearby, routeCoordinates, routeOverview, trackedTarget, userLocation]);
 
   useEffect(() => {
     if (!routeOverview) {
@@ -526,10 +480,10 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
-        // `googleRenderer` is Android-only in react-native-maps. Passing the
-        // Legacy renderer through on iOS is unsupported; let iOS use the
-        // default Google Maps renderer so authenticated tiles can load.
-        {...(Platform.OS === 'android' ? { googleRenderer: 'LEGACY' as const } : {})}
+        // Keep the native Google Maps surface on the compatible Android
+        // renderer. This avoids the authenticated-but-blank tile screen
+        // reported on affected Android devices while preserving iOS behavior.
+        googleRenderer="LEGACY"
         initialRegion={initialRegion(mapCenter)}
         style={StyleSheet.absoluteFill}
         customMapStyle={colorScheme === 'dark' ? GOOGLE_DARK_STYLE : undefined}
@@ -600,16 +554,6 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         >
           <CompactVehicleMarker serviceType={driverServiceType} colour={driverColourHex} size={ACTIVE_DRIVER_MARKER_SIZE} framed={false} />
         </Marker.Animated>}
-        {displayDriverPoint && driverMarkerLabel && <Marker.Animated
-          coordinate={animatedDriverCoordinate as any}
-          anchor={{ x: 0.5, y: 0 }}
-          tracksViewChanges
-          zIndex={9}
-        >
-          <View pointerEvents="none" style={styles.driverDistanceLabel}>
-            <Text style={styles.driverDistanceText} numberOfLines={1}>{driverMarkerLabel}</Text>
-          </View>
-        </Marker.Animated>}
         {!driverTracking && nearby.map((driver) => <AnimatedNearbyMarker
           key={`nearby-${driver.id}`}
           latitude={driver.lat}
@@ -632,8 +576,6 @@ const styles = StyleSheet.create({
   bookingEndpointWithTime: { alignItems: 'center', justifyContent: 'center' },
   bookingRouteTimePill: { maxWidth: 150, backgroundColor: 'rgba(12,16,20,0.94)', borderWidth: 1, borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5, marginBottom: 5 },
   bookingRouteTimeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  driverDistanceLabel: { marginTop: 29, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 9, backgroundColor: 'rgba(65,65,65,0.92)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)' },
-  driverDistanceText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
   bookingMapPin: { width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, alignItems: 'center', justifyContent: 'center' },
   bookingMapPinInner: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#FFFFFF' },
 });

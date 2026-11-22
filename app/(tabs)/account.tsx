@@ -11,7 +11,6 @@ import {
   Share,
   Platform,
   Clipboard,
-  Image,
 } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -23,8 +22,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeContext } from '@/lib/theme-provider';
 import { useColors } from '@/hooks/use-colors';
 import { riderProfileCompletionMessage, riderProfileIsComplete } from '@/lib/rider-profile-completeness';
-import * as ImagePicker from 'expo-image-picker';
-import { firebaseStorage, auth } from '@/lib/firebase';
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -95,15 +92,12 @@ export default function AccountScreen() {
   const [editName, setEditName] = useState(name);
   const [editPhone, setEditPhone] = useState(phone);
   const [editEmail, setEditEmail] = useState(email);
-  const [profilePhoto, setProfilePhoto] = useState(riderProfile?.profile_picture || '');
-  const [photoLoading, setPhotoLoading] = useState(false);
 
   useEffect(() => {
     if (riderProfile) {
       setName(riderProfile.full_name || user?.displayName || 'Rider');
       setPhone(riderProfile.phone || user?.phoneNumber || '');
       setEmail(riderProfile.email || user?.email || '');
-      setProfilePhoto(riderProfile.profile_picture || '');
     }
   }, [riderProfile]);
 
@@ -203,37 +197,6 @@ export default function AccountScreen() {
       Alert.alert('Saved', 'Profile updated successfully');
     } catch (err: any) {
       Alert.alert('Profile not saved', err?.message || 'Failed to save profile');
-    }
-  };
-
-  const handleChangePhoto = async () => {
-    if (photoLoading) return;
-    try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Photo permission required', 'Allow HY3N to access your photos in Settings to choose a profile photo.');
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.85,
-      });
-      if (result.canceled || !result.assets?.[0]?.uri) return;
-      const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error('Please sign in again before changing your photo.');
-      setPhotoLoading(true);
-      const response = await fetch(result.assets[0].uri);
-      const blob = await response.blob();
-      const url = await firebaseStorage.uploadFile(blob, `rider_profiles/${currentUser.uid}/profile.jpg`);
-      await updateProfile({ profile_picture: url });
-      setProfilePhoto(url);
-      Alert.alert('Photo updated', 'Your profile photo was updated successfully.');
-    } catch (error: any) {
-      Alert.alert('Photo not updated', error?.message || 'We could not update your profile photo. Please try again.');
-    } finally {
-      setPhotoLoading(false);
     }
   };
 
@@ -468,12 +431,10 @@ export default function AccountScreen() {
           </View>
           <ScrollView contentContainerStyle={{ padding: 16 }}>
             <View style={{ alignItems: "center", marginBottom: 24 }}>
-              <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: `${GOLD}33`, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: GOLD, marginBottom: 8, overflow: 'hidden' }}>
-                {profilePhoto ? <Image source={{ uri: profilePhoto }} style={{ width: 80, height: 80 }} /> : <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 30 }}>{editName.charAt(0)}</Text>}
+              <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: `${GOLD}33`, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: GOLD, marginBottom: 8 }}>
+                <Text style={{ color: GOLD, fontWeight: "bold", fontSize: 30 }}>{editName.charAt(0)}</Text>
               </View>
-              <TouchableOpacity onPress={handleChangePhoto} disabled={photoLoading} accessibilityRole="button" accessibilityLabel="Change profile photo">
-                <Text style={{ color: GOLD, fontSize: 13, fontWeight: "600" }}>{photoLoading ? 'Uploading…' : 'Change Photo'}</Text>
-              </TouchableOpacity>
+              <TouchableOpacity><Text style={{ color: GOLD, fontSize: 13, fontWeight: "600" }}>Change Photo</Text></TouchableOpacity>
             </View>
             {[
               { label: "Full Name", value: editName, onChange: setEditName, icon: "person", keyboard: "default" as const },

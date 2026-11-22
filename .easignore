@@ -1,7 +1,0 @@
-# Keep EAS builds reproducible from app.config.ts. Native projects are generated
-# by Expo prebuild so stale local ios/ and android/ folders cannot be uploaded.
-/ios
-/android
-node_modules
-.git
-.expo

@@ -7,7 +7,6 @@ const component = readFileSync(path.join(process.cwd(), 'components/NativeGoogle
 const screen = readFileSync(path.join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
 const metroConfig = readFileSync(path.join(process.cwd(), 'metro.config.js'), 'utf8');
 const appConfig = readFileSync(path.join(process.cwd(), 'app.config.ts'), 'utf8');
-const easIgnore = readFileSync(path.join(process.cwd(), '.easignore'), 'utf8');
 
 describe('Rider native Google Maps migration', () => {
   it('uses live window dimensions so booking sheets adapt to orientation and device size', () => {
@@ -33,8 +32,7 @@ describe('Rider native Google Maps migration', () => {
 
   it('uses Google Maps with an animated branded driver marker, not a WebView', () => {
     expect(component).toContain('provider={PROVIDER_GOOGLE}');
-    expect(component).toContain("Platform.OS === 'android' ? { googleRenderer: 'LEGACY' as const } : {}");
-    expect(component).not.toContain('googleRenderer="LEGACY"');
+    expect(component).toContain('googleRenderer="LEGACY"');
     expect(component).toContain('Marker.Animated');
     expect(component).toContain('animatedDriverCoordinate.timing');
     expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 44');
@@ -64,15 +62,13 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('previousFreshRouteRef');
     expect(component).toContain('rotation={visualDriverBearing}');
     expect(component).toContain('Heading updates are intentionally excluded');
-    expect(component).toContain("${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${liveDriverUpdatedAt || ''}");
+    expect(component).toContain("${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${driverLocationUpdatedAt || ''}");
     expect(component).not.toContain("${Number(displayDriverBearing).toFixed(2)}");
     expect(component).toContain('Stop at the exact in-flight native coordinate');
     expect(component).toContain('riderDriverMarkerMotionDuration');
     expect(component).toContain('without estimating a');
     expect(component).toContain('previousDriverUpdatedAtRef.current = nextUpdatedAt');
     expect(component).toContain('prior native animation completes');
-    expect(component).toContain("Never replace a valid live GPS point with the route's first vertex");
-    expect(component).toContain('&& !isNativeMapPoint(driverLocation)');
     expect(screen).toContain('driverRouteUpdatedAt: reassignedAfterDriverCancellation ? undefined : (hasCurrentServerRoute');
     expect(screen).toContain('driverRouteUpdatedAt={activeRide?.driverRouteUpdatedAt ?? null}');
     expect(screen).toContain("activeRide.status === 'searching'");
@@ -97,7 +93,7 @@ describe('Rider native Google Maps migration', () => {
     expect(component).toContain('onMapReady={() => setMapReady(true)}');
     expect(component).toContain('animateToRegion(region');
     expect(component).toContain('previousCameraUpdatedAtRef');
-    expect(component).toContain('riderDriverMarkerMotionDuration(previousCameraAt, liveDriverUpdatedAt)');
+    expect(component).toContain('riderDriverMarkerMotionDuration(previousCameraAt, driverLocationUpdatedAt)');
     expect(component).toContain('animateToRegion(region, cameraDurationMs)');
   });
 
@@ -168,13 +164,5 @@ describe('Rider native Google Maps migration', () => {
     expect(appConfig).toContain('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID');
     expect(appConfig).toContain('googleMapsApiKey');
     expect(appConfig).toContain('googleMaps: { apiKey');
-    expect(easIgnore).toContain('/ios');
-    expect(easIgnore).toContain('/android');
-  });
-
-  it('keeps iOS Maps key injection on Expo’s official native config path', () => {
-    expect(appConfig).toContain('googleMapsApiKey');
-    expect(appConfig).toContain('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS');
-    expect(appConfig).not.toContain('with-ios-google-maps-appdelegate');
   });
 });

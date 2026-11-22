@@ -22,14 +22,6 @@
           }
         },
         {
-          "client_id": "362594902321-eofm295e7vg9ua7prqupak3i1dgo5cti.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.hy3n.driver",
-            "certificate_hash": "d3c1a40c2460c488df2b18547f9d8ca8da43a304"
-          }
-        },
-        {
           "client_id": "362594902321-o9dsidn1o0h8s1r3qtc1u4eldu96sdkh.apps.googleusercontent.com",
           "client_type": 3
         }
@@ -65,14 +57,6 @@
         }
       },
       "oauth_client": [
-        {
-          "client_id": "362594902321-77r4u65up27m042hq8ccg2961s0u41q1.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.hy3n.rider",
-            "certificate_hash": "e0962632a3a84d41d73e1b404877ddcc2909b426"
-          }
-        },
         {
           "client_id": "362594902321-o9dsidn1o0h8s1r3qtc1u4eldu96sdkh.apps.googleusercontent.com",
           "client_type": 3

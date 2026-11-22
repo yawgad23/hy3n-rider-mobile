@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, "audit/**", "task/rider-android-auto-pickup-*"]
+    branches: [main, "audit/**"]
 
 jobs:
   quality:
@@ -19,8 +19,6 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Apple native source integration
-        run: pnpm check:apple-native
       - name: TypeScript check
         run: pnpm check
       - name: Unit tests

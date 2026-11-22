@@ -64,7 +64,6 @@ import { createLiveTripShareLink, createRecipientTripShare, revokeLiveTripShareL
 import { payWithHubtelCard } from "@/lib/card-checkout";
 import { type NearbyVehicle, vehicleServesRideCategory } from "@/lib/nearby-driver-presence";
 import { riderVehicleArtworkFor } from "@/lib/rider-vehicle-artwork";
-import { riderHomeServiceLayout } from "@/lib/rider-home-service-layout";
 import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } from "@/lib/rider-completion-presentation";
 import { deliveryRequestDetails, isDeliveryCategory, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
 import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
@@ -89,7 +88,6 @@ import {
   parseRiderStoredSearchHistory,
 } from "@/lib/rider-persisted-location";
 import { currentPickupLabel } from "@/lib/rider-current-pickup";
-import { acquireAndroidPickup } from "@/lib/rider-android-pickup";
 import {
   riderPickupIsReadyForBooking,
   shouldRefreshRiderPickupOnForeground,
@@ -258,36 +256,6 @@ interface ActiveRide {
 }
 
 const DEFAULT_LOCATION: [number, number] = [5.6037, -0.187]; // Accra, Ghana
-const RIDER_LOCATION_TIMEOUT_MS = 12_000; // Existing non-Android path.
-const RIDER_LAST_LOCATION_MAX_AGE_MS = 120_000;
-
-function withLocationTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('LOCATION_TIMEOUT')), timeoutMs);
-    promise.then(
-      (value) => {
-        clearTimeout(timeout);
-        resolve(value);
-      },
-      (error) => {
-        clearTimeout(timeout);
-        reject(error);
-      },
-    );
-  });
-}
-
-function isUsableRiderLocation(location: ExpoLocation.LocationObject | null | undefined) {
-  const latitude = Number(location?.coords?.latitude);
-  const longitude = Number(location?.coords?.longitude);
-  return Boolean(
-    location
-    && Number.isFinite(latitude)
-    && Number.isFinite(longitude)
-    && Math.abs(latitude) <= 90
-    && Math.abs(longitude) <= 180,
-  );
-}
 
 const STATUS_LABELS: Record<string, string> = {
   searching: "Searching for driver...",
@@ -342,9 +310,6 @@ export default function RiderHomeScreen() {
   const { user, riderProfile, updateProfile } = useAuth();
   const insets = useSafeAreaInsets();
   const safeTop = insets.top > 0 ? insets.top : (Constants.statusBarHeight ?? 44);
-  const [iosHomeViewport, setIosHomeViewport] = useState({ width: 0, height: 0 });
-  const [iosHomeGridTop, setIosHomeGridTop] = useState<number | null>(null);
-  const [iosHomeFooterHeight, setIosHomeFooterHeight] = useState<number | null>(null);
   const [userLocation, setUserLocation] = useState<[number, number]>(DEFAULT_LOCATION);
   const [pickupAddress, setPickupAddress] = useState<string>("Getting your location...");
   const [pickupLocationReady, setPickupLocationReady] = useState(false);
@@ -354,57 +319,14 @@ export default function RiderHomeScreen() {
   const pickupSelectionSourceRef = useRef<RiderPickupSelectionSource>('device');
   const pickupRefreshGenerationRef = useRef(0);
   const riderAppStateRef = useRef(AppState.currentState);
-  const androidPickupRequestRef = useRef<ReturnType<typeof acquireAndroidPickup> | null>(null);
-  const androidPickupMountedRef = useRef(true);
-  const androidPickupActiveRideRef = useRef(false);
   const [surge, setSurge] = useState({ multiplier: 1, active: false, reason: null as string | null });
 
-  const refreshCurrentPickupLocation = useCallback(async (explicitRequest = false): Promise<boolean> => {
-    if (Platform.OS === 'android') {
-      if (!androidPickupMountedRef.current || androidPickupActiveRideRef.current
-        || (riderAppStateRef.current !== null && riderAppStateRef.current !== 'active')) return false;
-      androidPickupRequestRef.current?.cancel();
-      const generation = ++pickupRefreshGenerationRef.current;
-      pickupSelectionSourceRef.current = 'device';
-      setPickupLocationReady(false);
-      setRefreshingPickupLocation(true);
-      if (explicitRequest) setPickupAddress('Getting your location...');
-      const isCurrent = () => androidPickupMountedRef.current
-        && generation === pickupRefreshGenerationRef.current
-        && pickupSelectionSourceRef.current === 'device'
-        && !androidPickupActiveRideRef.current
-        && (riderAppStateRef.current === null || riderAppStateRef.current === 'active');
-      const request = acquireAndroidPickup(ExpoLocation, {
-        isCurrent,
-        onCoordinate: (point, label) => {
-          setUserLocation(point);
-          setPickupAddress(label);
-          setPickupLocationReady(true);
-          void Haptics.selectionAsync().catch(() => {});
-        },
-        onLabel: setPickupAddress,
-        onUnavailable: (label) => { setPickupLocationReady(false); setPickupAddress(label); },
-        onExpired: () => { setPickupLocationReady(false); setPickupAddress('Update current location'); },
-      });
-      androidPickupRequestRef.current = request;
-      const ready = await request.result;
-      if (isCurrent()) setRefreshingPickupLocation(false);
-      return ready;
-    }
+  const refreshCurrentPickupLocation = useCallback(async (): Promise<boolean> => {
     const generation = ++pickupRefreshGenerationRef.current;
     pickupSelectionSourceRef.current = 'device';
     setPickupLocationReady(false);
     setRefreshingPickupLocation(true);
-    // Keep an intentionally typed pickup visible during the automatic startup
-    // refresh. Only an explicit tap on current location replaces that label.
-    if (explicitRequest) setPickupAddress('Getting your location...');
     try {
-      if (!(await ExpoLocation.hasServicesEnabledAsync())) {
-        if (generation !== pickupRefreshGenerationRef.current) return false;
-        setPickupAddress('Turn on location services');
-        return false;
-      }
-
       const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         if (generation !== pickupRefreshGenerationRef.current) return false;
@@ -412,44 +334,7 @@ export default function RiderHomeScreen() {
         return false;
       }
 
-      let location: ExpoLocation.LocationObject | null = null;
-      // Preserve the existing non-Android recent-cache/live acquisition path.
-      let lastKnown: ExpoLocation.LocationObject | null = null;
-      try {
-        lastKnown = await ExpoLocation.getLastKnownPositionAsync({
-          maxAge: RIDER_LAST_LOCATION_MAX_AGE_MS,
-          requiredAccuracy: 1_000,
-        });
-      } catch {
-        // A cache lookup is optional; continue to the live request.
-      }
-      if (isUsableRiderLocation(lastKnown)) {
-        const cachedLocation = lastKnown as ExpoLocation.LocationObject;
-        location = cachedLocation;
-        if (generation === pickupRefreshGenerationRef.current) {
-          setUserLocation([cachedLocation.coords.latitude, cachedLocation.coords.longitude]);
-          setPickupAddress('Recent location');
-        }
-      }
-      try {
-        const currentLocation = await withLocationTimeout(
-          ExpoLocation.getCurrentPositionAsync({
-            accuracy: ExpoLocation.Accuracy.Balanced,
-          }),
-          RIDER_LOCATION_TIMEOUT_MS,
-        );
-        if (isUsableRiderLocation(currentLocation)) location = currentLocation;
-      } catch (error) {
-        // Android can leave getCurrentPositionAsync pending when Google Play
-        // Location Services has no fix. Do not leave the Rider on an infinite
-        // "Getting your location..." state; retain only the recent cache.
-        if (!location) {
-          console.warn('[HY3N] Rider location request failed', error);
-          throw error;
-        }
-        if (generation === pickupRefreshGenerationRef.current) setPickupAddress('Recent location');
-      }
-      if (!location) throw new Error('LOCATION_UNAVAILABLE');
+      const location = await ExpoLocation.getCurrentPositionAsync({ accuracy: ExpoLocation.Accuracy.Balanced });
       if (generation !== pickupRefreshGenerationRef.current) return false;
       setUserLocation([location.coords.latitude, location.coords.longitude]);
 
@@ -478,13 +363,7 @@ export default function RiderHomeScreen() {
   }, []);
 
   const handleUseCurrentPickupLocation = useCallback(async () => {
-    const refresh = refreshCurrentPickupLocation(true);
-    const generation = pickupRefreshGenerationRef.current;
-    const refreshed = await refresh;
-    if (Platform.OS === 'android' && (!androidPickupMountedRef.current
-      || generation !== pickupRefreshGenerationRef.current
-      || pickupSelectionSourceRef.current !== 'device' || androidPickupActiveRideRef.current
-      || riderAppStateRef.current !== 'active')) return;
+    const refreshed = await refreshCurrentPickupLocation();
     if (!refreshed) {
       Alert.alert(
         'Current location unavailable',
@@ -518,14 +397,7 @@ export default function RiderHomeScreen() {
 
   // Request GPS and center the map on the Rider's actual starting pickup.
   useEffect(() => {
-    if (Platform.OS === 'android') androidPickupMountedRef.current = true;
     void refreshCurrentPickupLocation();
-    return () => {
-      if (Platform.OS !== 'android') return;
-      androidPickupMountedRef.current = false;
-      pickupRefreshGenerationRef.current += 1;
-      androidPickupRequestRef.current?.cancel();
-    };
   }, [refreshCurrentPickupLocation]);
 
   // Returning to a still-mounted app used to retain the prior automatic pickup
@@ -535,12 +407,6 @@ export default function RiderHomeScreen() {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       const returnedToForeground = riderAppStateRef.current !== 'active' && nextAppState === 'active';
       riderAppStateRef.current = nextAppState;
-      if (Platform.OS === 'android' && nextAppState !== 'active') {
-        pickupRefreshGenerationRef.current += 1;
-        androidPickupRequestRef.current?.cancel();
-        setRefreshingPickupLocation(false);
-        if (pickupSelectionSourceRef.current === 'device') setPickupLocationReady(false);
-      }
       if (returnedToForeground && shouldRefreshRiderPickupOnForeground(pickupSelectionSourceRef.current)) {
         void refreshCurrentPickupLocation();
       }
@@ -713,16 +579,6 @@ export default function RiderHomeScreen() {
   const trackingTelemetrySamplesRef = useRef(new Set<string>());
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
   const activeRide = activeRides.find((ride) => ride.id === selectedRideId) ?? activeRides[0] ?? null;
-  const androidPickupHasActiveRide = Boolean(activeRide);
-  androidPickupActiveRideRef.current = androidPickupHasActiveRide;
-  useEffect(() => {
-    if (Platform.OS === 'android' && androidPickupHasActiveRide) {
-      pickupRefreshGenerationRef.current += 1;
-      androidPickupRequestRef.current?.cancel();
-      setRefreshingPickupLocation(false);
-      if (pickupSelectionSourceRef.current === 'device') setPickupLocationReady(false);
-    }
-  }, [androidPickupHasActiveRide]);
   const [inTripRouteChangeKind, setInTripRouteChangeKind] = useState<RiderTripRouteChangeKind | null>(null);
   const [inTripRouteChangeBusy, setInTripRouteChangeBusy] = useState(false);
   const [showInTripRouteChangeOptions, setShowInTripRouteChangeOptions] = useState(false);
@@ -1967,7 +1823,6 @@ export default function RiderHomeScreen() {
       // Invalidate a foreground GPS request that began before the Rider chose
       // an address. The Rider's deliberate map selection always wins.
       pickupRefreshGenerationRef.current += 1;
-      if (Platform.OS === 'android') androidPickupRequestRef.current?.cancel();
       pickupSelectionSourceRef.current = 'rider-selected';
       setUserLocation([resolved.lat, resolved.lng]);
       setPickupAddress(resolved.address || resolved.name || "Selected pickup");
@@ -3864,25 +3719,9 @@ export default function RiderHomeScreen() {
     </View>
   );
 
-  const homeServiceLayout = riderHomeServiceLayout({
-    platform: Platform.OS,
-    viewportWidth: iosHomeViewport.width,
-    viewportHeight: iosHomeViewport.height,
-    gridTop: iosHomeGridTop,
-    footerHeight: iosHomeFooterHeight,
-    categoryCount: homeServiceCategories.length,
-  });
-
   const renderAddressFirstHome = () => (
-    <View
-      style={{ flex: 1, backgroundColor: BG }}
-      onLayout={Platform.OS === "ios" ? ({ nativeEvent: { layout } }) => {
-        setIosHomeViewport((previous) => previous.width === layout.width && previous.height === layout.height
-          ? previous : { width: layout.width, height: layout.height });
-      } : undefined}
-    >
+    <View style={{ flex: 1, backgroundColor: BG }}>
       <ScrollView
-        style={Platform.OS === "ios" ? { flex: 1 } : undefined}
         contentContainerStyle={{ paddingHorizontal: 20, paddingTop: safeTop + 6, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
       >
@@ -3910,34 +3749,34 @@ export default function RiderHomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={{ color: TEXT, fontSize: Platform.OS === "android" ? 22 : 24, fontWeight: "900", marginTop: Platform.OS === "android" ? 14 : 20, letterSpacing: -0.35 }}>Let’s get you moving.</Text>
-        <Text style={{ color: MUTED, fontSize: Platform.OS === "android" ? 13 : 14, lineHeight: Platform.OS === "android" ? 18 : 20, marginTop: Platform.OS === "android" ? 3 : 5 }}>Enter your destination first, then compare live HY3N ride prices.</Text>
+        <Text style={{ color: TEXT, fontSize: 24, fontWeight: "900", marginTop: 20, letterSpacing: -0.35 }}>Let’s get you moving.</Text>
+        <Text style={{ color: MUTED, fontSize: 14, lineHeight: 20, marginTop: 5 }}>Enter your destination first, then compare live HY3N ride prices.</Text>
 
         <TouchableOpacity
           onPress={() => openLocationSearch("destination")}
           accessibilityRole="button"
           accessibilityLabel="Where to"
           accessibilityHint="Choose a destination before selecting a live ride price"
-          style={{ flexDirection: "row", alignItems: "center", gap: Platform.OS === "android" ? 10 : 12, backgroundColor: CARD, borderRadius: Platform.OS === "android" ? 16 : 18, padding: Platform.OS === "android" ? 11 : 14, marginTop: Platform.OS === "android" ? 12 : 18, borderWidth: 1.5, borderColor: GOLD }}
+          style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: CARD, borderRadius: 18, padding: 14, marginTop: 18, borderWidth: 1.5, borderColor: GOLD }}
         >
-          <View style={{ width: Platform.OS === "android" ? 40 : 46, height: Platform.OS === "android" ? 40 : 46, borderRadius: Platform.OS === "android" ? 12 : 14, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
-            <MaterialIcons name="search" size={Platform.OS === "android" ? 22 : 25} color="#151515" />
+          <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: GOLD, alignItems: "center", justifyContent: "center" }}>
+            <MaterialIcons name="search" size={25} color="#151515" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: TEXT, fontSize: Platform.OS === "android" ? 17 : 19, fontWeight: "900" }}>Wo kɔ he?</Text>
-            <Text style={{ color: MUTED, fontSize: Platform.OS === "android" ? 12 : 13, marginTop: 2 }}>Where are you going?</Text>
+            <Text style={{ color: TEXT, fontSize: 19, fontWeight: "900" }}>Wo kɔ he?</Text>
+            <Text style={{ color: MUTED, fontSize: 13, marginTop: 2 }}>Where are you going?</Text>
           </View>
           <MaterialIcons name="arrow-forward-ios" size={18} color={MUTED} />
         </TouchableOpacity>
 
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: Platform.OS === "android" ? 8 : 12, paddingBottom: Platform.OS === "android" ? 5 : 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 12, paddingBottom: 8 }}>
           <TouchableOpacity
             onPress={handleUseCurrentPickupLocation}
             disabled={refreshingPickupLocation}
             accessibilityRole="button"
             accessibilityLabel="Use current location for pickup"
             accessibilityHint="Replaces a typed pickup with your live phone location"
-            style={{ width: Platform.OS === "android" ? 34 : 36, height: Platform.OS === "android" ? 34 : 36, borderRadius: Platform.OS === "android" ? 17 : 18, backgroundColor: `${GREEN}22`, alignItems: "center", justifyContent: "center", opacity: refreshingPickupLocation ? 0.55 : 1 }}
+            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: `${GREEN}22`, alignItems: "center", justifyContent: "center", opacity: refreshingPickupLocation ? 0.55 : 1 }}
           >
             {refreshingPickupLocation
               ? <ActivityIndicator size="small" color={GREEN} />
@@ -3989,14 +3828,11 @@ export default function RiderHomeScreen() {
           </TouchableOpacity>
         </ScrollView>
 
-        <View style={{ height: 1, backgroundColor: BORDER, marginTop: Platform.OS === "android" ? 1 : 3, marginBottom: Platform.OS === "android" ? 9 : 14 }} />
-        <Text style={{ color: TEXT, fontSize: Platform.OS === "android" ? 17 : 18, fontWeight: "900" }}>Choose a HY3N service</Text>
-        <Text style={{ color: MUTED, fontSize: Platform.OS === "android" ? 12 : 13, marginTop: Platform.OS === "android" ? 2 : 4 }}>Pick one now or choose after entering your destination.</Text>
+        <View style={{ height: 1, backgroundColor: BORDER, marginTop: 3, marginBottom: 14 }} />
+        <Text style={{ color: TEXT, fontSize: 18, fontWeight: "900" }}>Choose a HY3N service</Text>
+        <Text style={{ color: MUTED, fontSize: 13, marginTop: 4 }}>Pick one now or choose after entering your destination.</Text>
 
-        <View
-          onLayout={Platform.OS === "ios" ? ({ nativeEvent: { layout } }) => setIosHomeGridTop(layout.y) : undefined}
-          style={{ flexDirection: "row", flexWrap: "wrap", gap: Platform.OS === "android" ? 7 : 8, marginTop: Platform.OS === "android" ? 7 : 10 }}
-        >
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
           {homeServiceCategories.map((category) => {
             const selected = selectedCategory.id === category.id;
             return (
@@ -4008,24 +3844,21 @@ export default function RiderHomeScreen() {
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Choose ${category.name} and enter destination`}
-                style={{ width: homeServiceLayout.cardWidth, minHeight: homeServiceLayout.cardMinHeight, justifyContent: "space-between", backgroundColor: selected ? `${GOLD}1A` : CARD, borderRadius: Platform.OS === "android" ? 14 : 16, padding: Platform.OS === "android" ? 9 : 12, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
+                style={{ width: "31%", minHeight: 112, justifyContent: "space-between", backgroundColor: selected ? `${GOLD}1A` : CARD, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: selected ? GOLD : BORDER }}
               >
-                <View style={{ width: homeServiceLayout.artworkWidth, height: homeServiceLayout.artworkHeight, alignItems: 'center', justifyContent: 'center', marginLeft: Platform.OS === "ios" ? 0 : Platform.OS === "android" ? -4 : -6, marginTop: Platform.OS === "ios" ? 0 : Platform.OS === "android" ? -2 : -4 }}>
-                  <Image source={riderVehicleArtworkFor(category.id)} accessibilityLabel={`${category.name} vehicle`} style={{ width: homeServiceLayout.artworkWidth, height: homeServiceLayout.artworkHeight }} resizeMode="contain" />
+                <View style={{ width: 62, height: 46, alignItems: 'center', justifyContent: 'center', marginLeft: -6, marginTop: -4 }}>
+                  <Image source={riderVehicleArtworkFor(category.id)} accessibilityLabel={`${category.name} vehicle`} style={{ width: 62, height: 46 }} resizeMode="contain" />
                 </View>
                 <View>
-                  <Text style={{ color: TEXT, fontSize: Platform.OS === "android" ? 12 : 13, fontWeight: "900" }} numberOfLines={Platform.OS === "ios" ? undefined : 2}>{category.name}</Text>
-                  <Text style={{ color: MUTED, fontSize: Platform.OS === "android" ? 9 : 10, marginTop: Platform.OS === "android" ? 2 : 3 }} numberOfLines={Platform.OS === "ios" ? undefined : 1}>{category.seats ? `${category.seats} seats` : "Parcel"}</Text>
+                  <Text style={{ color: TEXT, fontSize: 13, fontWeight: "900" }} numberOfLines={2}>{category.name}</Text>
+                  <Text style={{ color: MUTED, fontSize: 10, marginTop: 3 }} numberOfLines={1}>{category.seats ? `${category.seats} seats` : "Parcel"}</Text>
                 </View>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        <Text
-          onLayout={Platform.OS === "ios" ? ({ nativeEvent: { layout } }) => setIosHomeFooterHeight(layout.height) : undefined}
-          style={{ color: MUTED, fontSize: Platform.OS === "android" ? 11 : 12, textAlign: "center", lineHeight: Platform.OS === "android" ? 16 : 18, marginTop: Platform.OS === "android" ? 4 : 6, paddingHorizontal: 12 }}
-        >Choose your destination to see live prices and available Drivers.</Text>
+        <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", lineHeight: 18, marginTop: 6, paddingHorizontal: 12 }}>Choose your destination to see live prices and available Drivers.</Text>
       </ScrollView>
     </View>
   );
