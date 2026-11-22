@@ -7,6 +7,7 @@ const component = readFileSync(path.join(process.cwd(), 'components/NativeGoogle
 const screen = readFileSync(path.join(process.cwd(), 'app/(tabs)/index.tsx'), 'utf8');
 const metroConfig = readFileSync(path.join(process.cwd(), 'metro.config.js'), 'utf8');
 const appConfig = readFileSync(path.join(process.cwd(), 'app.config.ts'), 'utf8');
+const easIgnore = readFileSync(path.join(process.cwd(), '.easignore'), 'utf8');
 
 describe('Rider native Google Maps migration', () => {
   it('uses live window dimensions so booking sheets adapt to orientation and device size', () => {
@@ -166,5 +167,7 @@ describe('Rider native Google Maps migration', () => {
     expect(appConfig).toContain('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID');
     expect(appConfig).toContain('googleMapsApiKey');
     expect(appConfig).toContain('googleMaps: { apiKey');
+    expect(easIgnore).toContain('/ios');
+    expect(easIgnore).toContain('/android');
   });
 });
