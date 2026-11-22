@@ -33,7 +33,8 @@ describe('Rider native Google Maps migration', () => {
 
   it('uses Google Maps with an animated branded driver marker, not a WebView', () => {
     expect(component).toContain('provider={PROVIDER_GOOGLE}');
-    expect(component).toContain('googleRenderer="LEGACY"');
+    expect(component).toContain("Platform.OS === 'android' ? { googleRenderer: 'LEGACY' as const } : {}");
+    expect(component).not.toContain('googleRenderer="LEGACY"');
     expect(component).toContain('Marker.Animated');
     expect(component).toContain('animatedDriverCoordinate.timing');
     expect(component).toContain('ACTIVE_DRIVER_MARKER_SIZE = 44');
@@ -169,5 +170,11 @@ describe('Rider native Google Maps migration', () => {
     expect(appConfig).toContain('googleMaps: { apiKey');
     expect(easIgnore).toContain('/ios');
     expect(easIgnore).toContain('/android');
+  });
+
+  it('keeps iOS Maps key injection on Expo’s official native config path', () => {
+    expect(appConfig).toContain('googleMapsApiKey');
+    expect(appConfig).toContain('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS');
+    expect(appConfig).not.toContain('with-ios-google-maps-appdelegate');
   });
 });

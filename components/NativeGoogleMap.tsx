@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import MapView, { AnimatedRegion, Marker, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import AnimatedNearbyMarker from '@/components/AnimatedNearbyMarker';
 import { matchPointToServerRoute } from '@/lib/rider-route-matching';
@@ -526,10 +526,10 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
-        // Keep the native Google Maps surface on the compatible Android
-        // renderer. This avoids the authenticated-but-blank tile screen
-        // reported on affected Android devices while preserving iOS behavior.
-        googleRenderer="LEGACY"
+        // `googleRenderer` is Android-only in react-native-maps. Passing the
+        // Legacy renderer through on iOS is unsupported; let iOS use the
+        // default Google Maps renderer so authenticated tiles can load.
+        {...(Platform.OS === 'android' ? { googleRenderer: 'LEGACY' as const } : {})}
         initialRegion={initialRegion(mapCenter)}
         style={StyleSheet.absoluteFill}
         customMapStyle={colorScheme === 'dark' ? GOOGLE_DARK_STYLE : undefined}
