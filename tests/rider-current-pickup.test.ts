@@ -16,9 +16,8 @@ describe('Rider current pickup selection', () => {
     expect(screen).toContain('const handleUseCurrentPickupLocation = useCallback(async () =>');
     expect(screen).toContain('ExpoLocation.getCurrentPositionAsync');
     expect(screen).toContain("accuracy: ExpoLocation.Accuracy.Balanced");
-    expect(screen).toContain("mayShowUserSettingsDialog: true");
+    expect(screen).toContain('acquireAndroidPickup(ExpoLocation, {');
     expect(screen).toContain("setPickupAddress('Getting your location...');");
-    expect(screen).toContain("RIDER_LAST_LOCATION_MAX_AGE_MS = Platform.OS === 'android' ? 15 * 60_000 : 120_000");
     expect(screen).toContain('setUserLocation([location.coords.latitude, location.coords.longitude]);');
     expect(screen).toContain('accessibilityLabel="Use current location for pickup"');
     expect(screen).toContain('onPress={() => openLocationSearch("pickup")}');
@@ -32,10 +31,16 @@ describe('Rider current pickup selection', () => {
     expect(screen).toContain('pickupRefreshGenerationRef.current += 1;');
   });
 
-  it('keeps a valid older Android last-known coordinate available while GPS warms up', () => {
-    expect(screen).toContain("if (!isUsableRiderLocation(lastKnown) && Platform.OS === 'android')");
-    expect(screen).toContain('const anyLastKnown = await ExpoLocation.getLastKnownPositionAsync();');
-    expect(screen).toContain('lastKnown = anyLastKnown;');
-    expect(screen).toContain("setPickupAddress('Recent location');");
+  it('uses the Android-only bounded helper rather than an unbounded old cache', () => {
+    const helper = readFileSync(path.join(process.cwd(), 'lib/rider-android-pickup.ts'), 'utf8');
+    expect(screen).not.toContain('getLastKnownPositionAsync();');
+    expect(helper).toContain('maxAge: ANDROID_PICKUP_MAX_AGE_MS');
+    expect(helper).toContain('requiredAccuracy: ANDROID_PICKUP_MAX_ACCURACY_METRES');
+    expect(helper).toContain('ANDROID_PICKUP_MAX_AGE_MS = 120_000');
+    expect(screen).toContain("if (Platform.OS === 'android') androidPickupRequestRef.current?.cancel();");
+    expect(screen).toContain('androidPickupMountedRef.current = false;');
+    expect(screen).toContain("nextAppState !== 'active'");
+    expect(screen).toContain('onCoordinate: (point, label) => {');
+    expect(screen).toContain('onExpired: () => { setPickupLocationReady(false);');
   });
 });
