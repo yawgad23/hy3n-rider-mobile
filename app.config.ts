@@ -14,7 +14,7 @@ function riderFirebaseIosApiKey(): string {
       resolve(process.cwd(), "firebase/GoogleService-Info.plist"),
       "utf8",
     );
-    return plist.match(/<key>API_KEY<\\/key>\\s*<string>([^<]+)<\\/string>/)?.[1]?.trim() || "";
+    return plist.match(/<key>API_KEY<\/key>\s*<string>([^<]+)<\/string>/)?.[1]?.trim() || "";
   } catch {
     return "";
   }
