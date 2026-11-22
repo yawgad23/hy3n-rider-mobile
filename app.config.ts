@@ -79,7 +79,7 @@ const config: ExpoConfig = {
     bundleIdentifier: env.iosBundleId,
     // Package 132 contains the vehicle-color card and prolonged-stop safety
     // check-in fixes on top of the verified live-map release.
-    buildNumber: "133",
+    buildNumber: "134",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
