@@ -4,23 +4,27 @@ import path from 'node:path';
 
 const root = process.cwd();
 const firebase = readFileSync(path.join(root, 'lib/firebase.ts'), 'utf8');
+const apple = readFileSync(path.join(root, 'lib/apple-sign-in.ts'), 'utf8');
 const account = readFileSync(path.join(root, 'app/(tabs)/account.tsx'), 'utf8');
 const config = readFileSync(path.join(root, 'app.config.ts'), 'utf8');
 
 describe('Apple review rejection fixes', () => {
   it('guards native Apple Sign-In availability before opening the native sheet', () => {
-    expect(firebase).toContain('const available = await AppleAuthentication.isAvailableAsync();');
-    expect(firebase).toContain("if (!available) {");
-    expect(firebase).toContain('AppleAuthentication.signInAsync({');
-    expect(firebase.indexOf('isAvailableAsync')).toBeLessThan(firebase.indexOf('signInAsync'));
+    expect(firebase).toContain("requireOptionalNativeModule('ExpoAppleAuthentication')");
+    expect(firebase).toContain('return signInWithNativeApple({');
+    expect(apple).toContain('const available = await AppleAuthentication.isAvailableAsync();');
+    expect(apple).toContain("if (!available) {");
+    expect(apple).toContain('AppleAuthentication.signInAsync({');
+    expect(apple.indexOf('isAvailableAsync();')).toBeLessThan(apple.indexOf('signInAsync({'));
   });
 
   it('uses a SHA-256 nonce and validates the Apple identity token before Firebase exchange', () => {
-    expect(firebase).toContain('const rawNonce = Crypto.randomUUID();');
-    expect(firebase).toContain('Crypto.CryptoDigestAlgorithm.SHA256');
-    expect(firebase).toContain('nonce: hashedNonce');
-    expect(firebase).toContain("if (!result.identityToken)");
-    expect(firebase).toContain('provider.credential({ idToken: result.identityToken, rawNonce })');
+    expect(apple).toContain('const rawNonce = Crypto.randomUUID();');
+    expect(apple).toContain('Crypto.CryptoDigestAlgorithm.SHA256');
+    expect(apple).toContain('nonce: hashedNonce');
+    expect(apple).toContain("if (!result.identityToken)");
+    expect(apple).toContain('dependencies.exchangeIdentityToken(result.identityToken, rawNonce)');
+    expect(firebase).toContain('provider.credential({ idToken, rawNonce })');
   });
 });
 

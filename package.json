@@ -6,13 +6,15 @@
   "scripts": {
     "dev": "node ./node_modules/.bin/cross-env EXPO_NO_METRO_WORKSPACE_ROOT=1 node ./node_modules/.bin/expo start --web --port ${EXPO_PORT:-8081}",
     "check": "tsc --noEmit",
+    "check:apple-native": "node scripts/check-apple-auth-integration.mjs",
+    "eas-build-post-install": "node scripts/patch-apple-authentication.mjs && node scripts/check-apple-auth-integration.mjs",
     "test": "vitest run",
     "lint": "expo lint",
     "format": "prettier --write .",
     "android": "node ./node_modules/.bin/cross-env EXPO_NO_METRO_WORKSPACE_ROOT=1 node ./node_modules/.bin/expo start --android",
     "ios": "node ./node_modules/.bin/cross-env EXPO_NO_METRO_WORKSPACE_ROOT=1 node ./node_modules/.bin/expo start --ios",
     "qr": "node scripts/generate_qr.mjs",
-    "postinstall": "node scripts/patch-expo-live-activity.mjs"
+    "postinstall": "node scripts/patch-expo-live-activity.mjs && node scripts/patch-apple-authentication.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -30,7 +32,7 @@
     "axios": "^1.13.2",
     "clsx": "^2.1.1",
     "expo": "~54.0.37",
-    "expo-apple-authentication": "^58.0.2",
+    "expo-apple-authentication": "~8.0.8",
     "expo-asset": "~12.0.13",
     "expo-audio": "~1.1.1",
     "expo-build-properties": "^1.0.10",

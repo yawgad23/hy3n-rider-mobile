@@ -23,6 +23,7 @@ import {
 } from 'firebase/auth';
 import { Platform } from 'react-native';
 import { getApiBaseUrl } from '@/constants/oauth';
+import { signInWithNativeApple } from './apple-sign-in';
 // getReactNativePersistence is only available on native — import conditionally
 let AsyncStorage: any = null;
 let getReactNativePersistence: any = null;
@@ -162,38 +163,30 @@ export const firebaseAuth = {
 
   async loginWithApple() {
     if (Platform.OS !== 'web') {
-      const AppleAuthentication = require('expo-apple-authentication') as typeof import('expo-apple-authentication');
-      const Crypto = require('expo-crypto') as typeof import('expo-crypto');
-      const available = await AppleAuthentication.isAvailableAsync();
-      if (!available) {
-        throw new Error('Sign in with Apple is not available on this device.');
-      }
-      const rawNonce = Crypto.randomUUID();
-      const hashedNonce = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        rawNonce,
-      );
-      const result = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-        nonce: hashedNonce,
+      return signInWithNativeApple({
+        platform: Platform.OS,
+        loadModules: () => {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports -- keep native lookup lazy
+          const { requireOptionalNativeModule } = require('expo') as typeof import('expo');
+          const native = requireOptionalNativeModule('ExpoAppleAuthentication') as {
+            isAvailableAsync?: unknown;
+            requestAsync?: unknown;
+          } | null;
+          return {
+            nativeModuleAvailable: typeof native?.isAvailableAsync === 'function'
+              && typeof native?.requestAsync === 'function',
+            AppleAuthentication: require('expo-apple-authentication') as typeof import('expo-apple-authentication'),
+            Crypto: require('expo-crypto') as typeof import('expo-crypto'),
+          };
+        },
+        exchangeIdentityToken: async (idToken, rawNonce) => {
+          const provider = new OAuthProvider('apple.com');
+          const credential = provider.credential({ idToken, rawNonce });
+          const cred = await signInWithCredential(auth, credential);
+          return cred.user;
+        },
+        updateDisplayName: (user, displayName) => updateProfile(user, { displayName }),
       });
-      if (!result.identityToken) {
-        throw new Error('Apple Sign-In did not return an identity token. Please try again.');
-      }
-      const provider = new OAuthProvider('apple.com');
-      const credential = provider.credential({ idToken: result.identityToken, rawNonce });
-      const cred = await signInWithCredential(auth, credential);
-      if (result.fullName && !cred.user.displayName) {
-        const displayName = [result.fullName.givenName, result.fullName.familyName]
-          .filter(Boolean)
-          .join(' ')
-          .trim();
-        if (displayName) await updateProfile(cred.user, { displayName });
-      }
-      return cred.user;
     }
     const provider = new OAuthProvider('apple.com');
     provider.addScope('email');

@@ -19,6 +19,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Apple native source integration
+        run: pnpm check:apple-native
       - name: TypeScript check
         run: pnpm check
       - name: Unit tests
