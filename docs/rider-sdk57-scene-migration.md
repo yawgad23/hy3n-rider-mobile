@@ -28,11 +28,15 @@ Live Activities retain exact `expo-live-activity`0.4.2 and existing HY3N native/
 
 The backend dependency remains at revision `275b227a2ddeb2db157b1f6b061ffeea312e6ea1`. tRPC server/client versions are pinned to11.7.2 to prevent an unrelated backend/peer refresh during SDK resolution. Expo Router imports were migrated to its own supported entry points, and unused external React Navigation dependencies were removed.[10]
 
+The final SDK57 type corrections use the public `expo-router/react-navigation` entry for `PlatformPressable`, widen native icon/tab colors to React Native `ColorValue`, extract string symbol names from the newer string/object union, declare CSS side-effect assets for TypeScript6 and replace removed `absoluteFillObject` with equivalent `absoluteFill`. The Apple autolinking preflight now recognizes SDK57's module records such as `{ name: null, class: "AppleAuthenticationModule" }`, while preserving negative checks for a missing or wrong native module.[11] [12]
+
 ## Validation and release gates
 
-Local source regressions pass: **344 tests in71 files**. The frozen lockfile validates, both Apple scripts pass Node syntax checks, and `git diff --check` passes. These local tests used the restored SDK54 JavaScript tooling with published SDK57 fixtures and mocked native boundaries. They are not an installed SDK57 runtime or full SDK57 type-check pass.
+Clean GitHub source-only CI at code commit `ae068244702876cdcc2cd2bf38fb58578396d6ca` passed on November22,2026: [run45016339346](https://github.com/yawgad23/hy3n-rider-mobile/actions/runs/45016339346). It installed the frozen actual SDK57 graph, passed `expo install --check`, verified Apple native-source patching, capabilities, scenes and native autolinking, passed the full TypeScript check, and passed **347 tests in71 files**. Lint passed with **0 errors and164 warnings**, not a zero-warning result. A subsequent documentation-only commit does not change the validated code; its own CI result must be distinguished from this code-commit result.
 
-A source-only GitHub CI workflow is enabled for this isolated branch. It installs the frozen SDK57 graph, checks Expo dependency alignment and Apple native source integration, then runs TypeScript, unit tests and lint. No TestFlight or Play Store workflow is dispatched by this branch push. Its result must be reviewed before treating source preparation as validated.
+SDK57 exposes additional React Compiler diagnostics through its updated recommended lint configuration. Compiler adoption is a separate refactor, so `experiments.reactCompiler` is explicitly `false`. The five compiler-readiness rules—immutability, purity, refs, set-state-in-effect and static-components—remain visible as warnings rather than being disabled. Core `rules-of-hooks` and `set-state-in-render` remain errors. Regression tests protect that policy. The remaining warnings must be resolved or consciously reviewed before any broader compiler adoption; this migration is not described as lint-clean.[13]
+
+Local source regressions also passed347 tests using the restored SDK54 JavaScript tooling with published SDK57 fixtures and mocked native boundaries. Those local results are distinct from the clean CI's installed SDK57 dependency/type checks. Neither proves native compilation, signed entitlements, scene behavior, or that the earlier Apple/Maps crashes are fixed on physical devices. No TestFlight or Play Store workflow is dispatched by this branch push.
 
 During local lockfile preparation, pnpm removed task-overlay dependency links before its paused operation was interrupted. The original dependency directory and repository source stayed intact. The task-owned SDK54 overlay links and its exact Apple8.0.8 safety backport were restored; subsequent lock resolution uses fresh temporary directories without shared dependency links. No production app or delivered binary was affected.
 
@@ -50,3 +54,6 @@ Before a future release, obtain separate build approval, assign an unused build 
 [8]: https://www.nativewind.dev/docs/getting-started/installation "NativeWind4.2.7 SDK57 installation guidance"
 [9]: https://registry.npmjs.org/expo-live-activity/0.4.2 "Live Activity0.4.2 publication and deprecation metadata"
 [10]: https://docs.expo.dev/router/migrate/sdk-55-to-56/ "Expo Router supported replacement entry points"
+[11]: https://unpkg.com/expo-router@57.0.31/build/react-navigation/index.d.ts "SDK57 Expo Router public React Navigation entry"
+[12]: https://registry.npmjs.org/expo-modules-autolinking/-/expo-modules-autolinking-57.0.18.tgz "Published SDK57 autolinking module-record schema"
+[13]: https://react.dev/reference/eslint-plugin-react-hooks "React Hooks lint rules and compiler diagnostic guidance"
