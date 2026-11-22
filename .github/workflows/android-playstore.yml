@@ -46,17 +46,13 @@ jobs:
       - name: Install EAS CLI
         run: npm install --global eas-cli
 
-      - name: Verify required secrets are configured
+      - name: Verify Expo authentication is configured
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
           set -euo pipefail
           test -n "$EXPO_TOKEN" || { echo "::error::EXPO_TOKEN is missing."; exit 1; }
-          test -n "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" || { echo "::error::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is missing."; exit 1; }
-          printf '%s' "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > google-play-service-account.json
-          node -e "const p=require('./google-play-service-account.json'); if (!p.client_email || !p.private_key) process.exit(1); console.log('Google Play service-account JSON is valid.')"
-          rm -f google-play-service-account.json
+          # Play upload credentials are assigned to com.hy3n.rider in EAS.
           eas whoami
 
       - name: Verify Rider release version
@@ -102,14 +98,6 @@ jobs:
       - name: Install EAS CLI
         run: npm install --global eas-cli
 
-      - name: Write temporary Google Play credentials
-        env:
-          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-        run: |
-          set -euo pipefail
-          printf '%s' "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > google-play-service-account.json
-          chmod 600 google-play-service-account.json
-
       - name: Build Rider Android production AAB
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -118,8 +106,5 @@ jobs:
       - name: Submit latest Rider AAB to Google Play Production
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        # Uses the app-scoped Play upload key stored securely in EAS.
         run: eas submit --platform android --profile production --latest --non-interactive
-
-      - name: Remove temporary Google Play credentials
-        if: ${{ always() }}
-        run: rm -f google-play-service-account.json
