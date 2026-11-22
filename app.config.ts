@@ -56,7 +56,7 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   owner: "yawgad",
-  version: "1.0.4",
+  version: "1.0.5",
   extra: {
     eas: {
       projectId: "0b06ad22-f4a1-4aa7-aab6-0e03237ad63c",
