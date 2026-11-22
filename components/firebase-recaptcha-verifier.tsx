@@ -269,5 +269,5 @@ const styles = StyleSheet.create({
   cancel: { position: 'absolute', left: 8, justifyContent: 'center' },
   title: { fontWeight: 'bold' },
   content: { flex: 1 },
-  loader: { ...StyleSheet.absoluteFillObject, paddingTop: 20, justifyContent: 'flex-start', alignItems: 'center' },
+  loader: { ...StyleSheet.absoluteFill, paddingTop: 20, justifyContent: 'flex-start', alignItems: 'center' },
 });
