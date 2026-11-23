@@ -209,6 +209,9 @@ const config: ExpoConfig = {
     ],
     ["./plugins/withPodfileModularHeaders", {}],
     ["./plugins/withHy3nLiveActivityBranding", {}],
+    // Diagnostic branch only. No build is authorized; preserve the key call's
+    // existing order and remove/disable this plugin before any normal release.
+    ["./plugins/withIOSMapsDiagnostics", { enabled: true }],
   ],
   experiments: {
     typedRoutes: true,

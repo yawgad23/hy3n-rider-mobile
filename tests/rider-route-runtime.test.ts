@@ -4,6 +4,7 @@ import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 vi.mock('react-native', () => ({
   View: 'view', Text: 'text', Image: 'image',
   Platform: { OS: 'ios' },
+  NativeModules: {},
   StyleSheet: { create: (v: any) => v, absoluteFill: {} },
 }));
 vi.mock('react-native-maps', async () => {
@@ -17,7 +18,7 @@ vi.mock('react-native-maps', async () => {
   }
   const MapView = R.forwardRef((props: any, ref) => {
     R.useImperativeHandle(ref, () => ({ animateToRegion: () => {}, fitToCoordinates: () => {} }));
-    return R.createElement('map', null, props.children);
+    return R.createElement('map', props, props.children);
   });
   const Marker: any = (props: any) => R.createElement('marker', props, props.children);
   Marker.Animated = (props: any) => R.createElement('animated-marker', props, props.children);
@@ -74,5 +75,37 @@ describe('real Rider map route rendering', () => {
       await renderer.act(async () => { tree.update(React.createElement(Component, { ...props, driverTracking: false, routeOverview: false })); });
       expect(tree.root.findByType('polyline').props.coordinates).toHaveLength(3);
     } finally { if (tree) await renderer.act(async () => { tree.unmount(); }); }
+  });
+  it('leaves diagnostic callbacks absent from the ordinary iOS release', async () => {
+    const Component = (await import('../components/NativeGoogleMap')).default;
+    let tree: any;
+    try {
+      await renderer.act(async () => { tree = renderer.create(React.createElement(Component)); });
+      const map = tree.root.findByType('map');
+      expect(map.props.googleRenderer).toBeUndefined();
+      expect(map.props.onMapLoaded).toBeUndefined();
+      expect(map.props.onRegionChangeComplete).toBeUndefined();
+    } finally { if (tree) await renderer.act(async () => { tree.unmount(); }); }
+  });
+  it('keeps Android LEGACY rendering and excludes all diagnostic callbacks even with a mock module present', async () => {
+    const RN = await import('react-native');
+    const modules = RN.NativeModules as any;
+    const platform = RN.Platform as any;
+    const getSnapshot = vi.fn();
+    platform.OS = 'android';
+    modules.HY3NMapsDiagnostics = { enabled: true, getSnapshot };
+    const Component = (await import('../components/NativeGoogleMap')).default;
+    let tree: any;
+    try {
+      await renderer.act(async () => { tree = renderer.create(React.createElement(Component)); });
+      const map = tree.root.findByType('map');
+      expect(map.props.googleRenderer).toBe('LEGACY');
+      expect(map.props.onMapLoaded).toBeUndefined();
+      expect(map.props.onRegionChangeComplete).toBeUndefined();
+      expect(getSnapshot).not.toHaveBeenCalled();
+    } finally {
+      if (tree) await renderer.act(async () => { tree.unmount(); });
+      platform.OS = 'ios'; delete modules.HY3NMapsDiagnostics;
+    }
   });
 });

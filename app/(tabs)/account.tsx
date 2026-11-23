@@ -25,6 +25,7 @@ import { useColors } from '@/hooks/use-colors';
 import { riderProfileCompletionMessage, riderProfileIsComplete } from '@/lib/rider-profile-completeness';
 import * as ImagePicker from 'expo-image-picker';
 import { firebaseStorage, auth } from '@/lib/firebase';
+import { isIOSMapsDiagnosticsEnabled } from '@/lib/ios-maps-diagnostics';
 
 const GOLD = "#D4AF37";
 const GREEN = "#006B3F";
@@ -373,6 +374,12 @@ export default function AccountScreen() {
             </View>
           ))}
         </View>
+
+        {isIOSMapsDiagnosticsEnabled() && (
+          <View style={{ marginHorizontal: 16, marginBottom: 12, backgroundColor: CARD, borderRadius: 16, overflow: "hidden", borderWidth: 0.5, borderColor: BORDER }}>
+            <MenuItem icon="bug-report" label="iOS Maps diagnostics" color={GOLD} onPress={() => router.push('/maps-diagnostics' as any)} />
+          </View>
+        )}
 
         {/* Account Section */}
         <View style={{ marginHorizontal: 16, marginBottom: 12, backgroundColor: CARD, borderRadius: 16, overflow: "hidden", borderWidth: 0.5, borderColor: BORDER }}>

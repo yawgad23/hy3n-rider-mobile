@@ -10,6 +10,7 @@ import { riderDriverMarkerLabel } from '@/lib/rider-live-tracking-presentation';
 import { authoritativeRouteOverviewPoints, bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
 import { riderMapMarkerKind } from '@/lib/rider-map-marker-kind';
 import { RIDER_MAP_MARKER_ARTWORK } from '@/lib/rider-vehicle-artwork';
+import { isIOSMapsDiagnosticsEnabled, newMapDiagnosticInstance, recordMapDiagnostic, validDiagnosticRegion } from '@/lib/ios-maps-diagnostics';
 
 export type NearbyDriver = {
   id: string;
@@ -190,6 +191,30 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const bookingRouteFrameKeyRef = useRef<string | null>(null);
   const previousRouteOverviewRef = useRef(false);
   const previousFreshRouteRef = useRef<{ points: NativeMapPoint[]; updatedAt: string | null; tripStatus: string | null }>({ points: [], updatedAt: null, tripStatus: null });
+  const [diagnosticInstance] = useState(newMapDiagnosticInstance);
+  const diagnosticsEnabled = isIOSMapsDiagnosticsEnabled();
+  useEffect(() => {
+    if (!diagnosticsEnabled) return;
+    recordMapDiagnostic('home', diagnosticInstance, 'mounted');
+    return () => recordMapDiagnostic('home', diagnosticInstance, 'unmounted');
+  }, [diagnosticInstance, diagnosticsEnabled]);
+  useEffect(() => {
+    if (!diagnosticsEnabled || !mapReady) return;
+    recordMapDiagnostic('home', diagnosticInstance, 'ready-state-observed');
+    let disposed = false;
+    // Read-only camera inspection; never issue an additional camera command.
+    try {
+      void mapRef.current?.getCamera().then((camera) => {
+        if (!disposed) recordMapDiagnostic('home', diagnosticInstance, 'camera-read', {
+          validCamera: isNativeMapPoint([camera.center.latitude, camera.center.longitude]) && Number.isFinite(camera.zoom),
+          zoom: camera.zoom,
+        });
+      }).catch(() => {
+        if (!disposed) recordMapDiagnostic('home', diagnosticInstance, 'camera-read-failed');
+      });
+    } catch { recordMapDiagnostic('home', diagnosticInstance, 'camera-read-failed'); }
+    return () => { disposed = true; };
+  }, [diagnosticInstance, diagnosticsEnabled, mapReady]);
   // Keep the last server-published road geometry visible while a fresh route
   // update is in flight. Expiring the line after 45 seconds made the Rider map
   // go blank during ordinary GPS/network delays even though the trip was active.
@@ -522,7 +547,9 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const destinationPoint = !bookingPreview && isNativeMapPoint(destination) && (!driverTracking || tripStatus === 'in_progress') ? destination : null;
 
   return (
-    <View style={[styles.container, style]}>
+    <View style={[styles.container, style]} onLayout={diagnosticsEnabled ? ({ nativeEvent: { layout } }) => {
+      recordMapDiagnostic('home', diagnosticInstance, 'layout', { width: layout.width, height: layout.height, validCenter: isNativeMapPoint(mapCenter) });
+    } : undefined}>
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
@@ -540,6 +567,12 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         toolbarEnabled={false}
         onMapReady={() => setMapReady(true)}
         onPanDrag={() => { userMovedMapRef.current = true; }}
+        {...(diagnosticsEnabled ? {
+          onMapLoaded: () => recordMapDiagnostic('home', diagnosticInstance, 'loaded-callback'),
+          onRegionChangeComplete: (region: Region) => recordMapDiagnostic('home', diagnosticInstance, 'region-complete', {
+            validRegion: validDiagnosticRegion(region), latitudeDelta: region.latitudeDelta, longitudeDelta: region.longitudeDelta,
+          }),
+        } : {})}
       >
         {routeCoordinates.length > 1 && <Polyline
           coordinates={routeCoordinates}
