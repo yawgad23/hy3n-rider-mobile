@@ -10,6 +10,7 @@ import { riderDriverMarkerLabel } from '@/lib/rider-live-tracking-presentation';
 import { authoritativeRouteOverviewPoints, bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
 import { riderMapMarkerKind } from '@/lib/rider-map-marker-kind';
 import { RIDER_MAP_MARKER_ARTWORK } from '@/lib/rider-vehicle-artwork';
+import { riderMapPresentation } from '@/lib/rider-map-presentation';
 
 export type NearbyDriver = {
   id: string;
@@ -520,6 +521,7 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     : (isNativeMapPoint(center) ? center : FALLBACK_CENTER);
   const pickupPoint = driverTracking && tripStatus !== 'in_progress' ? trackedTarget : null;
   const destinationPoint = !bookingPreview && isNativeMapPoint(destination) && (!driverTracking || tripStatus === 'in_progress') ? destination : null;
+  const mapPresentation = riderMapPresentation(Platform.OS, colorScheme, GOOGLE_DARK_STYLE);
 
   return (
     <View style={[styles.container, style]}>
@@ -532,10 +534,10 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         {...(Platform.OS === 'android' ? { googleRenderer: 'LEGACY' as const } : {})}
         initialRegion={initialRegion(mapCenter)}
         style={StyleSheet.absoluteFill}
-        customMapStyle={colorScheme === 'dark' ? GOOGLE_DARK_STYLE : undefined}
-        showsBuildings={false}
+        customMapStyle={mapPresentation.customMapStyle}
+        showsBuildings={mapPresentation.showsBuildings}
         showsCompass={false}
-        showsPointsOfInterest={false}
+        showsPointsOfInterest={mapPresentation.showsPointsOfInterest}
         showsScale={false}
         toolbarEnabled={false}
         onMapReady={() => setMapReady(true)}
