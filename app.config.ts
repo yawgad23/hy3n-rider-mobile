@@ -56,7 +56,7 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   owner: "yawgad",
-  version: "1.0.0",
+  version: "1.0.6",
   extra: {
     eas: {
       projectId: "0b06ad22-f4a1-4aa7-aab6-0e03237ad63c",
@@ -76,7 +76,7 @@ const config: ExpoConfig = {
     bundleIdentifier: env.iosBundleId,
     // Package 132 contains the vehicle-color card and prolonged-stop safety
     // check-in fixes on top of the verified live-map release.
-    buildNumber: "137",
+    buildNumber: "138",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
@@ -104,6 +104,7 @@ const config: ExpoConfig = {
       monochromeImage: "./assets/images/rider-adaptive-monochrome.png",
     },
     edgeToEdgeEnabled: true,
+    version: "1.0.0",
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
     // Incremented for the Android foreground-location permission correction.
