@@ -89,7 +89,7 @@ import {
   parseRiderStoredSearchHistory,
 } from "@/lib/rider-persisted-location";
 import { currentPickupLabel } from "@/lib/rider-current-pickup";
-import { acquireAndroidPickup } from "@/lib/rider-android-pickup";
+import { acquireAndroidPickup, isFreshAndroidPickup } from "@/lib/rider-android-pickup";
 import {
   riderPickupIsReadyForBooking,
   shouldRefreshRiderPickupOnForeground,
@@ -357,6 +357,7 @@ export default function RiderHomeScreen() {
   const androidPickupRequestRef = useRef<ReturnType<typeof acquireAndroidPickup> | null>(null);
   const androidPickupMountedRef = useRef(true);
   const androidPickupActiveRideRef = useRef(false);
+  const androidPickupPreviouslyHadRideRef = useRef(false);
   const [surge, setSurge] = useState({ multiplier: 1, active: false, reason: null as string | null });
 
   const refreshCurrentPickupLocation = useCallback(async (explicitRequest = false): Promise<boolean> => {
@@ -384,7 +385,13 @@ export default function RiderHomeScreen() {
         },
         onLabel: setPickupAddress,
         onUnavailable: (label) => { setPickupLocationReady(false); setPickupAddress(label); },
-        onExpired: () => { setPickupLocationReady(false); setPickupAddress('Update current location'); },
+        onExpired: () => { setPickupLocationReady(false); setPickupAddress('Update current location');
+          // Keep automatic pickup usable while Home remains open, but let an
+          // existing cache-to-live acquisition finish instead of restarting it.
+          if (isCurrent() && !androidPickupRequestRef.current?.isAcquiring()) {
+            void refreshCurrentPickupLocation();
+          }
+        },
       });
       androidPickupRequestRef.current = request;
       const ready = await request.result;
@@ -519,12 +526,13 @@ export default function RiderHomeScreen() {
   // Request GPS and center the map on the Rider's actual starting pickup.
   useEffect(() => {
     if (Platform.OS === 'android') androidPickupMountedRef.current = true;
-    void refreshCurrentPickupLocation();
+    else void refreshCurrentPickupLocation();
     return () => {
       if (Platform.OS !== 'android') return;
       androidPickupMountedRef.current = false;
       pickupRefreshGenerationRef.current += 1;
       androidPickupRequestRef.current?.cancel();
+      androidPickupRequestRef.current = null;
     };
   }, [refreshCurrentPickupLocation]);
 
@@ -536,15 +544,32 @@ export default function RiderHomeScreen() {
       const returnedToForeground = riderAppStateRef.current !== 'active' && nextAppState === 'active';
       riderAppStateRef.current = nextAppState;
       if (Platform.OS === 'android' && nextAppState !== 'active') {
+        // The OS permission/settings activity can pause its caller. Preserve
+        // its single pending result, but do not read or commit GPS while paused.
+        if (androidPickupRequestRef.current?.isAwaitingUserInteraction()) {
+          androidPickupRequestRef.current.setForeground(false);
+          if (pickupSelectionSourceRef.current === 'device') setPickupLocationReady(false);
+          return;
+        }
         pickupRefreshGenerationRef.current += 1;
         androidPickupRequestRef.current?.cancel();
         setRefreshingPickupLocation(false);
         if (pickupSelectionSourceRef.current === 'device') setPickupLocationReady(false);
       }
       if (returnedToForeground && shouldRefreshRiderPickupOnForeground(pickupSelectionSourceRef.current)) {
+        if (Platform.OS === 'android' && androidPickupRequestRef.current?.isAwaitingUserInteraction()) {
+          androidPickupRequestRef.current.setForeground(true);
+          return;
+        }
         void refreshCurrentPickupLocation();
       }
     });
+    if (Platform.OS === 'android') {
+      // Subscribe before bootstrapping and use the current native state, not
+      // the render-time snapshot that may predate a missed foreground event.
+      riderAppStateRef.current = AppState.currentState;
+      if (!androidPickupRequestRef.current) void refreshCurrentPickupLocation();
+    }
     return () => subscription.remove();
   }, [refreshCurrentPickupLocation]);
   // ─── Nearby Drivers ─────────────────────────────────────────────────────────
@@ -716,13 +741,20 @@ export default function RiderHomeScreen() {
   const androidPickupHasActiveRide = Boolean(activeRide);
   androidPickupActiveRideRef.current = androidPickupHasActiveRide;
   useEffect(() => {
-    if (Platform.OS === 'android' && androidPickupHasActiveRide) {
+    if (Platform.OS !== 'android') return;
+    const previouslyHadRide = androidPickupPreviouslyHadRideRef.current;
+    androidPickupPreviouslyHadRideRef.current = androidPickupHasActiveRide;
+    if (androidPickupHasActiveRide) {
       pickupRefreshGenerationRef.current += 1;
       androidPickupRequestRef.current?.cancel();
       setRefreshingPickupLocation(false);
       if (pickupSelectionSourceRef.current === 'device') setPickupLocationReady(false);
+    } else if (previouslyHadRide && shouldRefreshRiderPickupOnForeground(pickupSelectionSourceRef.current)) {
+      // Finishing/cancelling the last ride does not remount Home. Reacquire
+      // device pickup once; never move an intentional Rider-selected address.
+      void refreshCurrentPickupLocation();
     }
-  }, [androidPickupHasActiveRide]);
+  }, [androidPickupHasActiveRide, refreshCurrentPickupLocation]);
   const [inTripRouteChangeKind, setInTripRouteChangeKind] = useState<RiderTripRouteChangeKind | null>(null);
   const [inTripRouteChangeBusy, setInTripRouteChangeBusy] = useState(false);
   const [showInTripRouteChangeOptions, setShowInTripRouteChangeOptions] = useState(false);
@@ -1478,6 +1510,9 @@ export default function RiderHomeScreen() {
         subscription = await ExpoLocation.watchPositionAsync(
           { accuracy: ExpoLocation.Accuracy.Balanced, timeInterval: 5000, distanceInterval: 10 },
           (location) => {
+            if (Platform.OS === 'android' && (cancelled || !androidPickupMountedRef.current
+              || !androidPickupActiveRideRef.current || riderAppStateRef.current !== 'active'
+              || !isFreshAndroidPickup(location))) return;
             const point = { lat: location.coords.latitude, lng: location.coords.longitude };
             setUserLocation([point.lat, point.lng]);
             updateActiveRide((prev) => {
@@ -1495,6 +1530,10 @@ export default function RiderHomeScreen() {
             });
           },
         );
+        if (Platform.OS === 'android' && cancelled) {
+          subscription.remove();
+          subscription = null;
+        }
       } catch {
         // Location can be unavailable in web preview or if permission is declined.
       }

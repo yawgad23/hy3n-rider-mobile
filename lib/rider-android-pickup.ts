@@ -46,6 +46,9 @@ export function isFreshAndroidPickup(location: ExpoLocation.LocationObject | nul
 export function acquireAndroidPickup(api: AndroidLocationAPI, callbacks: AndroidPickupCallbacks) {
   let cancelled = false;
   let acquisitionClosed = false;
+  let foreground = true;
+  let awaitingUserInteraction = false;
+  let resumeUserInteraction: (() => void) | undefined;
   let committed: ExpoLocation.LocationObject | null = null;
   let revision = 0;
   let watchStarted = false;
@@ -56,7 +59,7 @@ export function acquireAndroidPickup(api: AndroidLocationAPI, callbacks: Android
   let settled = false;
   let resolveResult: (value: boolean) => void = () => {};
   const result = new Promise<boolean>((resolve) => { resolveResult = resolve; });
-  const active = () => !cancelled && callbacks.isCurrent();
+  const active = () => !cancelled && foreground && callbacks.isCurrent();
   const settle = (value: boolean) => {
     if (!settled) { settled = true; resolveResult(value); }
   };
@@ -76,23 +79,47 @@ export function acquireAndroidPickup(api: AndroidLocationAPI, callbacks: Android
     timers.delete(timer);
     stop?.();
   };
-  const bounded = <T,>(request: () => Promise<T>, timeout: number) => new Promise<T>((resolve, reject) => {
+  const bounded = <T,>(request: () => Promise<T>, timeout: number, requireForeground = true) => new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => { timers.delete(timer); reject(new Error('LOCATION_TIMEOUT')); }, timeout);
     timers.set(timer, () => reject(new Error('LOCATION_CANCELLED')));
     Promise.resolve().then(() => {
-      if (!active()) throw new Error('LOCATION_CANCELLED');
+      if (cancelled || (requireForeground && !active())) throw new Error('LOCATION_CANCELLED');
       return request();
     }).then(
       (value) => { clearTimeout(timer); timers.delete(timer); resolve(value); },
       (error) => { clearTimeout(timer); timers.delete(timer); reject(error); },
     );
   });
+  const userInteraction = async <T,>(request: () => Promise<T>): Promise<T> => {
+    awaitingUserInteraction = true;
+    try {
+      // Android's permission/settings activity may pause the host. Retain
+      // only this native interaction, never GPS acquisition in the background.
+      const outcome = await bounded(request, USER_PROMPT_TIMEOUT_MS).then(
+        (value) => ({ ok: true as const, value }),
+        (error: unknown) => ({ ok: false as const, error }),
+      );
+      if (!cancelled && !foreground) {
+        // This is an internal foreground gate, not another native API call.
+        await bounded(() => new Promise<void>((resolve) => {
+          resumeUserInteraction = resolve;
+          if (foreground) resolve();
+        }), USER_PROMPT_TIMEOUT_MS, false);
+      }
+      if (!outcome.ok) throw outcome.error;
+      return outcome.value;
+    } finally {
+      awaitingUserInteraction = false;
+      resumeUserInteraction = undefined;
+    }
+  };
   const cancel = () => {
     if (cancelled) return;
     cancelled = true;
     revision += 1;
     removeWatch();
     for (const timer of [...timers.keys()]) clearTimer(timer);
+    resumeUserInteraction?.();
     settle(false);
   };
   let watchDelay: ReturnType<typeof setTimeout> | undefined;
@@ -188,7 +215,7 @@ export function acquireAndroidPickup(api: AndroidLocationAPI, callbacks: Android
     try {
       // Permission comes first: an initially disabled provider must not skip the
       // foreground permission request or the user-approved Android settings dialog.
-      const permission = await bounded(() => api.requestForegroundPermissionsAsync(), USER_PROMPT_TIMEOUT_MS);
+      const permission = await userInteraction(() => api.requestForegroundPermissionsAsync());
       if (!active()) return cancel();
       if (permission.status !== 'granted' || permission.android?.accuracy === 'none') {
         fail('Location permission needed'); return;
@@ -200,7 +227,7 @@ export function acquireAndroidPickup(api: AndroidLocationAPI, callbacks: Android
       if (!active()) return cancel();
       // Ask, never force. Avoid repeatedly prompting when GPS/network already work.
       if (!servicesEnabled || (provider?.gpsAvailable === false && provider?.networkAvailable === false)) {
-        try { await bounded(() => api.enableNetworkProviderAsync(), USER_PROMPT_TIMEOUT_MS); } catch { /* Declining does not revoke a usable GPS provider. */ }
+        try { await userInteraction(() => api.enableNetworkProviderAsync()); } catch { /* Declining does not revoke a usable GPS provider. */ }
         if (!active()) return cancel();
         servicesEnabled = await bounded(() => api.hasServicesEnabledAsync(), PROVIDER_TIMEOUT_MS);
         if (!active()) return cancel();
@@ -226,5 +253,14 @@ export function acquireAndroidPickup(api: AndroidLocationAPI, callbacks: Android
       fail('Location unavailable');
     }
   })();
-  return { result, cancel };
+  return {
+    result,
+    cancel,
+    isAcquiring: () => !cancelled && !acquisitionClosed,
+    isAwaitingUserInteraction: () => !cancelled && awaitingUserInteraction,
+    setForeground: (value: boolean) => {
+      foreground = value;
+      if (value) resumeUserInteraction?.();
+    },
+  };
 }
