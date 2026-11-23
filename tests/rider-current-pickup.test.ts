@@ -15,6 +15,9 @@ describe('Rider current pickup selection', () => {
   it('provides a separate current-location control while retaining manual pickup search', () => {
     expect(screen).toContain('const handleUseCurrentPickupLocation = useCallback(async () =>');
     expect(screen).toContain('ExpoLocation.getCurrentPositionAsync');
+    expect(screen).toContain("accuracy: ExpoLocation.Accuracy.Balanced");
+    expect(screen).toContain('acquireAndroidPickup(ExpoLocation, {');
+    expect(screen).toContain("setPickupAddress('Getting your location...');");
     expect(screen).toContain('setUserLocation([location.coords.latitude, location.coords.longitude]);');
     expect(screen).toContain('accessibilityLabel="Use current location for pickup"');
     expect(screen).toContain('onPress={() => openLocationSearch("pickup")}');
@@ -26,5 +29,18 @@ describe('Rider current pickup selection', () => {
     expect(screen).toContain('riderPickupIsReadyForBooking(pickupLocationReady, userLocation)');
     expect(screen).toContain("pickupSelectionSourceRef.current = 'rider-selected';");
     expect(screen).toContain('pickupRefreshGenerationRef.current += 1;');
+  });
+
+  it('uses the Android-only bounded helper rather than an unbounded old cache', () => {
+    const helper = readFileSync(path.join(process.cwd(), 'lib/rider-android-pickup.ts'), 'utf8');
+    expect(screen).not.toContain('getLastKnownPositionAsync();');
+    expect(helper).toContain('maxAge: ANDROID_PICKUP_MAX_AGE_MS');
+    expect(helper).toContain('requiredAccuracy: ANDROID_PICKUP_MAX_ACCURACY_METRES');
+    expect(helper).toContain('ANDROID_PICKUP_MAX_AGE_MS = 120_000');
+    expect(screen).toContain("if (Platform.OS === 'android') androidPickupRequestRef.current?.cancel();");
+    expect(screen).toContain('androidPickupMountedRef.current = false;');
+    expect(screen).toContain("nextAppState !== 'active'");
+    expect(screen).toContain('onCoordinate: (point, label) => {');
+    expect(screen).toContain('onExpired: () => { setPickupLocationReady(false);');
   });
 });

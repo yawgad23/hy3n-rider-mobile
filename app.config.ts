@@ -56,7 +56,7 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   owner: "yawgad",
-  version: "1.0.6",
+  version: "1.0.5",
   extra: {
     eas: {
       projectId: "0b06ad22-f4a1-4aa7-aab6-0e03237ad63c",
@@ -72,11 +72,14 @@ const config: ExpoConfig = {
   // been proven stable on the supported iOS devices.
   newArchEnabled: false,
   ios: {
+    // Tell Expo/EAS to enable the Sign in with Apple capability and provision
+    // the App ID/profile accordingly; a raw entitlement alone is insufficient.
+    usesAppleSignIn: true,
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
     // Package 132 contains the vehicle-color card and prolonged-stop safety
     // check-in fixes on top of the verified live-map release.
-    buildNumber: "138",
+    buildNumber: "136",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
@@ -85,6 +88,7 @@ const config: ExpoConfig = {
         process.env.EAS_BUILD_PROFILE === "production"
           ? "production"
           : "development",
+      "com.apple.developer.applesignin": ["Default"],
     },
     ...(nativeGoogleMaps.iosApiKey
       ? { config: { googleMapsApiKey: nativeGoogleMaps.iosApiKey } }
@@ -93,6 +97,8 @@ const config: ExpoConfig = {
       ITSAppUsesNonExemptEncryption: false,
       NSContactsUsageDescription:
         "HY3N uses the contact you choose to fill in a passenger name and phone number when you book a ride for someone else.",
+      NSPhotoLibraryUsageDescription:
+        "HY3N uses your selected photo as your Rider profile picture.",
     },
   },
   android: {
@@ -104,11 +110,10 @@ const config: ExpoConfig = {
       monochromeImage: "./assets/images/rider-adaptive-monochrome.png",
     },
     edgeToEdgeEnabled: true,
-    version: "1.0.0",
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
-    // Incremented for the Android foreground-location permission correction.
-    versionCode: 58018,
+    // Incremented for the Android location timeout and optional portrait-feature correction.
+    versionCode: 58026,
     googleServicesFile: "./firebase/google-services.json",
     ...(nativeGoogleMaps.androidApiKey
       ? { config: { googleMaps: { apiKey: nativeGoogleMaps.androidApiKey } } }
@@ -160,6 +165,7 @@ const config: ExpoConfig = {
           "HY3N uses your location to set your pickup point and connect you with nearby drivers.",
       },
     ],
+    "./plugins/with-optional-android-features",
     "@react-native-firebase/app",
     "@react-native-firebase/messaging",
     [
@@ -170,7 +176,12 @@ const config: ExpoConfig = {
         enablePushNotifications: true,
       },
     ],
-    "@react-native-google-signin/google-signin",
+    [
+      "@react-native-google-signin/google-signin",
+      {
+        iosUrlScheme: "com.googleusercontent.apps.362594902321-tesfioc66munsekhq8ghb5jvkkhk94m5",
+      },
+    ],
     "expo-video",
     "expo-web-browser",
     [

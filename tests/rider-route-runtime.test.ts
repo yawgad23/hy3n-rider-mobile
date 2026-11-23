@@ -3,6 +3,7 @@ import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-native', () => ({
   View: 'view', Text: 'text', Image: 'image',
+  Platform: { OS: 'ios' },
   StyleSheet: { create: (v: any) => v, absoluteFill: {} },
 }));
 vi.mock('react-native-maps', async () => {
