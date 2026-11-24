@@ -29,7 +29,8 @@
     "production": {
       "environment": "production",
       "ios": {
-        "buildConfiguration": "Release"
+        "buildConfiguration": "Release",
+        "image": "macos-tahoe-26.6-xcode-27.0"
       },
       "android": {
         "buildType": "app-bundle"

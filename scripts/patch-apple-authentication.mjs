@@ -6,13 +6,16 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const prefix = "[HY3N Apple authentication]";
 
-// Audited publication: https://registry.npmjs.org/expo-apple-authentication/-/expo-apple-authentication-8.0.8.tgz
+// Audited publication: https://registry.npmjs.org/expo-apple-authentication/-/expo-apple-authentication-57.0.2.tgz
+// Its three Swift source files independently match the hashes below byte-for-byte.
 // Backports the request queue, retained anchor, and WindowUnavailableException from:
 // https://registry.npmjs.org/expo-apple-authentication/-/expo-apple-authentication-58.0.2.tgz
-// Core 3.0.30 has runOnQueue and Exception, but DOES NOT have Utilities.keyWindow():
-// https://registry.npmjs.org/expo-modules-core/-/expo-modules-core-3.0.30.tgz
-// Use local UIKit scene selection, not an invented Core API. Keep the legacy-window
-// path for SDK54 apps without a UIScene lifecycle; never use it for a background scene.
+// Expo 57.0.34 bundles Apple ~57.0.2 and Core ~57.0.26; only exact audited installs pass:
+// https://registry.npmjs.org/expo/-/expo-57.0.34.tgz
+// Core 57.0.26 has runOnQueue and Exception, but DOES NOT have Utilities.keyWindow():
+// https://registry.npmjs.org/expo-modules-core/-/expo-modules-core-57.0.26.tgz
+// Use local UIKit scene selection, not an invented Core API. SDK27 requires scenes;
+// only foreground-active application scenes with a visible key window are eligible.
 // Do not skip on Linux/Android: postinstall must also prepare later iOS builds.
 const patches = [
   {
@@ -42,19 +45,10 @@ const patches = [
 
   private static func foregroundKeyWindow() -> UIWindow? {
     let application = UIApplication.shared
-    let scenes = application.connectedScenes.compactMap { $0 as? UIWindowScene }
-    if !scenes.isEmpty {
-      return scenes
-        .filter { $0.activationState == .foregroundActive }
-        .flatMap { $0.windows }
-        .first { $0.isKeyWindow && !$0.isHidden }
-    }
-    // SDK54 also supports a legacy AppDelegate without connected window scenes.
-    // Only that lifecycle may fall back to application windows, and only when active.
-    guard application.applicationState == .active else {
-      return nil
-    }
-    return application.windows.first { $0.isKeyWindow && !$0.isHidden }
+    return application.connectedScenes.compactMap { $0 as? UIWindowScene }
+      .filter { $0.activationState == .foregroundActive && $0.session.role == .windowApplication }
+      .flatMap { $0.windows }
+      .first { $0.isKeyWindow && !$0.isHidden }
   }
 `,
       },
@@ -133,7 +127,7 @@ function prepare(source, patch) {
   } catch {
     // Report the same actionable failure for both drifted and partly edited files.
   }
-  throw new Error(`Incompatible source in ${patch.file}; refusing to patch anything. Reinstall the audited 8.0.8 publication or review this backport.`);
+  throw new Error(`Incompatible source in ${patch.file}; refusing to patch anything. Reinstall the audited 57.0.2 publication or review this backport.`);
 }
 
 function assertWithin(parent, target, label) {
@@ -145,8 +139,8 @@ function assertWithin(parent, target, label) {
 
 async function auditedPackage(projectRoot, name, expectedVersion, writable = false) {
   const packageRoot = await realpath(join(projectRoot, "node_modules", name));
-  // Only Apple sources are written. Core may be an external read-only symlink
-  // in an isolated validation overlay; its version is still checked exactly.
+  // Only Apple sources are written. Expo/Core may be external read-only symlinks
+  // in an isolated validation overlay; their versions are still checked exactly.
   if (writable) assertWithin(projectRoot, packageRoot, name);
   const metadataPath = await realpath(join(packageRoot, "package.json"));
   assertWithin(packageRoot, metadataPath, `${name} metadata`);
@@ -159,8 +153,9 @@ async function auditedPackage(projectRoot, name, expectedVersion, writable = fal
 
 export async function patchAppleAuthentication(projectRoot = root) {
   projectRoot = await realpath(projectRoot);
-  const packageRoot = await auditedPackage(projectRoot, "expo-apple-authentication", "8.0.8", true);
-  await auditedPackage(projectRoot, "expo-modules-core", "3.0.30");
+  const packageRoot = await auditedPackage(projectRoot, "expo-apple-authentication", "57.0.2", true);
+  await auditedPackage(projectRoot, "expo", "57.0.34");
+  await auditedPackage(projectRoot, "expo-modules-core", "57.0.26");
 
   // Read and validate EVERY target before writing ANY target. Fully patched files
   // are accepted individually, allowing a rerun after an interrupted filesystem write.
@@ -184,7 +179,7 @@ export async function patchAppleAuthentication(projectRoot = root) {
     }
     changed += 1;
   }
-  console.log(`${prefix} ${changed ? `Patched ${changed} audited Swift files` : "Audited backport already applied"} (8.0.8 / Core 3.0.30).`);
+  console.log(`${prefix} ${changed ? `Patched ${changed} audited Swift files` : "Audited backport already applied"} (Expo 57.0.34 / Apple 57.0.2 / Core 57.0.26).`);
   return changed;
 }
 

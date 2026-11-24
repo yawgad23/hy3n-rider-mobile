@@ -82,7 +82,7 @@ function extractHomeRecoveryScope() {
     }
     return ScopedHome;
   `, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
     reportDiagnostics: true,
   });
   if (compiled.diagnostics?.some(item => item.category === ts.DiagnosticCategory.Error)) {

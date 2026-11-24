@@ -11,7 +11,10 @@ const script = path.join(root, 'scripts/patch-apple-authentication.mjs');
 const temporaryRoots: string[] = [];
 const names = ['AppleAuthenticationModule.swift', 'AppleAuthenticationRequest.swift', 'AppleAuthenticationExceptions.swift'] as const;
 
-// Exact Swift files from the published 8.0.8 npm tarball, gzip/base64 to keep
+// Exact Swift files independently verified from the published 57.0.2 npm tarball:
+// https://registry.npmjs.org/expo-apple-authentication/-/expo-apple-authentication-57.0.2.tgz
+// Registry SHA512: 00KnlyRceRKski+ljZz8q8JhJZ4D3ZScU+Y0RqS6ElJ8GaCWfd7Qh5tMr47yIU/dKDrOnkzkFUM+6vyHS5HI7Q==
+// The bytes match the previous fixture exactly; gzip/base64 keeps
 // this offline fixture small. No install, network, or shared node_modules writes.
 // SHA256 assertions below bind the decoded bytes to the audited publication.
 const fixturePayloads: Record<typeof names[number], string> = {
@@ -28,7 +31,7 @@ const originals = Object.fromEntries(names.map((name) => [
   name, gunzipSync(Buffer.from(fixturePayloads[name], 'base64')).toString('utf8'),
 ])) as Record<typeof names[number], string>;
 
-function fixture(appleVersion = '8.0.8', coreVersion = '3.0.30') {
+function fixture(appleVersion = '57.0.2', coreVersion = '57.0.26', expoVersion = '57.0.34') {
   const project = fs.mkdtempSync(path.join(os.tmpdir(), 'hy3n-apple-native-test-'));
   temporaryRoots.push(project);
   const packageRoot = path.join(project, 'node_modules/expo-apple-authentication');
@@ -39,6 +42,9 @@ function fixture(appleVersion = '8.0.8', coreVersion = '3.0.30') {
   const coreRoot = path.join(project, 'node_modules/expo-modules-core');
   fs.mkdirSync(coreRoot, { recursive: true });
   fs.writeFileSync(path.join(coreRoot, 'package.json'), JSON.stringify({ name: 'expo-modules-core', version: coreVersion }));
+  const expoRoot = path.join(project, 'node_modules/expo');
+  fs.mkdirSync(expoRoot, { recursive: true });
+  fs.writeFileSync(path.join(expoRoot, 'package.json'), JSON.stringify({ name: 'expo', version: expoVersion }));
   for (const name of names) fs.writeFileSync(path.join(packageRoot, 'ios', name), originals[name]);
   return project;
 }
@@ -59,8 +65,8 @@ afterEach(() => {
   for (const directory of temporaryRoots.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
 });
 
-describe('SDK54 Apple authentication native safety backport (offline source fixtures)', () => {
-  it('uses the exact independently hashed published 8.0.8 Swift fixture bytes', () => {
+describe('SDK57 Apple authentication native safety backport (offline source fixtures)', () => {
+  it('uses the exact independently hashed published 57.0.2 Swift fixture bytes', () => {
     for (const name of names) {
       expect(createHash('sha256').update(originals[name]).digest('hex')).toBe(originalHashes[name]);
     }
@@ -98,10 +104,10 @@ describe('SDK54 Apple authentication native safety backport (offline source fixt
     expect(retained).toBeLessThan(request.indexOf('ASAuthorizationController(authorizationRequests:'));
     expect(retained).toBeLessThan(request.indexOf('authController?.performRequests()'));
     expect(request).toContain('application.connectedScenes.compactMap { $0 as? UIWindowScene }');
-    expect(request).toContain('.filter { $0.activationState == .foregroundActive }');
+    expect(request).toContain('.filter { $0.activationState == .foregroundActive && $0.session.role == .windowApplication }');
     expect(request).toContain('.first { $0.isKeyWindow && !$0.isHidden }');
-    expect(request).toContain('if !scenes.isEmpty');
-    expect(request).toContain('guard application.applicationState == .active');
+    expect(request).not.toContain('application.windows');
+    expect(request).not.toContain('application.applicationState');
     expect(request).not.toContain('Utilities.keyWindow');
     expect(request).not.toContain('UIApplication.shared.keyWindow');
     expect(request).not.toContain('DispatchQueue.main.async');
@@ -113,7 +119,20 @@ describe('SDK54 Apple authentication native safety backport (offline source fixt
     expect(exceptions).toContain("Couldn't present the Sign in with Apple sheet because no active window is available");
   });
 
-  it.each(['8.0.7', '8.0.9', '58.0.2'])('rejects unexpected Apple version %s without changing any file', (version) => {
+  it('uses only foreground-active application scenes and has no legacy-window fallback', () => {
+    const project = fixture();
+    expect(run(project).status).toBe(0);
+    const request = sources(project)['AppleAuthenticationRequest.swift'];
+    const selection = request.slice(request.indexOf('  private static func foregroundKeyWindow()'), request.indexOf('\n  init('));
+    expect(selection).toContain('return application.connectedScenes.compactMap { $0 as? UIWindowScene }');
+    expect(selection).toContain('$0.activationState == .foregroundActive && $0.session.role == .windowApplication');
+    expect(selection).toContain('.flatMap { $0.windows }');
+    expect(selection).toContain('.first { $0.isKeyWindow && !$0.isHidden }');
+    expect(selection).not.toMatch(/if !scenes\.isEmpty|applicationState|\.foregroundInactive|\.background|\.windowExternalDisplay|UIWindow\(\)/);
+    expect(request).not.toMatch(/(?:application|UIApplication\.shared)\s*\.\s*windows\b/);
+  });
+
+  it.each(['57.0.1', '57.0.3', '58.0.2', '8.0.8'])('rejects unexpected Apple version %s without changing any file', (version) => {
     const project = fixture(version);
     const before = sources(project);
     const result = run(project);
@@ -122,11 +141,19 @@ describe('SDK54 Apple authentication native safety backport (offline source fixt
     expect(sources(project)).toEqual(before);
   });
 
-  it('rejects a different Core version without changing any file', () => {
-    const project = fixture('8.0.8', '3.0.29');
+  it.each(['57.0.25', '57.0.27', '3.0.30'])('rejects a different Core version %s without changing any file', (version) => {
+    const project = fixture('57.0.2', version);
     const result = run(project);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('Unsupported expo-modules-core');
+    expect(sources(project)).toEqual(originals);
+  });
+
+  it.each(['57.0.33', '57.0.35', '54.0.37'])('rejects an unaudited Expo version %s without changing any file', (version) => {
+    const project = fixture('57.0.2', '57.0.26', version);
+    const result = run(project);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`Unsupported expo ${version}`);
     expect(sources(project)).toEqual(originals);
   });
 

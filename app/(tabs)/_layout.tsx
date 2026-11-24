@@ -1,5 +1,5 @@
 import { Tabs, router } from "expo-router";
-import { View, Text, ActivityIndicator } from "react-native";
+import { View, Text, ActivityIndicator, type ColorValue } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/use-colors";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -10,7 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type TabBarIconProps = {
   name: React.ComponentProps<typeof MaterialIcons>["name"];
-  color: string;
+  color: ColorValue;
   focused: boolean;
 };
 

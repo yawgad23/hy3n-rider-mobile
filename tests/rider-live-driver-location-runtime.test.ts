@@ -73,8 +73,8 @@ function extractHomeRideListener() {
   }
   visit(source);
   if (!listener) throw new Error('Home ride listener disappeared or is no longer an inline callback');
-  return ts.transpileModule(`const listener = ${listener.getText(source)}; listener`, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
+  return ts.transpileModule(`const listener = ${listener.getText(source)}; return listener;`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
   }).outputText;
 }
 
@@ -108,7 +108,7 @@ function makeListenerHarness(initial: Ride) {
     trackedRide: initial,
     updateActiveRide: (updater: (ride: Ride) => Ride) => { current = updater(current); },
   };
-  const listener = new Function('env', `with (env) { return ${compiledListener.replace(/^const listener = /, '').replace(/;\s*listener;?\s*$/, '')}; }`)(env) as (ride: Ride) => void;
+  const listener = new Function('env', `with (env) { ${compiledListener} }`)(env) as (ride: Ride) => void;
   return { emit: (ride: Ride) => listener(ride), retire: () => { env.cancelled = true; }, get current() { return current; }, get driverLocation() { return driverLocation; } };
 }
 

@@ -12,7 +12,7 @@ function visit(node: ts.Node) {
 }
 visit(source);
 if (methods.length !== 1) throw new Error(`Expected one Firebase list owner, got ${methods.length}`);
-const compiled = ts.transpileModule(`const owner = { ${methods[0].getText(source)} }; return owner.list;`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+const compiled = ts.transpileModule(`const owner = { ${methods[0].getText(source)} }; return owner.list;`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
 function setup() {
   const snapshot = { docs: [{ id: 'ride-a', data: () => ({ rider_id: 'rider-a' }) }] };
   const env = {

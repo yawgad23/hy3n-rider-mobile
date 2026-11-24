@@ -36,7 +36,7 @@ assert(config.plugins?.some((plugin) => (Array.isArray(plugin) ? plugin[0] : plu
 const result = runExpo('autolinking', ['resolve', '--platform', 'ios', '--json']);
 const module = result.modules?.find((item) => item.packageName === 'expo-apple-authentication');
 assert(module?.packageVersion === apple.version, 'iOS autolinking discovered a different Apple package version.');
-assert(module.modules?.includes('AppleAuthenticationModule')
+assert(module.modules?.some((item) => (typeof item === 'string' ? item : item.class) === 'AppleAuthenticationModule')
   && module.swiftModuleNames?.includes('ExpoAppleAuthentication')
   && module.pods?.some((pod) => pod.podName === 'ExpoAppleAuthentication'),
   'The Apple Swift module and CocoaPod are not discoverable for iOS.');

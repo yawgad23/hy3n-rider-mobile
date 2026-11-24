@@ -56,7 +56,7 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   owner: "yawgad",
-  version: "1.0.5",
+  version: "1.0.6",
   extra: {
     eas: {
       projectId: "0b06ad22-f4a1-4aa7-aab6-0e03237ad63c",
@@ -66,20 +66,17 @@ const config: ExpoConfig = {
   icon: "./assets/images/rider-ios-icon.png",
   scheme: env.scheme,
   userInterfaceStyle: "automatic",
-  // TestFlight crash reports for the Rider map builds showed an ObjC
-  // TurboModule abort in the Fabric-native map path. Keep the production app
-  // on the established legacy renderer until that upstream combination has
-  // been proven stable on the supported iOS devices.
-  newArchEnabled: false,
+  // This isolated iOS SDK 27 branch uses SDK 57's required New Architecture
+  // and its compatible native Maps package. The Android release keeps the
+  // validated SDK 54/legacy graph on its separate release branch.
   ios: {
     // Tell Expo/EAS to enable the Sign in with Apple capability and provision
     // the App ID/profile accordingly; a raw entitlement alone is insufficient.
     usesAppleSignIn: true,
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
-    // Package 132 contains the vehicle-color card and prolonged-stop safety
-    // check-in fixes on top of the verified live-map release.
-    buildNumber: "136",
+    // Fresh TestFlight identity; never reuse an already uploaded build number.
+    buildNumber: "139",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.
@@ -90,9 +87,6 @@ const config: ExpoConfig = {
           : "development",
       "com.apple.developer.applesignin": ["Default"],
     },
-    ...(nativeGoogleMaps.iosApiKey
-      ? { config: { googleMapsApiKey: nativeGoogleMaps.iosApiKey } }
-      : {}),
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSContactsUsageDescription:
@@ -109,7 +103,6 @@ const config: ExpoConfig = {
       backgroundImage: "./assets/images/rider-adaptive-background.png",
       monochromeImage: "./assets/images/rider-adaptive-monochrome.png",
     },
-    edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     package: env.androidPackage,
     // Incremented for the Android pickup lifecycle recovery release.
@@ -152,7 +145,11 @@ const config: ExpoConfig = {
     lang: "en",
   },
   plugins: [
+    // Expo composes native mods inside-out: register this before Maps so its
+    // validation/reordering sees the complete generated native startup block.
+    "./plugins/with-rider-ios-sdk27",
     "expo-router",
+    ["react-native-maps", { iosGoogleMapsApiKey: nativeGoogleMaps.iosApiKey }],
     "expo-apple-authentication",
     "expo-asset",
     "expo-audio",
@@ -199,6 +196,15 @@ const config: ExpoConfig = {
     [
       "expo-build-properties",
       {
+        ios: {
+          deploymentTarget: "16.4",
+          enableSceneSupport: true,
+          useHermesV1: true,
+          usePrecompiledModules: false,
+          // Firebase 25.1's CocoaPods integration with RN's prebuilt core.
+          useFrameworks: "static",
+          forceStaticLinking: ["RNFBApp", "RNFBMessaging"],
+        },
         android: {
           buildArchs: ["armeabi-v7a", "arm64-v8a"],
           compileSdkVersion: 36,

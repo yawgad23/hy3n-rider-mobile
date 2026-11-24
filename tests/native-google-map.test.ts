@@ -166,14 +166,16 @@ describe('Rider native Google Maps migration', () => {
     expect(appConfig).toContain('GOOGLE_MAPS_ANDROID_API_KEY');
     expect(appConfig).toContain('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS');
     expect(appConfig).toContain('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_ANDROID');
-    expect(appConfig).toContain('googleMapsApiKey');
+    expect(appConfig).toContain('["react-native-maps", { iosGoogleMapsApiKey: nativeGoogleMaps.iosApiKey }]');
     expect(appConfig).toContain('googleMaps: { apiKey');
     expect(easIgnore).toContain('/ios');
     expect(easIgnore).toContain('/android');
   });
 
-  it('keeps iOS Maps key injection on Expo’s official native config path', () => {
-    expect(appConfig).toContain('googleMapsApiKey');
+  it('uses the official modern Maps plugin and validates native startup ordering', () => {
+    expect(appConfig).toContain('iosGoogleMapsApiKey');
+    expect(appConfig).not.toContain('config: { googleMapsApiKey:');
+    expect(appConfig).toContain('./plugins/with-rider-ios-sdk27');
     expect(appConfig).toContain('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY_IOS');
     expect(appConfig).not.toContain('with-ios-google-maps-appdelegate');
   });

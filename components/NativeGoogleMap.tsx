@@ -535,7 +535,8 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         customMapStyle={colorScheme === 'dark' ? GOOGLE_DARK_STYLE : undefined}
         showsBuildings={false}
         showsCompass={false}
-        showsPointsOfInterest={false}
+        // Preserve the established runtime prop; newer Maps typings renamed it.
+        {...{ showsPointsOfInterest: false }}
         showsScale={false}
         toolbarEnabled={false}
         onMapReady={() => setMapReady(true)}

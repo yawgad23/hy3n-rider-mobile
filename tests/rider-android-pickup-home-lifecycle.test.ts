@@ -94,7 +94,7 @@ function extractHomePickupHooks() {
   }
   return ScopedHome;`;
   return ts.transpileModule(source, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
     reportDiagnostics: true,
   });
 }
