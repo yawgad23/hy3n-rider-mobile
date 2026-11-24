@@ -1,5 +1,6 @@
 import { isExpiredRiderSearch } from './rider-search-expiry';
 import { riderLiveRouteIsCurrent } from './rider-live-route-display';
+import { riderDriverLocationFromRide } from './rider-driver-location';
 
 export const ACTIVE_RIDE_STATUSES = [
   'searching',
@@ -117,13 +118,6 @@ const locationFrom = (
   };
 };
 
-const driverPoint = (value: unknown): { lat: number; lng: number } | undefined => {
-  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {};
-  const lat = finiteNumber(source.lat ?? source.latitude, Number.NaN);
-  const lng = finiteNumber(source.lng ?? source.longitude, Number.NaN);
-  return Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0) ? { lat, lng } : undefined;
-};
-
 const routePointsFrom = (value: unknown): [number, number][] => {
   if (!Array.isArray(value)) return [];
   return value
@@ -164,7 +158,8 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
   const pickupLocation = locationFrom(rawRide.pickup ?? rawRide.pickup_location, 'Pickup location');
   const destination = locationFrom(rawRide.destination ?? rawRide.destination_location, 'Destination');
   const driver = rawRide.driver && typeof rawRide.driver === 'object' ? rawRide.driver as Record<string, any> : {};
-  const driverLocation = driverPoint(driver.location ?? rawRide.driver_location);
+  const driverUpdate = riderDriverLocationFromRide(rawRide);
+  const driverLocation = driverUpdate ? { lat: driverUpdate.lat, lng: driverUpdate.lng } : undefined;
   const vehicle = nonEmptyText(rawRide.driver_vehicle, [driver.vehicle_make, driver.vehicle_model].filter(Boolean).join(' '));
   const quote = finiteNumber(rawRide.quoted_fare ?? rawRide.fare ?? rawRide.estimated_fare ?? rawRide.price);
   const ridePin = nonEmptyText(rawRide.pickup_code ?? rawRide.ride_pin);
@@ -229,8 +224,8 @@ export function recoverActiveRide(rawRide: Record<string, any>): RecoveredActive
     driverPhoto: driverPhoto(driver) ?? driverPhoto(rawRide),
     driverPhone: nonEmptyText(driver.phone ?? rawRide.driver_phone) || undefined,
     driverLocation,
-    driverBearing: optionalFiniteNumber(driver.location?.heading ?? rawRide.driver_location?.heading),
-    driverLocationUpdatedAt: nonEmptyText(driver.location?.recorded_at ?? rawRide.driver_location_updated_at) || undefined,
+    driverBearing: driverUpdate?.heading ?? undefined,
+    driverLocationUpdatedAt: driverUpdate?.updatedAt,
     driverRouteUpdatedAt: currentLiveRoute ? nonEmptyText(liveRoute.calculated_at ?? liveRoute.updated_at) || undefined : undefined,
     routeDistanceKm: currentLiveRoute ? optionalFiniteNumber(liveRoute.distance_km) : undefined,
     routeDurationMinutes: currentLiveRoute ? optionalFiniteNumber(liveRoute.duration_minutes) : undefined,

@@ -67,7 +67,7 @@ import { riderVehicleArtworkFor } from "@/lib/rider-vehicle-artwork";
 import { riderHomeServiceLayout } from "@/lib/rider-home-service-layout";
 import { passiveCompletionPresentation, requiresPendingRatingBeforeBooking } from "@/lib/rider-completion-presentation";
 import { deliveryRequestDetails, isDeliveryCategory, validateDeliveryBookingDetails } from "@/lib/delivery-booking";
-import { nextRiderDriverLocation } from "@/lib/rider-driver-location";
+import { nextRiderDriverLocation, riderDriverLocationFromRide } from "@/lib/rider-driver-location";
 import { logRiderTrackingTelemetry, measureRiderTrackingTelemetry } from "@/lib/rider-tracking-telemetry";
 import { destinationArrivalReminder, shouldPromptForDestinationArrival } from "@/lib/rider-trip-feedback";
 import { riderBookingRouteDisplay } from "@/lib/rider-booking-route-display";
@@ -1177,12 +1177,6 @@ export default function RiderHomeScreen() {
                 }
               : null
           );
-          const hasDriverLocation = Boolean(
-            driver?.location
-            && Number.isFinite(Number(driver.location.lat))
-            && Number.isFinite(Number(driver.location.lng))
-            && (Number(driver.location.lat) !== 0 || Number(driver.location.lng) !== 0),
-          );
           const liveRoute = rawRide.live_route_metrics && typeof rawRide.live_route_metrics === 'object'
             ? rawRide.live_route_metrics as Record<string, any>
             : {};
@@ -1206,12 +1200,12 @@ export default function RiderHomeScreen() {
               .filter(([lat, lng]: [number, number]) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180)
               .slice(0, 180)
             : undefined;
-          // A ride document retains the Driver's acceptance-time position. The
-          // `driver_presence` stream is the authority for live GPS, so an old
-          // ride snapshot cannot pull the moving vehicle back to its start.
-          const rideDriverUpdate = hasDriverLocation
-            ? nextRiderDriverLocation(driver!.location, prev.driverLocationUpdatedAt, prev.driverLocation)
-            : null;
+          // The assigned ride contains the server-projected live GPS sample.
+          // Read it independently of the nested acceptance-time identity point
+          // and retain monotonic ordering against any newer presence sample.
+          const rideDriverUpdate = riderDriverLocationFromRide(
+            rawRide, prev.driverLocationUpdatedAt, prev.driverLocation,
+          );
           const nextDriverLocation = rideDriverUpdate
             ? { lat: rideDriverUpdate.lat, lng: rideDriverUpdate.lng }
             : prev.driverLocation;

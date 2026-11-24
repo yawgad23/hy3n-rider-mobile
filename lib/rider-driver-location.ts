@@ -115,3 +115,45 @@ export function nextRiderDriverLocation(
 
   return incoming;
 }
+
+/**
+ * The assigned ride projects live GPS into driver_location; driver.location is
+ * also retained as an acceptance-time identity snapshot. Keep coordinate,
+ * heading and timestamp from one sample. In particular, a top-level live
+ * timestamp must never make the old nested acceptance point look fresh.
+ */
+export function riderDriverLocationFromRide(
+  ride: Record<string, any> | null | undefined,
+  previousUpdatedAt?: string,
+  previousLocation?: Pick<RiderDriverLocation, 'lat' | 'lng'> | null,
+): RiderDriverLocation | null {
+  const candidate = (value: unknown, projectedTimestamp?: unknown) => {
+    if (!value || typeof value !== 'object') return null;
+    const source = value as Record<string, any>;
+    const ownTimestamp = source.recorded_at ?? source.updated_at
+      ?? source.last_location_update ?? source.last_seen_at ?? source.last_seen;
+    const sample = nextRiderDriverLocation({
+      ...source,
+      recorded_at: normalizeTimestamp(ownTimestamp) ?? normalizeTimestamp(projectedTimestamp),
+    });
+    // Legacy acceptance fallbacks use 0,0 to mean no Driver fix is available.
+    return sample && (sample.lat !== 0 || sample.lng !== 0) ? sample : null;
+  };
+
+  const projected = candidate(ride?.driver_location, ride?.driver_location_updated_at);
+  const acceptance = candidate(ride?.driver?.location);
+  const projectedAt = timestampMs(projected?.updatedAt);
+  const acceptanceAt = timestampMs(acceptance?.updatedAt);
+  const selected = projected && (!acceptance || acceptanceAt === null
+    || (projectedAt !== null && projectedAt >= acceptanceAt))
+    ? projected
+    : acceptance;
+  if (!selected) return null;
+
+  return nextRiderDriverLocation({
+    latitude: selected.lat,
+    longitude: selected.lng,
+    heading: selected.heading,
+    recorded_at: selected.updatedAt,
+  }, previousUpdatedAt, previousLocation);
+}
