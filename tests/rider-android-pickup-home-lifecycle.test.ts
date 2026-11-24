@@ -62,7 +62,8 @@ function extractHomePickupHooks() {
   selected.add(declaration('handleUseCurrentPickupLocation'));
   selected.add(unique(effects.filter((node) => references(node, 'androidPickupMountedRef')
     && !references(node, 'inProgressRideKeys')), 'pickup mount useEffect'));
-  selected.add(effect('AppState'));
+  selected.add(unique(effects.filter((node) => references(node, 'AppState')
+    && references(node, 'refreshCurrentPickupLocation')), 'pickup AppState useEffect'));
   // Include any added previous-active-ride ref and the actual render-time guard.
   includeRange('activeRide', 'inTripRouteChangeKind');
   selected.add(declaration('inProgressRideKeys'));

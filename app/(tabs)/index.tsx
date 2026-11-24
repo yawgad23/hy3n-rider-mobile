@@ -51,6 +51,7 @@ import { expireStaleRiderSearch } from "@/lib/rider-search-expiry-api";
 import { getRiderRideStatus } from "@/lib/rider-ride-status-api";
 import { nonRegressiveRideStatus, riderTerminalStatus } from "@/lib/rider-ride-status";
 import { mergeRiderStatusSnapshot, RIDER_STATUS_RECONCILIATION_INTERVAL_MS } from "@/lib/rider-status-reconciliation";
+import { latestRecoverableCompletedRide, mergeRecoveredRiderRides } from "@/lib/rider-resume-recovery";
 import { buildEmergencyAssistMessage, getSafetySignal, type RiderRideOptions, type SafetySignal } from "@/lib/rider-parity";
 import { trpc } from "@/lib/trpc";
 import { type ReceiptEmailStatus } from "@/lib/receipt-email";
@@ -734,6 +735,10 @@ export default function RiderHomeScreen() {
   const [pendingSavedPlaceName, setPendingSavedPlaceName] = useState<string | null>(null);
   const [activeRides, setActiveRides] = useState<ActiveRide[]>([]);
   const activeRidesRef = useRef<ActiveRide[]>([]);
+  const selectedRideIdRef = useRef<string | null>(null);
+  const rideRecoveryOwnerRef = useRef(user?.uid ?? null);
+  const terminalRideIdsRef = useRef(new Set<string>());
+  const presentedCompletionRideIdsRef = useRef(new Set<string>());
   const rebookPromptedRideIdsRef = useRef(new Set<string>());
   const trackingTelemetrySamplesRef = useRef(new Set<string>());
   const [selectedRideId, setSelectedRideId] = useState<string | null>(null);
@@ -821,6 +826,7 @@ export default function RiderHomeScreen() {
 
   const removeActiveRide = useCallback((rideId?: string) => {
     if (!rideId) return;
+    terminalRideIdsRef.current.add(rideId);
     // The in-app/server trip state remains authoritative. Ending this native
     // presentation is best-effort and must never delay a cancellation.
     void endRiderLiveActivity(rideId, false);
@@ -849,13 +855,24 @@ export default function RiderHomeScreen() {
 
   useEffect(() => {
     activeRidesRef.current = activeRides;
-  }, [activeRides]);
+    selectedRideIdRef.current = selectedRideId;
+  }, [activeRides, selectedRideId]);
 
   // Firestore snapshots are normally instantaneous. When iOS pauses that
   // channel, the authenticated status fallback is equally authoritative and
   // must take a completed ride out of the live map immediately.
-  const presentCompletedRide = useCallback((trackedRide: ActiveRide, serverSnapshot: Record<string, unknown>) => {
+  const presentCompletedRide = useCallback((trackedRide: Pick<ActiveRide, 'id'> & Partial<ActiveRide>, serverSnapshot: Record<string, unknown>) => {
     const terminal = buildRiderTerminalSummary(trackedRide, serverSnapshot);
+    terminalRideIdsRef.current.add(trackedRide.id);
+    terminalRideIdsRef.current.add(terminal.firestoreId);
+    if (trackedRide.firestoreId) terminalRideIdsRef.current.add(trackedRide.firestoreId);
+    // Repeated snapshots/resume reads must not close an explicitly opened
+    // rating sheet, reset a submitted rating, or reopen a dismissed summary.
+    if (presentedCompletionRideIdsRef.current.has(terminal.firestoreId)) {
+      setActiveRides((previous) => removeRide(previous, trackedRide.id));
+      return;
+    }
+    presentedCompletionRideIdsRef.current.add(terminal.firestoreId);
     const presentation = passiveCompletionPresentation({
       id: terminal.id,
       firestoreId: terminal.firestoreId,
@@ -876,6 +893,7 @@ export default function RiderHomeScreen() {
     setShowChat(false);
     setShowTipModal(false);
     setShowReceipt(false);
+    setShowRatingModal(false);
     setShowPostRideModal(false);
     setCompletedRideData(null);
   }, []);
@@ -922,6 +940,13 @@ export default function RiderHomeScreen() {
     const count = countActiveRides(activeRides);
     AsyncStorage.setItem(`activeRideCount:${user.uid}`, String(count)).catch(() => {});
   }, [activeRides, user?.uid]);
+
+  // Persist only selection identity, never a cached fare/status/location. The
+  // actual ride is re-read from the server before selecting it on a relaunch.
+  useEffect(() => {
+    if (!user?.uid || !selectedRideId || rideRecoveryOwnerRef.current !== user.uid) return;
+    AsyncStorage.setItem(`riderSelectedRide:${user.uid}`, selectedRideId).catch(() => {});
+  }, [selectedRideId, user?.uid]);
   
   // Dynamic pricing & driver tracking
   const [rideMetrics, setRideMetrics] = useState<RideMetrics | null>(null);
@@ -1064,43 +1089,30 @@ export default function RiderHomeScreen() {
     }).catch(() => {});
   }, []);
 
-  // Pending rating check: after a close or force-close, completed rides do not
-  // rehydrate as active. Keep a required rating pending, but do not auto-open a
-  // native modal during app startup; the booking gate presents it only after a
-  // deliberate Rider action.
+  // Reconcile on cold start AND each foreground return, even with no tracked
+  // IDs. Completion while the process was away restores the ordinary terminal
+  // screen, not a live map or an automatically opened native rating modal.
   useEffect(() => {
-    if (!user?.uid) return;
-    const checkPendingRating = async () => {
-      try {
-        const rides = await firestoreDB.list(COLLECTIONS.RIDES, { rider_id: user.uid, status: 'completed' });
-        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-        const unrated = rides.filter((r: any) => {
-          const completedAt = r.completed_at ?? r.trip_completed_at ?? r.updated_at ?? r.created_at;
-          const ts = completedAt ? new Date(completedAt).getTime() : 0;
-          return ts > cutoff && !r.rider_rating;
-        });
-        if (unrated.length > 0) {
-          const ride = unrated[0] as any;
-          setPendingRatingRideId(ride.id);
-          setPendingRatingDriverName(ride.driver_name || ride.driverName || 'Your Driver');
-          setRatingValue(5);
-          setRatingComment("");
-          setSelectedRatingTags([]);
-          setShowRatingModal(false);
-        }
-      } catch {
-        // Silently ignore — don't block app load
-      }
-    };
-    // Delay slightly so app finishes loading before showing modal
-    const t = setTimeout(checkPendingRating, 2000);
-    return () => clearTimeout(t);
-  }, [user?.uid]);
-
-  // Rehydrate every non-final ride from Firestore after a close, force-close,
-  // or app relaunch. The ongoing trip belongs to the signed-in rider on the
-  // server, so it must never depend only on the prior screen's memory.
-  useEffect(() => {
+    const riderId = user?.uid ?? null;
+    if (rideRecoveryOwnerRef.current !== riderId) {
+      rideRecoveryOwnerRef.current = riderId;
+      terminalRideIdsRef.current.clear();
+      presentedCompletionRideIdsRef.current.clear();
+      rebookPromptedRideIdsRef.current.clear();
+      activeRidesRef.current = [];
+      selectedRideIdRef.current = null;
+      setActiveRides([]);
+      setSelectedRideId(null);
+      setTerminalRide(null);
+      setPendingRatingRideId(null);
+      setPendingRatingDriverName(null);
+      setCompletedRideData(null);
+      setShowRatingModal(false);
+      setShowPostRideModal(false);
+      setShowChat(false);
+      setShowReceipt(false);
+      setShowTipModal(false);
+    }
     if (!user?.uid) {
       setActiveRides([]);
       setSelectedRideId(null);
@@ -1108,35 +1120,76 @@ export default function RiderHomeScreen() {
     }
 
     let cancelled = false;
+    let generation = 0;
+    let appState = AppState.currentState;
     const restoreActiveRides = async () => {
+      const requestGeneration = ++generation;
       try {
-        const rides = await firestoreDB.list(COLLECTIONS.RIDES, { rider_id: user.uid });
-        const expiredSearches = (rides as Record<string, any>[]).filter(isExpiredRiderSearch);
+        const [listedRides, savedSelection] = await Promise.all([
+          firestoreDB.list(COLLECTIONS.RIDES, { rider_id: riderId }, 'created_date', 'desc', undefined, { source: 'server' }),
+          AsyncStorage.getItem(`riderSelectedRide:${riderId}`).catch(() => null),
+        ]);
+        if (cancelled || requestGeneration !== generation || rideRecoveryOwnerRef.current !== riderId) return;
+        // The query is ownership-filtered; validate again at the presentation
+        // boundary before allowing any state or stale-search API side effect.
+        const rides = (listedRides as Record<string, any>[]).filter((ride) => ride.rider_id === riderId);
+        const expiredSearches = rides.filter(isExpiredRiderSearch);
         // The card is hidden immediately by recovery below, while the trusted
         // API records the terminal status so expired requests disappear from
         // Drivers' offer queues too.
         void Promise.allSettled(expiredSearches.map((ride) => expireStaleRiderSearch(String(ride.id || ''))));
-        const recovered = recoverActiveRides(rides as Record<string, any>[]) as ActiveRide[];
-        if (cancelled || recovered.length === 0) return;
-        setActiveRides((current) => recovered.reduce((next, ride) => upsertRide(next, ride), current));
-        setSelectedRideId((current) => current && recovered.some((ride) => ride.id === current) ? current : recovered[0].id);
+
+        rides.forEach((ride) => {
+          const terminalStatus = riderTerminalStatus(ride.status);
+          if (!terminalStatus && !isExpiredRiderSearch(ride)) return;
+          terminalRideIdsRef.current.add(String(ride.id));
+          const trackedRide = activeRidesRef.current.find((candidate) => rideKeysMatch(candidate, ride));
+          if (!trackedRide) return;
+          if (terminalStatus === 'completed') presentCompletedRide(trackedRide, ride);
+          else {
+            if (terminalStatus === 'cancelled') offerFindAnotherRide(trackedRide, ride.cancelled_by);
+            removeActiveRide(trackedRide.id);
+          }
+        });
+        const recovered = recoverActiveRides(rides) as ActiveRide[];
+        const nextRides = mergeRecoveredRiderRides(activeRidesRef.current, recovered, terminalRideIdsRef.current);
+        setActiveRides((current) => mergeRecoveredRiderRides(current, recovered, terminalRideIdsRef.current));
+        setSelectedRideId((current) => {
+          const preferred = current || selectedRideIdRef.current || savedSelection;
+          return nextRides.find((ride) => ride.id === preferred || ride.firestoreId === preferred)?.id ?? nextRides[0]?.id ?? null;
+        });
+        // An older unrated history record must not cover an ongoing trip. A
+        // tracked trip completion above retains the existing live behavior.
+        if (nextRides.length === 0) {
+          const completed = latestRecoverableCompletedRide(rides, riderId!);
+          if (completed) presentCompletedRide({ id: String(completed.id) }, completed);
+        }
       } catch (error) {
-        // The normal booking screen remains usable if the network is briefly
-        // unavailable; the next relaunch or active subscription will retry.
+        if (cancelled || requestGeneration !== generation) return;
+        // Offline is not a cancellation. Keep the current screen and retry on
+        // the next foreground return; never restore a stale cache as live data.
         console.warn('[Rider] Active ride restore failed:', error);
       }
     };
 
-    restoreActiveRides();
-    return () => { cancelled = true; };
-  }, [user?.uid]);
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      const returnedToForeground = appState !== 'active' && nextAppState === 'active';
+      appState = nextAppState;
+      if (nextAppState !== 'active') generation += 1;
+      if (returnedToForeground) void restoreActiveRides();
+    });
+    if (AppState.currentState === 'active') void restoreActiveRides();
+    return () => { cancelled = true; generation += 1; subscription.remove(); };
+  }, [user?.uid, presentCompletedRide, removeActiveRide, offerFindAnotherRide]);
 
   // Subscribe independently to every active ride so one booking never replaces another.
   const activeRideKeys = activeRides.map((ride) => ride.firestoreId || ride.id).join('|');
   useEffect(() => {
+    let cancelled = false;
     const subscriptions = activeRides
       .filter((ride) => Boolean(ride.firestoreId))
       .map((trackedRide) => dispatchService.listenToRide(trackedRide.firestoreId!, (ride: DispatchRide) => {
+        if (cancelled || ride.rider_id !== user?.uid) return;
         const terminalStatus = riderTerminalStatus(ride.status);
         if (terminalStatus === 'completed') {
           presentCompletedRide(trackedRide, ride as unknown as Record<string, unknown>);
@@ -1353,8 +1406,8 @@ export default function RiderHomeScreen() {
           };
         });
       }));
-    return () => subscriptions.forEach((unsubscribe) => unsubscribe());
-  }, [activeRideKeys, selectedRideId, updateActiveRide, removeActiveRide, presentCompletedRide, offerFindAnotherRide]);
+    return () => { cancelled = true; subscriptions.forEach((unsubscribe) => unsubscribe()); };
+  }, [user?.uid, activeRideKeys, selectedRideId, updateActiveRide, removeActiveRide, presentCompletedRide, offerFindAnotherRide]);
 
   // Firestore is the live transport, but an accepted trip must not remain on
   // “Searching” if an iOS snapshot is paused or disconnected. Reconcile the

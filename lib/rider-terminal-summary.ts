@@ -50,6 +50,9 @@ export function buildRiderTerminalSummary(
   const serverDriver = record(serverRide.driver);
   const serverVehicle = record(serverRide.vehicle);
 
+  const pickupLocation = record(serverRide.pickup ?? serverRide.pickup_location);
+  const destinationLocation = record(serverRide.destination ?? serverRide.destination_location);
+
   return {
     id: text(previous.id, 'completed-ride'),
     firestoreId: text(serverRide.id ?? previous.firestoreId ?? previous.id, previous.id),
@@ -61,10 +64,12 @@ export function buildRiderTerminalSummary(
     payment: text(serverRide.payment_method ?? serverRide.payment ?? previous.payment, 'Selected method'),
     paymentId: text(serverRide.payment_method_id ?? serverRide.payment_id ?? previous.paymentId, ''),
     category: text(serverRide.category ?? serverRide.service_type ?? previous.category, 'Ride'),
-    pickup: text(serverRide.pickup_address ?? serverRide.pickup ?? previous.pickup, 'Pickup location'),
+    pickup: text(serverRide.pickup_address ?? pickupLocation.address ?? pickupLocation.name ?? serverRide.pickup ?? previous.pickup, 'Pickup location'),
     destination: text(
       serverRide.destination_address
         ?? serverRide.destination_name
+        ?? destinationLocation.address
+        ?? destinationLocation.name
         ?? serverRide.destination
         ?? previous.destination?.name,
       'Destination',

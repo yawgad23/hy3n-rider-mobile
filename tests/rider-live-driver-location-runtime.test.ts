@@ -39,7 +39,7 @@ const C_TIME = '2026-11-24T12:00:10.000Z';
 const OLD_TIME = '2026-11-24T11:59:59.000Z';
 
 const baseRide = {
-  id: 'ride-live-location', status: 'in_progress', category: 'standard',
+  id: 'ride-live-location', rider_id: 'rider-1', status: 'in_progress', category: 'standard',
   pickup: { name: 'Pickup', address: 'Pickup', lat: 5.6, lng: -0.19 },
   destination: { name: 'Airport', address: 'Airport', lat: 5.62, lng: -0.17 },
   distance_km: 8, duration_minutes: 20, quoted_fare: 30, payment_method: 'cash',
@@ -84,6 +84,8 @@ function makeListenerHarness(initial: Ride) {
   let current = initial;
   let driverLocation: any = current.driverLocation;
   const env: Record<string, any> = {
+    cancelled: false,
+    user: { uid: 'rider-1' },
     riderDriverLocationFromRide,
     nextRiderDriverLocation,
     riderTerminalStatus: (status: string) => status,
@@ -107,7 +109,7 @@ function makeListenerHarness(initial: Ride) {
     updateActiveRide: (updater: (ride: Ride) => Ride) => { current = updater(current); },
   };
   const listener = new Function('env', `with (env) { return ${compiledListener.replace(/^const listener = /, '').replace(/;\s*listener;?\s*$/, '')}; }`)(env) as (ride: Ride) => void;
-  return { emit: (ride: Ride) => listener(ride), get current() { return current; }, get driverLocation() { return driverLocation; } };
+  return { emit: (ride: Ride) => listener(ride), retire: () => { env.cancelled = true; }, get current() { return current; }, get driverLocation() { return driverLocation; } };
 }
 
 let previousPngExtension: any;
@@ -129,6 +131,23 @@ describe('Rider live Driver location recovery/runtime', () => {
     expect(recoverActiveRide(baseRide)).toMatchObject({
       driverLocation: { lat: B.lat, lng: B.lng }, driverBearing: 90, driverLocationUpdatedAt: B_TIME,
     });
+  });
+
+  it('ignores a late GPS callback after the native subscription was retired', () => {
+    const initial = recoverActiveRide({ ...baseRide, driver_location: undefined, driver_location_updated_at: undefined })!;
+    const h = makeListenerHarness(initial);
+    h.retire();
+    h.emit(baseRide);
+    expect(h.current).toBe(initial);
+    expect(h.driverLocation).toEqual(A);
+  });
+
+  it('does not accept a ride snapshot belonging to a different Rider account', () => {
+    const initial = recoverActiveRide({ ...baseRide, driver_location: undefined, driver_location_updated_at: undefined })!;
+    const h = makeListenerHarness(initial);
+    h.emit({ ...baseRide, rider_id: 'rider-2' });
+    expect(h.current).toBe(initial);
+    expect(h.driverLocation).toEqual(A);
   });
 
   it('runs the production Home ride listener through B then C and rejects an older projection', () => {

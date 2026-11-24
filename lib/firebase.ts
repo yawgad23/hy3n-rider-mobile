@@ -37,6 +37,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  getDocsFromServer,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -303,7 +304,7 @@ export const firestoreDB = {
     return docToObj(docSnap);
   },
 
-  async list(collectionName: string, filters: Record<string, any> = {}, orderByField = 'created_date', orderDir: 'asc' | 'desc' = 'desc', limitNum?: number) {
+  async list(collectionName: string, filters: Record<string, any> = {}, orderByField = 'created_date', orderDir: 'asc' | 'desc' = 'desc', limitNum?: number, options?: { source?: 'server' }) {
     const colRef = collection(db, collectionName);
     const constraints: any[] = [];
     for (const [field, value] of Object.entries(filters)) {
@@ -314,7 +315,7 @@ export const firestoreDB = {
     constraints.push(orderBy(orderByField, orderDir));
     if (limitNum) constraints.push(firestoreLimit(limitNum));
     const q = query(colRef, ...constraints);
-    const snap = await getDocs(q);
+    const snap = options?.source === 'server' ? await getDocsFromServer(q) : await getDocs(q);
     return snapshotToArray(snap);
   },
 
