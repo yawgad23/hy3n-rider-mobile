@@ -72,7 +72,7 @@ describe('heading-up camera change preserves the working Rider motion and presen
     expect(current(file)).toBe(baseline(file, RELEASE_BASE));
   });
 
-  it('does not change existing artwork assets, GPS, backend, ETA/fare, native config, or package versions', () => {
+  it('preserves artwork, GPS, backend, ETA/fare, SDK and packages except the authorised 1.0.7 release identity', () => {
     const protectedFiles = execFileSync('git', ['ls-tree', '-r', '--name-only', RELEASE_BASE], { encoding: 'utf8' })
       .trim().split('\n').filter((file) =>
         /^(assets\/|server\/|backend\/|android\/|ios\/)/.test(file)
@@ -80,6 +80,14 @@ describe('heading-up camera change preserves the working Rider motion and presen
         || /^(lib\/.*(?:driver-location|location-service|trip-route|fare|quote|eta)|hooks\/.*(?:driver|location))/.test(file));
     expect(protectedFiles.length).toBeGreaterThan(0);
     for (const file of protectedFiles) {
+      if (file === 'app.config.ts') {
+        const expected = baseline(file, RELEASE_BASE)
+          .replace('version: "1.0.6"', 'version: "1.0.7"')
+          .replace(RELEASE_BASE === IOS_BASE ? 'buildNumber: "139"' : 'versionCode: 58028',
+            RELEASE_BASE === IOS_BASE ? 'buildNumber: "140"' : 'versionCode: 58029');
+        expect(current(file), 'only the approved release version and platform counter may differ').toBe(expected);
+        continue;
+      }
       // Compare Git blob hashes rather than decoding binary artwork as UTF-8.
       const oldHash = execFileSync('git', ['rev-parse', `${RELEASE_BASE}:${file}`], { encoding: 'utf8' }).trim();
       const newHash = execFileSync('git', ['hash-object', file], { encoding: 'utf8' }).trim();

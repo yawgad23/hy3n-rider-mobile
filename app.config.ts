@@ -56,7 +56,7 @@ const config: ExpoConfig = {
   name: env.appName,
   slug: env.appSlug,
   owner: "yawgad",
-  version: "1.0.6",
+  version: "1.0.7",
   extra: {
     eas: {
       projectId: "0b06ad22-f4a1-4aa7-aab6-0e03237ad63c",
@@ -76,7 +76,7 @@ const config: ExpoConfig = {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
     // Fresh TestFlight identity; never reuse an already uploaded build number.
-    buildNumber: "139",
+    buildNumber: "140",
     googleServicesFile: "./firebase/GoogleService-Info.plist",
     // TestFlight/App Store archives need production APNs for remote Live
     // Activity updates; development profiles retain the development endpoint.

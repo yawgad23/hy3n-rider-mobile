@@ -22,7 +22,7 @@ const props = json('ios/Podfile.properties.json');
 const delegate = read('ios/HY3N/AppDelegate.swift');
 const podfile = read('ios/Podfile');
 const project = read('ios/HY3N.xcodeproj/project.pbxproj');
-assert(info.CFBundleShortVersionString === '1.0.6' && info.CFBundleVersion === '139', 'Unexpected iOS release identity.');
+assert(info.CFBundleShortVersionString === '1.0.7' && info.CFBundleVersion === '140', 'Unexpected iOS release identity.');
 assert(project.includes('com.hy3n.rider'), 'Rider bundle identity is missing.');
 assert(props['ios.deploymentTarget'] === '16.4', 'The approved minimum iOS 16.4 target is required.');
 assert(props['expo.useHermesV1'] === 'true', 'SDK 57 Hermes V1 must be enabled.');
@@ -52,5 +52,5 @@ if (process.env.EAS_BUILD === 'true') {
   const providers = existsSync(support) ? readdirSync(support).map(name => join(support, name, 'ExpoModulesProvider.swift')).filter(existsSync) : [];
   assert(providers.some(filename => readFileSync(filename, 'utf8').includes('AppleAuthenticationModule.self')), 'CocoaPods must generate the actual Apple module provider before compilation.');
 }
-console.log('[Rider iOS SDK 27] PASS: identity 1.0.6/139, iOS16.4, scenes, native Maps startup/key presence, Firebase linkage and audited Apple sources.');
+console.log('[Rider iOS SDK 27] PASS: identity 1.0.7/140, iOS16.4, scenes, native Maps startup/key presence, Firebase linkage and audited Apple sources.');
 console.log('[Rider iOS SDK 27] Native source gate only. Confirm the finished signed IPA DTSDKName is iphoneos27.* before TestFlight upload.');
