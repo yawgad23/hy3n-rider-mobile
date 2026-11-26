@@ -10,6 +10,7 @@ import { riderDriverMarkerLabel } from '@/lib/rider-live-tracking-presentation';
 import { authoritativeRouteOverviewPoints, bookingPreviewRegion, isNativeMapPoint, nativeTrackingRegion, type NativeMapPoint } from '@/lib/native-map-camera';
 import { riderMapMarkerKind } from '@/lib/rider-map-marker-kind';
 import { RIDER_MAP_MARKER_ARTWORK } from '@/lib/rider-vehicle-artwork';
+import { riderHeadingUpCamera, type RiderHeadingCameraSample } from '@/lib/rider-heading-camera';
 
 export type NearbyDriver = {
   id: string;
@@ -180,6 +181,17 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const mapRef = useRef<MapView>(null);
   const [mapReady, setMapReady] = useState(false);
   const userMovedMapRef = useRef(false);
+  const [cameraViewport, setCameraViewport] = useState({ width: 360, height: 800 });
+  const headingCameraSampleRef = useRef<RiderHeadingCameraSample | null>(null);
+  const headingCameraFrameRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const headingCameraRunRef = useRef(0);
+  const headingCameraSettleAtRef = useRef<number | null>(null);
+  const renderedCameraPointRef = useRef<NativeMapPoint | null>(null);
+  const requestHeadingCameraRef = useRef<() => void>(() => {});
+  const headingCameraObservationRef = useRef<{ key: string | null; point: NativeMapPoint; atMs: number | null } | null>(null);
+  const headingCameraMovementRef = useRef({ metres: 0, untilMs: 0 });
+  const headingCameraStateRef = useRef({ enabled: false, heading: 0,
+    region: null as ReturnType<typeof nativeTrackingRegion>, viewport: cameraViewport });
   const previousDriverPointRef = useRef<NativeMapPoint | null>(null);
   const previousDriverUpdatedAtRef = useRef<number | null>(null);
   const previousCameraUpdatedAtRef = useRef<number | null>(null);
@@ -273,6 +285,98 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     // visibly shake. Position/timestamp changes remain the movement authority.
     ? `${driverMotionAnchor[0].toFixed(7)},${driverMotionAnchor[1].toFixed(7)},${liveDriverUpdatedAt || ''}`
     : null;
+
+  headingCameraStateRef.current = {
+    enabled: mapReady && driverTracking && Boolean(displayDriverPoint) && !routeOverview,
+    heading: visualDriverBearing,
+    region: nativeTrackingRegion(displayDriverPoint, trackedTarget, userLocation || center),
+    viewport: cameraViewport,
+  };
+
+  const cancelHeadingCamera = () => {
+    headingCameraRunRef.current += 1;
+    if (headingCameraFrameRef.current !== null) clearTimeout(headingCameraFrameRef.current);
+    headingCameraFrameRef.current = null;
+    headingCameraSettleAtRef.current = null;
+  };
+  // One immediate native writer owns heading AND center. Observing the existing
+  // animated coordinate avoids restarting/replacing the already-smooth car plan
+  // or letting a region pan reset the heading while a second rotation runs.
+  requestHeadingCameraRef.current = () => {
+    if (headingCameraFrameRef.current !== null || !headingCameraStateRef.current.enabled || userMovedMapRef.current || !renderedCameraPointRef.current) return;
+    const run = headingCameraRunRef.current;
+    headingCameraFrameRef.current = setTimeout(() => {
+      headingCameraFrameRef.current = null;
+      const state = headingCameraStateRef.current;
+      const point = renderedCameraPointRef.current;
+      if (headingCameraRunRef.current !== run || !state.enabled || userMovedMapRef.current || !point || !state.region || !mapRef.current) return;
+      const now = Date.now();
+      const movement = now <= headingCameraMovementRef.current.untilMs ? headingCameraMovementRef.current.metres : 0;
+      const next = riderHeadingUpCamera(point, state.heading, state.region, state.viewport,
+        headingCameraSampleRef.current, now, movement);
+      if (next) {
+        mapRef.current.setCamera(next.camera);
+        headingCameraSampleRef.current = next;
+      }
+      const bearing = headingCameraSampleRef.current?.camera.heading;
+      const remaining = bearing === undefined ? 0 : Math.abs(((state.heading - bearing + 540) % 360) - 180);
+      if (movement >= 1.5 && remaining > 0.1) {
+        headingCameraSettleAtRef.current ??= now;
+        if (now - headingCameraSettleAtRef.current < 2_500) requestHeadingCameraRef.current();
+      } else headingCameraSettleAtRef.current = null;
+    }, 16);
+  };
+
+  useEffect(() => {
+    if (!driverMotionAnchor || headingCameraObservationRef.current?.key === driverMotionKey) return;
+    const previous = headingCameraObservationRef.current;
+    const duration = riderDriverMarkerMotionDuration(previous?.atMs ?? null, liveDriverUpdatedAt);
+    headingCameraMovementRef.current = {
+      metres: previous ? distanceMeters(previous.point, driverMotionAnchor) : 0,
+      untilMs: Date.now() + duration + 2_500,
+    };
+    headingCameraSettleAtRef.current = null;
+    headingCameraObservationRef.current = { key: driverMotionKey, point: driverMotionAnchor, atMs: timestampMs(liveDriverUpdatedAt) };
+  }, [driverMotionAnchor, driverMotionKey, driverTracking, liveDriverUpdatedAt]);
+
+  useEffect(() => {
+    if (!driverTracking) return;
+    // Only the original marker animator may stop or replace a car trajectory.
+    // Keep observing while the Rider explores: Close map must return to the
+    // actual in-flight car without stopping its animation or reading private
+    // AnimatedRegion internals. Paused observation never schedules camera work.
+    const listener = animatedDriverCoordinate.addListener?.((region: Region) => {
+      const point: NativeMapPoint = [region.latitude, region.longitude];
+      if (!isNativeMapPoint(point)) return;
+      renderedCameraPointRef.current = point;
+      requestHeadingCameraRef.current();
+    });
+    return () => {
+      cancelHeadingCamera();
+      headingCameraStateRef.current.enabled = false;
+      if (listener !== undefined) animatedDriverCoordinate.removeListener(listener);
+    };
+  }, [animatedDriverCoordinate, driverTracking]);
+
+  useEffect(() => {
+    if (!displayDriverPoint || !driverTracking) {
+      headingCameraSampleRef.current = null;
+      renderedCameraPointRef.current = null;
+      headingCameraObservationRef.current = null;
+      headingCameraMovementRef.current = { metres: 0, untilMs: 0 };
+    } else if (!renderedCameraPointRef.current && !previousDriverPointRef.current) {
+      // Only genuine marker initialization may seed from the accepted point:
+      // the original animator immediately sets that coordinate, silently. On
+      // tracking reattachment the same prop may be a future glide endpoint;
+      // wait for a fresh public pose event instead of moving ahead of the car.
+      renderedCameraPointRef.current = displayDriverPoint;
+    }
+    if (!headingCameraStateRef.current.enabled || userMovedMapRef.current) {
+      cancelHeadingCamera();
+      return;
+    }
+    requestHeadingCameraRef.current();
+  }, [cameraViewport, displayDriverPoint, driverTracking, mapReady, routeOverview, visualDriverBearing]);
 
   useEffect(() => {
     if (!displayDriverPoint) {
@@ -395,7 +499,13 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   useEffect(() => {
     // Closing the overview intentionally restores the close live camera even
     // if the Rider had panned around the full route.
-    if (previousRouteOverviewRef.current && !routeOverview) userMovedMapRef.current = false;
+    if (previousRouteOverviewRef.current && !routeOverview) {
+      userMovedMapRef.current = false;
+      // Overview/gestures changed native ownership. Force a complete restore
+      // even for a stationary car, using its current visual bearing rather
+      // than deduplicating against a pre-overview native delivery sample.
+      headingCameraSampleRef.current = null;
+    }
     previousRouteOverviewRef.current = routeOverview;
   }, [routeOverview]);
 
@@ -407,6 +517,10 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     // The Rider explicitly requested the full server route. Do not overwrite
     // that overview with the normal close-range live camera.
     if (routeOverview) return;
+    if (driverTracking && displayDriverPoint) {
+      requestHeadingCameraRef.current();
+      return;
+    }
     if (userMovedMapRef.current) {
       // Manual panning suspends auto-follow. Start with a short camera settle
       // when follow resumes instead of comparing against an old GPS timestamp.
@@ -504,12 +618,14 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
     panTo(latitude, longitude) {
       if (!isNativeMapPoint([latitude, longitude])) return;
       userMovedMapRef.current = true;
+      cancelHeadingCamera();
       mapRef.current?.animateToRegion(initialRegion([latitude, longitude]), 350);
     },
     fitBounds(points) {
       const valid = points.filter(isNativeMapPoint).map(coordinate);
       if (valid.length === 0) return;
       userMovedMapRef.current = true;
+      cancelHeadingCamera();
       if (valid.length === 1) mapRef.current?.animateToRegion(initialRegion(points[0]), 350);
       else mapRef.current?.fitToCoordinates(valid, { edgePadding: { top: 96, right: 32, bottom: 340, left: 32 }, animated: true });
     },
@@ -522,7 +638,12 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
   const destinationPoint = !bookingPreview && isNativeMapPoint(destination) && (!driverTracking || tripStatus === 'in_progress') ? destination : null;
 
   return (
-    <View style={[styles.container, style]}>
+    <View style={[styles.container, style]} onLayout={(event) => {
+      const { width, height } = event.nativeEvent.layout;
+      if (Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0) {
+        setCameraViewport((previous) => previous.width === width && previous.height === height ? previous : { width, height });
+      }
+    }}>
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
@@ -539,7 +660,13 @@ const NativeGoogleMap = forwardRef<NativeGoogleMapRef, NativeGoogleMapProps>(fun
         showsScale={false}
         toolbarEnabled={false}
         onMapReady={() => setMapReady(true)}
-        onPanDrag={() => { userMovedMapRef.current = true; }}
+        onPanDrag={() => { userMovedMapRef.current = true; cancelHeadingCamera(); }}
+        onRegionChange={(_region, details) => {
+          if (details?.isGesture) { userMovedMapRef.current = true; cancelHeadingCamera(); }
+        }}
+        onRegionChangeComplete={(_region, details) => {
+          if (details?.isGesture) { userMovedMapRef.current = true; cancelHeadingCamera(); }
+        }}
       >
         {routeCoordinates.length > 1 && <Polyline
           coordinates={routeCoordinates}
